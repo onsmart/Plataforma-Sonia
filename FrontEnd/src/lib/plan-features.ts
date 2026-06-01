@@ -40,6 +40,7 @@ export function buildPlanFeatureList(params: {
   hasCrmApi?: boolean
   hasSso?: boolean
   isPaid: boolean
+  isPlatformAdmin?: boolean
 }): PlanFeatureItem[] {
   const {
     plan,
@@ -52,7 +53,23 @@ export function buildPlanFeatureList(params: {
     hasCrmApi = false,
     hasSso,
     isPaid,
+    isPlatformAdmin = false,
   } = params
+
+  if (isPlatformAdmin) {
+    return [
+      { id: 'admin', label: 'Acesso total à plataforma (administrador)', enabled: true },
+      { id: 'whatsapp', label: FEATURE_LABELS.whatsapp, enabled: true },
+      { id: 'agents', label: `${FEATURE_LABELS.agents}: ilimitados`, enabled: true },
+      { id: 'conversations', label: `${FEATURE_LABELS.conversations}: ilimitados`, enabled: true },
+      { id: 'flows', label: FEATURE_LABELS.flows, enabled: true },
+      { id: 'crmApi', label: FEATURE_LABELS.crmApi, enabled: true },
+      { id: 'rag', label: FEATURE_LABELS.rag, enabled: true },
+      { id: 'governance', label: FEATURE_LABELS.governance, enabled: true },
+      { id: 'outbound', label: FEATURE_LABELS.outbound, enabled: true },
+      { id: 'sso', label: FEATURE_LABELS.sso, enabled: true },
+    ]
+  }
 
   if (!isPaid || plan === 'free') {
     return [
@@ -110,6 +127,7 @@ export function buildSubscriptionTimeline(params: {
   canceledAt: string | null
   cancelAtPeriodEnd: boolean
   hasPaidAccess: boolean
+  isPlatformAdmin?: boolean
   locale?: string
 }): SubscriptionTimelineItem[] {
   const {
@@ -120,6 +138,7 @@ export function buildSubscriptionTimeline(params: {
     canceledAt,
     cancelAtPeriodEnd,
     hasPaidAccess,
+    isPlatformAdmin = false,
     locale = 'pt-BR',
   } = params
 
@@ -130,6 +149,15 @@ export function buildSubscriptionTimeline(params: {
   const cancelRequestedAt = formatBillingDate(canceledAt, locale)
 
   if (!hasPaidAccess) {
+    if (params.isPlatformAdmin) {
+      items.push({
+        label: 'Acesso administrativo',
+        dateText: 'Sem cobrança — conta de administrador da plataforma',
+        tone: 'success',
+      })
+      return items
+    }
+
     if (contractedAt || periodEnd || cancelRequestedAt) {
       if (contractedAt) {
         items.push({

@@ -16,6 +16,7 @@ const stripe_subscription_sync_service_1 = require("../../services/billing/strip
 const subscription_billing_notify_service_1 = require("../../services/billing/subscription-billing-notify.service");
 const plan_helper_1 = require("../../utils/plan-helper");
 const usage_tracker_service_1 = require("../../services/usage-tracker.service");
+const platform_admin_1 = require("../../utils/platform-admin");
 const webhook_idempotency_service_1 = require("../../services/security/webhook-idempotency.service");
 const router = express_1.default.Router();
 // Inicializa o Stripe com a chave secreta do .env
@@ -98,10 +99,11 @@ router.get('/usage', auth_middleware_1.requireAuth, auth_middleware_1.requireWor
             (0, usage_tracker_service_1.getCurrentMonthConversationCount)(companiesId),
             (0, usage_tracker_service_1.getActiveAgentCount)(companiesId),
         ]);
-        const planInfo = await (0, plan_helper_1.getPlanInfo)(companiesId);
+        const isPlatformAdmin = (0, platform_admin_1.isPlatformAdminEmail)(userEmail);
+        const planInfo = await (0, plan_helper_1.getPlanInfo)(companiesId, { userEmail });
         const catalogPlan = (0, plans_catalog_1.normalizePlanId)(subscriptionRow?.plan);
-        const hasPaidAccess = (0, plans_catalog_1.hasEffectivePaidAccess)(subscriptionRow || {});
-        const contractedCatalog = (0, plans_catalog_1.getPlanCatalogEntry)(hasPaidAccess ? catalogPlan : plans_catalog_1.FREE_PLAN_ID);
+        const hasPaidAccess = isPlatformAdmin || (0, plans_catalog_1.hasEffectivePaidAccess)(subscriptionRow || {});
+        const contractedCatalog = (0, plans_catalog_1.getPlanCatalogEntry)(isPlatformAdmin ? planInfo.plan : hasPaidAccess ? catalogPlan : plans_catalog_1.FREE_PLAN_ID);
         const usageLimitReached = !hasPaidAccess ||
             (planInfo.limits.conversations !== null &&
                 conversationsUsed >= planInfo.limits.conversations);
@@ -126,32 +128,36 @@ router.get('/usage', auth_middleware_1.requireAuth, auth_middleware_1.requireWor
         });
         return res.json({
             plan: planInfo.plan,
-            plan_code: contractedCatalog.code,
-            plan_title: planInfo.planTitle,
+            plan_code: isPlatformAdmin ? 'PLATFORM_ADMIN' : contractedCatalog.code,
+            plan_title: isPlatformAdmin ? platform_admin_1.PLATFORM_ADMIN_PLAN_TITLE : planInfo.planTitle,
             product_line: contractedCatalog.productLine,
-            status: planInfo.status,
-            subscription_status: subscriptionStatus,
-            catalog_plan: hasPaidAccess ? catalogPlan : plans_catalog_1.FREE_PLAN_ID,
+            status: isPlatformAdmin ? 'active' : planInfo.status,
+            subscription_status: isPlatformAdmin ? 'active' : subscriptionStatus,
+            catalog_plan: isPlatformAdmin ? planInfo.plan : hasPaidAccess ? catalogPlan : plans_catalog_1.FREE_PLAN_ID,
             effective_plan: planInfo.plan,
             gates_use_effective_plan: true,
-            is_free_account: !billingSnapshot.has_paid_access,
+            is_platform_admin: isPlatformAdmin,
+            is_free_account: !hasPaidAccess,
             current_period_start: billingSnapshot.current_period_start,
             current_period_end: billingSnapshot.current_period_end,
             canceled_at: billingSnapshot.canceled_at,
             cancel_at_period_end: billingSnapshot.cancel_at_period_end,
-            has_paid_access: billingSnapshot.has_paid_access,
-            period_ended: periodEnded,
-            access_state: accessState,
+            has_paid_access: hasPaidAccess,
+            period_ended: isPlatformAdmin ? false : periodEnded,
+            access_state: isPlatformAdmin ? 'active' : accessState,
             has_stripe_subscription: billingSnapshot.has_stripe_subscription,
             can_manage_billing: canManageBilling,
             subscribed_at: subscriptionRow?.created_at || null,
             conversations_used: conversationsUsed,
             conversations_limit: planInfo.limits.conversations,
-            usage_limit_reached: usageLimitReached,
-            access_revoked_by_usage: billingSnapshot.cancel_at_period_end &&
+            usage_limit_reached: isPlatformAdmin ? false : usageLimitReached,
+            access_revoked_by_usage: !isPlatformAdmin &&
+                billingSnapshot.cancel_at_period_end &&
                 usageLimitReached &&
-                !billingSnapshot.has_paid_access,
-            volume_label: contractedCatalog.volumeLabel,
+                !hasPaidAccess,
+            volume_label: isPlatformAdmin
+                ? 'Acesso total à plataforma'
+                : contractedCatalog.volumeLabel,
             agents_used: agentsUsed,
             agents_limit: planInfo.limits.agents,
             has_active_outbound: planInfo.limits.hasActiveOutbound,

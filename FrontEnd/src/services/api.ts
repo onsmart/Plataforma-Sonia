@@ -1755,6 +1755,7 @@ export const AgentService = {
                     canceled_at: usage.canceled_at,
                     cancel_at_period_end: usage.cancel_at_period_end,
                     has_paid_access: usage.has_paid_access,
+                    is_platform_admin: usage.is_platform_admin,
                     is_free_account: usage.is_free_account,
                     subscribed_at: usage.subscribed_at,
                     has_stripe_subscription: usage.has_stripe_subscription,

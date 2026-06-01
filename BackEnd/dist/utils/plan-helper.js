@@ -53,6 +53,7 @@ exports.canUseGovernance = canUseGovernance;
 const supabase_1 = require("../lib/supabase");
 const logger_1 = __importDefault(require("../lib/logger"));
 const plans_catalog_1 = require("../config/plans.catalog");
+const platform_admin_1 = require("./platform-admin");
 exports.planInfoCache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 function clearPlanInfoCache(companiesId) {
@@ -70,6 +71,29 @@ function buildFreePlanInfo() {
         planTitle: free.title,
         status: 'inactive',
         limits: { ...plans_catalog_1.FREE_PLAN_LIMITS },
+    };
+}
+const PLATFORM_ADMIN_EFFECTIVE_PLAN = 'com_enterprise';
+function buildPlatformAdminPlanInfo() {
+    const enterprise = (0, plans_catalog_1.getPlanCatalogEntry)(PLATFORM_ADMIN_EFFECTIVE_PLAN);
+    return {
+        plan: PLATFORM_ADMIN_EFFECTIVE_PLAN,
+        planCode: platform_admin_1.PLATFORM_ADMIN_PLAN_CODE,
+        planTitle: platform_admin_1.PLATFORM_ADMIN_PLAN_TITLE,
+        status: 'active',
+        limits: {
+            agents: null,
+            messages: null,
+            conversations: null,
+            hasRAG: true,
+            hasSSO: true,
+            hasGovernance: true,
+            hasCustomDeployment: true,
+            hasActiveOutbound: true,
+            hasFlows: true,
+            hasCrmApi: true,
+            productLine: enterprise.productLine,
+        },
     };
 }
 function getPlanLimits(planId) {
@@ -90,8 +114,17 @@ function suggestUpgradePlan(current) {
         return 'com_enterprise';
     return 'com_enterprise';
 }
-async function getPlanInfo(companiesId) {
+async function getPlanInfo(companiesId, options) {
     try {
+        const platformAdminEmail = await (0, platform_admin_1.resolvePlatformAdminEmail)(companiesId, options?.userEmail);
+        if (platformAdminEmail && (0, platform_admin_1.isPlatformAdminEmail)(platformAdminEmail)) {
+            const planInfo = buildPlatformAdminPlanInfo();
+            exports.planInfoCache.set(companiesId, {
+                info: planInfo,
+                expiresAt: Date.now() + CACHE_TTL_MS,
+            });
+            return planInfo;
+        }
         const cached = exports.planInfoCache.get(companiesId);
         if (cached && cached.expiresAt > Date.now()) {
             return cached.info;

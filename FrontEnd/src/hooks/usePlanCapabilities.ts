@@ -7,6 +7,7 @@ export type PlanCapabilities = {
   planTitle: string
   productLine: 'rec' | 'com'
   status: string
+  isPlatformAdmin: boolean
   hasRag: boolean
   hasGovernance: boolean
   hasActiveOutbound: boolean
@@ -30,6 +31,7 @@ export function usePlanCapabilities(): PlanCapabilities {
     planTitle: 'Plano gratuito',
     productLine: 'rec' as 'rec' | 'com',
     status: 'inactive',
+    isPlatformAdmin: false,
     hasRag: false,
     hasGovernance: false,
     hasActiveOutbound: false,
@@ -47,18 +49,22 @@ export function usePlanCapabilities(): PlanCapabilities {
     setError(null)
     try {
       const usage = await AgentService.getSubscriptionUsage(sync)
+      const isPlatformAdmin = Boolean(usage?.is_platform_admin)
       const effectivePlan = normalizePlanId(usage?.effective_plan ?? usage?.plan ?? usage?.plan_name)
-      const hasPaidAccess = Boolean(usage?.has_paid_access)
-      const subscriptionStatus = String(
-        usage?.subscription_status ?? usage?.status ?? 'inactive'
-      )
+      const hasPaidAccess = Boolean(usage?.has_paid_access) || isPlatformAdmin
+      const subscriptionStatus = isPlatformAdmin
+        ? 'active'
+        : String(usage?.subscription_status ?? usage?.status ?? 'inactive')
       setState({
         plan: hasPaidAccess ? effectivePlan : ('free' as PlanId),
-        planTitle: hasPaidAccess
-          ? String(usage?.plan_title || usage?.planTitle || planTitle(effectivePlan))
-          : 'Plano gratuito',
+        planTitle: isPlatformAdmin
+          ? 'Administrador'
+          : hasPaidAccess
+            ? String(usage?.plan_title || usage?.planTitle || planTitle(effectivePlan))
+            : 'Plano gratuito',
         productLine: usage?.product_line === 'com' ? 'com' : 'rec',
         status: subscriptionStatus,
+        isPlatformAdmin,
         hasRag: Boolean(usage?.has_rag) && hasPaidAccess,
         hasGovernance: Boolean(usage?.has_governance) && hasPaidAccess,
         hasActiveOutbound: Boolean(usage?.has_active_outbound) && hasPaidAccess,

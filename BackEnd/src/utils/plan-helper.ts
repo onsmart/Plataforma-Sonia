@@ -12,6 +12,12 @@ import {
   normalizePlanId,
   planLimitsFromCatalog,
 } from '../config/plans.catalog'
+import {
+  isPlatformAdminEmail,
+  PLATFORM_ADMIN_PLAN_CODE,
+  PLATFORM_ADMIN_PLAN_TITLE,
+  resolvePlatformAdminEmail,
+} from './platform-admin'
 
 export type PlanType = PlanId
 
@@ -59,6 +65,35 @@ function buildFreePlanInfo(): PlanInfo {
   }
 }
 
+const PLATFORM_ADMIN_EFFECTIVE_PLAN: PlanId = 'com_enterprise'
+
+function buildPlatformAdminPlanInfo(): PlanInfo {
+  const enterprise = getPlanCatalogEntry(PLATFORM_ADMIN_EFFECTIVE_PLAN)
+  return {
+    plan: PLATFORM_ADMIN_EFFECTIVE_PLAN,
+    planCode: PLATFORM_ADMIN_PLAN_CODE,
+    planTitle: PLATFORM_ADMIN_PLAN_TITLE,
+    status: 'active',
+    limits: {
+      agents: null,
+      messages: null,
+      conversations: null,
+      hasRAG: true,
+      hasSSO: true,
+      hasGovernance: true,
+      hasCustomDeployment: true,
+      hasActiveOutbound: true,
+      hasFlows: true,
+      hasCrmApi: true,
+      productLine: enterprise.productLine,
+    },
+  }
+}
+
+export type GetPlanInfoOptions = {
+  userEmail?: string | null
+}
+
 function getPlanLimits(planId: PlanId): PlanLimits {
   return planLimitsFromCatalog(planId) as PlanLimits
 }
@@ -75,8 +110,21 @@ function suggestUpgradePlan(current: PlanId): PlanId {
   return 'com_enterprise'
 }
 
-export async function getPlanInfo(companiesId: string): Promise<PlanInfo> {
+export async function getPlanInfo(
+  companiesId: string,
+  options?: GetPlanInfoOptions
+): Promise<PlanInfo> {
   try {
+    const platformAdminEmail = await resolvePlatformAdminEmail(companiesId, options?.userEmail)
+    if (platformAdminEmail && isPlatformAdminEmail(platformAdminEmail)) {
+      const planInfo = buildPlatformAdminPlanInfo()
+      planInfoCache.set(companiesId, {
+        info: planInfo,
+        expiresAt: Date.now() + CACHE_TTL_MS,
+      })
+      return planInfo
+    }
+
     const cached = planInfoCache.get(companiesId)
     if (cached && cached.expiresAt > Date.now()) {
       return cached.info

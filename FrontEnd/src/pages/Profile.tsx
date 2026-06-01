@@ -199,9 +199,14 @@ export function Profile() {
     }
 
     const subscriptionStatus = billingExtra?.subscription_status ?? planCaps.status
-    const hasPaidAccess = Boolean(billingExtra?.has_paid_access ?? false)
+    const isPlatformAdmin = planCaps.isPlatformAdmin
+    const hasPaidAccess = Boolean(billingExtra?.has_paid_access ?? false) || isPlatformAdmin
     const isPaid = hasPaidAccess
-    const displayPlanTitle = isPaid ? planCaps.planTitle : 'Plano gratuito'
+    const displayPlanTitle = isPlatformAdmin
+        ? 'Administrador'
+        : isPaid
+          ? planCaps.planTitle
+          : 'Plano gratuito'
     const catalogPlan = normalizePlanId(billingExtra?.catalog_plan) as PlanId
     const effectivePlan = planCaps.plan
     const planMismatch =
@@ -215,12 +220,14 @@ export function Profile() {
         canceledAt: billingExtra?.canceled_at ?? null,
         cancelAtPeriodEnd: Boolean(billingExtra?.cancel_at_period_end),
         hasPaidAccess: isPaid,
+        isPlatformAdmin,
         locale: i18n.language,
     })
 
     const accessState = billingExtra?.access_state
-    const statusBadgeLabel =
-        accessState === 'ended'
+    const statusBadgeLabel = isPlatformAdmin
+        ? 'Ativa'
+        : accessState === 'ended'
             ? 'Assinatura encerrada'
             : accessState === 'cancel_scheduled' || billingExtra?.cancel_at_period_end
               ? 'Cancelamento agendado'
@@ -234,6 +241,7 @@ export function Profile() {
         hasGovernance: planCaps.hasGovernance,
         hasActiveOutbound: planCaps.hasActiveOutbound,
         isPaid,
+        isPlatformAdmin,
     })
 
     const conversationsPercent =

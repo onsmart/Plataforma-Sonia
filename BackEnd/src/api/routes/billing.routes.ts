@@ -40,6 +40,10 @@ import {
 import { clearPlanInfoCache, getPlanInfo } from '../../utils/plan-helper'
 import { getActiveAgentCount, getCurrentMonthConversationCount } from '../../services/usage-tracker.service'
 import {
+  isPlatformAdminEmail,
+  PLATFORM_ADMIN_PLAN_TITLE,
+} from '../../utils/platform-admin'
+import {
   isDuplicateWebhookEvent,
   markWebhookEventProcessed,
 } from '../../services/security/webhook-idempotency.service'
@@ -140,10 +144,13 @@ router.get('/usage', requireAuth, requireWorkspace, async (req, res) => {
             getCurrentMonthConversationCount(companiesId),
             getActiveAgentCount(companiesId),
         ])
-        const planInfo = await getPlanInfo(companiesId)
+        const isPlatformAdmin = isPlatformAdminEmail(userEmail)
+        const planInfo = await getPlanInfo(companiesId, { userEmail })
         const catalogPlan = normalizePlanId(subscriptionRow?.plan)
-        const hasPaidAccess = hasEffectivePaidAccess(subscriptionRow || {})
-        const contractedCatalog = getPlanCatalogEntry(hasPaidAccess ? catalogPlan : FREE_PLAN_ID)
+        const hasPaidAccess = isPlatformAdmin || hasEffectivePaidAccess(subscriptionRow || {})
+        const contractedCatalog = getPlanCatalogEntry(
+            isPlatformAdmin ? planInfo.plan : hasPaidAccess ? catalogPlan : FREE_PLAN_ID
+        )
         const usageLimitReached =
             !hasPaidAccess ||
             (planInfo.limits.conversations !== null &&
@@ -171,33 +178,37 @@ router.get('/usage', requireAuth, requireWorkspace, async (req, res) => {
 
         return res.json({
             plan: planInfo.plan,
-            plan_code: contractedCatalog.code,
-            plan_title: planInfo.planTitle,
+            plan_code: isPlatformAdmin ? 'PLATFORM_ADMIN' : contractedCatalog.code,
+            plan_title: isPlatformAdmin ? PLATFORM_ADMIN_PLAN_TITLE : planInfo.planTitle,
             product_line: contractedCatalog.productLine,
-            status: planInfo.status,
-            subscription_status: subscriptionStatus,
-            catalog_plan: hasPaidAccess ? catalogPlan : FREE_PLAN_ID,
+            status: isPlatformAdmin ? 'active' : planInfo.status,
+            subscription_status: isPlatformAdmin ? 'active' : subscriptionStatus,
+            catalog_plan: isPlatformAdmin ? planInfo.plan : hasPaidAccess ? catalogPlan : FREE_PLAN_ID,
             effective_plan: planInfo.plan,
             gates_use_effective_plan: true,
-            is_free_account: !billingSnapshot.has_paid_access,
+            is_platform_admin: isPlatformAdmin,
+            is_free_account: !hasPaidAccess,
             current_period_start: billingSnapshot.current_period_start,
             current_period_end: billingSnapshot.current_period_end,
             canceled_at: billingSnapshot.canceled_at,
             cancel_at_period_end: billingSnapshot.cancel_at_period_end,
-            has_paid_access: billingSnapshot.has_paid_access,
-            period_ended: periodEnded,
-            access_state: accessState,
+            has_paid_access: hasPaidAccess,
+            period_ended: isPlatformAdmin ? false : periodEnded,
+            access_state: isPlatformAdmin ? 'active' : accessState,
             has_stripe_subscription: billingSnapshot.has_stripe_subscription,
             can_manage_billing: canManageBilling,
             subscribed_at: subscriptionRow?.created_at || null,
             conversations_used: conversationsUsed,
             conversations_limit: planInfo.limits.conversations,
-            usage_limit_reached: usageLimitReached,
+            usage_limit_reached: isPlatformAdmin ? false : usageLimitReached,
             access_revoked_by_usage:
+                !isPlatformAdmin &&
                 billingSnapshot.cancel_at_period_end &&
                 usageLimitReached &&
-                !billingSnapshot.has_paid_access,
-            volume_label: contractedCatalog.volumeLabel,
+                !hasPaidAccess,
+            volume_label: isPlatformAdmin
+                ? 'Acesso total à plataforma'
+                : contractedCatalog.volumeLabel,
             agents_used: agentsUsed,
             agents_limit: planInfo.limits.agents,
             has_active_outbound: planInfo.limits.hasActiveOutbound,

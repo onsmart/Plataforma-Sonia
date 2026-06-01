@@ -3,28 +3,14 @@ import { supabase } from '../../lib/supabase'
 import { listRecentSecurityAuditEvents } from '../../services/security/audit-log.service'
 import { isMetaWebhookConfigured } from '../../services/integrations/whatsapp/meta-webhook-secret.service'
 import { getAuthenticatedEmail } from '../../utils/request-auth'
+import { isPlatformAdminEmail } from '../../utils/platform-admin'
 
 const startedAt = Date.now()
-
-function parseAdminAllowlist(): Set<string> {
-  return new Set(
-    String(process.env.PLATFORM_ADMIN_EMAILS || '')
-      .split(',')
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean)
-  )
-}
-
-function isPlatformAdmin(email: string): boolean {
-  const allowlist = parseAdminAllowlist()
-  if (allowlist.size === 0) return false
-  return allowlist.has(email.trim().toLowerCase())
-}
 
 export async function getPlatformHealth(req: Request, res: Response) {
   try {
     const email = getAuthenticatedEmail(req)
-    if (!email || !isPlatformAdmin(email)) {
+    if (!email || !isPlatformAdminEmail(email)) {
       return res.status(403).json({ error: 'Acesso restrito a administradores da plataforma', code: 'PLATFORM_ADMIN_REQUIRED' })
     }
 
