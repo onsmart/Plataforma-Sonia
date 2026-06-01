@@ -11,7 +11,7 @@
       http-equiv="Content-Security-Policy"
       content="
         default-src 'self';
-        connect-src 'self' https: wss: http://localhost:* http://127.0.0.1:*;
+        connect-src %CSP_CONNECT_SRC%;
         script-src 'self' 'unsafe-inline';
         style-src 'self' 'unsafe-inline';
         img-src 'self' data: https:;

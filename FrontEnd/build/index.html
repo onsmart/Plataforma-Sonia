@@ -6,20 +6,21 @@
     <title>Plataforma de Atendimento SONIA</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
-    <!-- CSP aberta para desenvolvimento -->
+    <!-- CSP: restrita; em dev o Vite pode exigir ajustes locais -->
     <meta
       http-equiv="Content-Security-Policy"
       content="
-        default-src * 'unsafe-inline' 'unsafe-eval';
-        connect-src *;
-        script-src * 'unsafe-inline' 'unsafe-eval';
-        style-src * 'unsafe-inline';
-        img-src * data:;
-        media-src * blob: data:;
+        default-src 'self';
+        connect-src 'self' https: wss: ws: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* http://192.168.15.31:3333 http://192.168.15.31:* ws://192.168.15.31:3333 ws://192.168.15.31:* https://webhook.onsmart.ai https://webhook.onsmart.ai:* wss://webhook.onsmart.ai wss://webhook.onsmart.ai:*;
+        script-src 'self' 'unsafe-inline';
+        style-src 'self' 'unsafe-inline';
+        img-src 'self' data: https:;
+        media-src 'self' blob: data:;
+        frame-ancestors 'none';
       "
     />
-    <script type="module" crossorigin src="/assets/index-CueMEH4d.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-CY5OJhfL.css">
+    <script type="module" crossorigin src="/assets/index-BBm9O1w3.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-CWgr_VCQ.css">
   </head>
 
   <body>

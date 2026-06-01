@@ -1,11 +1,59 @@
 
-  import { defineConfig } from 'vite';
-  import react from '@vitejs/plugin-react-swc';
-  import tailwindcss from '@tailwindcss/vite';
-  import path from 'path';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
+import react from '@vitejs/plugin-react-swc';
+import tailwindcss from '@tailwindcss/vite';
+import path from 'path';
 
-  export default defineConfig({
-    plugins: [react(), tailwindcss()],
+function buildCspConnectSrc(env: Record<string, string>): string {
+  const sources = new Set<string>([
+    "'self'",
+    'https:',
+    'wss:',
+    'ws:',
+    'http://localhost:*',
+    'http://127.0.0.1:*',
+    'ws://localhost:*',
+    'ws://127.0.0.1:*',
+  ]);
+
+  for (const key of ['VITE_API_URL', 'VITE_BACKEND_PUBLIC_URL']) {
+    const raw = env[key]?.trim();
+    if (!raw) continue;
+    try {
+      const url = new URL(raw);
+      sources.add(`${url.protocol}//${url.host}`);
+      sources.add(`${url.protocol}//${url.hostname}:*`);
+      if (url.protocol === 'https:') {
+        sources.add(`wss://${url.host}`);
+        sources.add(`wss://${url.hostname}:*`);
+      }
+      if (url.protocol === 'http:') {
+        sources.add(`ws://${url.host}`);
+        sources.add(`ws://${url.hostname}:*`);
+      }
+    } catch {
+      // ignore invalid URL in env
+    }
+  }
+
+  return Array.from(sources).join(' ');
+}
+
+function injectCspConnectSrc(env: Record<string, string>): Plugin {
+  const connectSrc = buildCspConnectSrc(env);
+  return {
+    name: 'inject-csp-connect-src',
+    transformIndexHtml(html) {
+      return html.replace('%CSP_CONNECT_SRC%', connectSrc);
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+
+  return {
+    plugins: [injectCspConnectSrc(env), react(), tailwindcss()],
     resolve: {
       dedupe: ['react', 'react-dom'],
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
@@ -59,5 +107,7 @@
     server: {
       port: 3000,
       open: true,
+      host: true,
     },
-  });
+  };
+});
