@@ -206,7 +206,10 @@ fi
 cd "`$BACKEND_DIR"
 
 if [ -f package-lock.json ]; then
-  npm ci || npm install
+  if ! npm ci; then
+    echo "[WARN] npm ci falhou; tentando npm install para sincronizar dependencias..."
+    npm install
+  fi
 else
   npm install
 fi
