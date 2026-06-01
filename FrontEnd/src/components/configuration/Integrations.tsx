@@ -651,6 +651,19 @@ export function Integrations() {
 
     const buildEmailPayload = () => buildEmailPayloadFromConfig(emailConfig, emailProviderPreset, { isDefault: true, isActive: true })
 
+    const hasMeaningfulEmailConfig = (config: EmailConfigState = emailConfig): boolean => {
+        if (config.integrationId) return true
+        if (config.providerFamily === 'microsoft365') {
+            return !!(
+                config.emailAddress.trim() ||
+                config.oauthClientId.trim() ||
+                config.oauthClientSecret.trim() ||
+                config.oauthRedirectUri.trim()
+            )
+        }
+        return !!(config.emailAddress.trim() || config.username.trim() || config.password.trim())
+    }
+
     const persistEmailIntegration = async (): Promise<EmailIntegrationRow | null> => {
         if (emailConfig.providerFamily === 'microsoft365') {
             if (!emailConfig.emailAddress.trim()) {
@@ -692,6 +705,52 @@ export function Integrations() {
         setEmailConfig(mappedEmail)
         setEmailProviderPreset(detectEmailPreset(mappedEmail))
         return savedIntegration
+    }
+
+    const buildWhatsappSavePayload = () => {
+        const normalizedPhoneNumber = isMaskedSecretValue(whatsappConfig.phoneNumber)
+            ? ''
+            : normalizePhoneNumber(whatsappConfig.phoneNumber)
+        const trimmedPhoneNumberId = isMaskedSecretValue(whatsappConfig.phoneNumberId)
+            ? ''
+            : whatsappConfig.phoneNumberId.trim()
+        const trimmedAccessToken = isMaskedSecretValue(whatsappConfig.accessToken)
+            ? ''
+            : whatsappConfig.accessToken.trim()
+        const trimmedVerifyToken = isMaskedSecretValue(whatsappConfig.verifyToken)
+            ? ''
+            : whatsappConfig.verifyToken.trim()
+        const trimmedAppSecret = isMaskedSecretValue(whatsappConfig.appSecret)
+            ? ''
+            : whatsappConfig.appSecret.trim()
+        const normalizedAutomationMode: 'agent' | 'flow' = automationMode === 'flow' ? 'flow' : 'agent'
+
+        return {
+            payload: {
+                phone_number: normalizedPhoneNumber || null,
+                app_key: trimmedPhoneNumberId || null,
+                access_token: trimmedAccessToken || null,
+                auth_token: trimmedVerifyToken || null,
+                meta_app_secret: trimmedAppSecret || null,
+                linked_agent_id:
+                    normalizedAutomationMode === 'agent' && selectedLinkedAgentId !== 'none'
+                        ? selectedLinkedAgentId
+                        : null,
+                linked_flow_id:
+                    normalizedAutomationMode === 'flow' && selectedLinkedFlowId !== 'none'
+                        ? selectedLinkedFlowId
+                        : null,
+                automation_mode: normalizedAutomationMode,
+            } as const,
+            normalizedAutomationMode,
+            hasCredentialInput: !!(
+                normalizedPhoneNumber ||
+                trimmedPhoneNumberId ||
+                trimmedAccessToken ||
+                trimmedVerifyToken ||
+                trimmedAppSecret
+            ),
+        }
     }
 
     const loadAssignableAgents = async (email: string) => {
@@ -953,6 +1012,7 @@ export function Integrations() {
         linked_agent_id?: string | null
         linked_flow_id?: string | null
         automation_mode?: 'agent' | 'flow'
+        delete_integration?: boolean
     }): Promise<WhatsAppIntegrationRow | null> => {
         const response = await fetch(`${BASE_URL}/whatsapp/integration/current`, {
             method: 'POST',
@@ -1085,6 +1145,7 @@ export function Integrations() {
                 linked_agent_id: null,
                 linked_flow_id: null,
                 automation_mode: 'agent',
+                delete_integration: true,
             })
             setWhatsappIntegrationId(null)
             setWhatsappIsLocked(false)
@@ -1380,20 +1441,64 @@ export function Integrations() {
         } finally { setLoading(false) }
     }
 
-    const handleSaveAll = async () => {
+    const handleSaveWhatsappIntegration = async () => {
+        if (!userId) {
+            toast.error(t('integrations.error.unauthorized'))
+            return
+        }
+
+        if (whatsappIsLocked) {
+            toast.info('Integracao conectada nao pode ser alterada. Remova e adicione uma nova.')
+            return
+        }
+
+        const { payload, normalizedAutomationMode, hasCredentialInput } = buildWhatsappSavePayload()
+
+        if (normalizedAutomationMode === 'flow' && selectedLinkedFlowId === 'none') {
+            toast.error('Selecione um flow para este numero oficial antes de salvar.')
+            return
+        }
+
+        if (!hasCredentialInput && !whatsappIntegrationId) {
+            toast.error('Preencha as credenciais do WhatsApp antes de salvar.')
+            return
+        }
+
+        setSaving(true)
+        try {
+            const savedWhatsapp = await saveCurrentWhatsappIntegration(payload)
+            setWhatsappIntegrationId(savedWhatsapp?.id || null)
+
+            const validationResult = await loadConfig()
+            if (validationResult.uiStatus === 'connected') {
+                toast.success('Integracao salva e validada com a Meta.')
+            } else if (validationResult.uiStatus === 'pending') {
+                toast.success('Integracao salva. Falta concluir a validacao com a Meta.')
+            } else if (validationResult.uiStatus === 'error') {
+                toast.info(validationResult.message || 'Integracao salva, mas a Meta nao validou a conexao.')
+            } else {
+                toast.success('Integracao WhatsApp salva.')
+            }
+        } catch (error: any) {
+            console.error('Erro ao salvar WhatsApp:', error)
+            toast.error(error.message || 'Erro ao salvar integracao WhatsApp.')
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const handleSaveEmailIntegration = async () => {
         setSaving(true)
         try {
             const { data: { user } } = await supabase.auth.getUser()
-            
+
             if (!user || !user.email) {
                 toast.error(t('integrations.error.unauthorized'))
-                setSaving(false)
                 return
             }
 
             const isMicrosoft365 = emailConfig.providerFamily === 'microsoft365'
 
-            // Microsoft 365 / Outlook: redireciona para OAuth; o callback conclui o salvamento
             if (isMicrosoft365) {
                 const savedIntegration = await persistEmailIntegration()
                 const authorizeUrl = await fetchMicrosoft365AuthorizeUrl(savedIntegration?.id)
@@ -1408,99 +1513,17 @@ export function Integrations() {
                 return
             }
 
-            if (!userId) {
-                throw new Error(t('integrations.error.unauthorized'))
-            }
-
-            if (whatsappIsLocked) {
-                toast.info('Integracao conectada nao pode ser alterada. Remova e adicione uma nova.')
-                setSaving(false)
+            if (!hasMeaningfulEmailConfig()) {
+                toast.error('Preencha os dados de email antes de salvar esta integracao.')
                 return
             }
 
-            const normalizedPhoneNumber = isMaskedSecretValue(whatsappConfig.phoneNumber)
-                ? ''
-                : normalizePhoneNumber(whatsappConfig.phoneNumber)
-            const trimmedPhoneNumberId = isMaskedSecretValue(whatsappConfig.phoneNumberId)
-                ? ''
-                : whatsappConfig.phoneNumberId.trim()
-            const trimmedAccessToken = isMaskedSecretValue(whatsappConfig.accessToken) ? '' : whatsappConfig.accessToken.trim()
-            const trimmedVerifyToken = isMaskedSecretValue(whatsappConfig.verifyToken) ? '' : whatsappConfig.verifyToken.trim()
-            const trimmedAppSecret = isMaskedSecretValue(whatsappConfig.appSecret) ? '' : whatsappConfig.appSecret.trim()
-            const normalizedAutomationMode: 'agent' | 'flow' = automationMode === 'flow' ? 'flow' : 'agent'
-
-            if (normalizedAutomationMode === 'flow' && selectedLinkedFlowId === 'none') {
-                toast.error('Selecione um flow para este numero oficial antes de salvar.')
-                setSaving(false)
-                return
-            }
-
-            const whatsappPayload: {
-                phone_number: string | null
-                app_key: string | null
-                access_token: string | null
-                auth_token: string | null
-                meta_app_secret?: string | null
-                linked_agent_id?: string | null
-                linked_flow_id?: string | null
-                automation_mode?: 'agent' | 'flow'
-            } = {
-                phone_number: normalizedPhoneNumber || null,
-                app_key: trimmedPhoneNumberId || null,
-                access_token: trimmedAccessToken || null,
-                auth_token: trimmedVerifyToken || null,
-                meta_app_secret: trimmedAppSecret || null,
-                linked_agent_id: normalizedAutomationMode === 'agent' && selectedLinkedAgentId !== 'none' ? selectedLinkedAgentId : null,
-                linked_flow_id: normalizedAutomationMode === 'flow' && selectedLinkedFlowId !== 'none' ? selectedLinkedFlowId : null,
-                automation_mode: normalizedAutomationMode
-            }
-
-            const hasWhatsappConfig = !!(normalizedPhoneNumber || trimmedPhoneNumberId || trimmedAccessToken || trimmedVerifyToken)
-
-            if (!hasWhatsappConfig) {
-                await saveCurrentWhatsappIntegration(whatsappPayload)
-                setWhatsappIntegrationId(null)
-                setWhatsappStatus('unknown')
-            } else {
-                const savedWhatsapp = await saveCurrentWhatsappIntegration(whatsappPayload)
-                setWhatsappIntegrationId(savedWhatsapp?.id || null)
-            }
-
-            const hasEmailConfig = !!(
-                emailConfig.providerFamily === 'microsoft365' ||
-                emailConfig.emailAddress.trim() ||
-                emailConfig.username.trim() ||
-                emailConfig.password.trim() ||
-                emailConfig.smtpHost.trim() ||
-                emailConfig.imapHost.trim()
-            )
-
-            if (hasEmailConfig) {
-                if (!isMicrosoft365) {
-                    await persistEmailIntegration()
-                }
-            }
-
-            const validationResult = await loadConfig()
-            if (hasEmailConfig) {
-                setIsEmailExpanded(false)
-            }
-
-            if (hasWhatsappConfig) {
-                if (validationResult.uiStatus === 'connected') {
-                    toast.success('Integracao salva e validada com a Meta.')
-                } else if (validationResult.uiStatus === 'pending') {
-                    toast.success('Integracao salva. Falta concluir a validacao com a Meta.')
-                } else if (validationResult.uiStatus === 'error') {
-                    toast.info(validationResult.message || 'Integracao salva, mas a Meta nao validou a conexao.')
-                } else {
-                    toast.success(t('integrations.success.save'))
-                }
-            } else {
-                toast.success(t('integrations.success.save'))
-            }
+            await persistEmailIntegration()
+            await loadConfig()
+            setIsEmailExpanded(false)
+            toast.success(t('integrations.success.save'))
         } catch (error: any) {
-            console.error("Erro ao salvar integrações:", error)
+            console.error('Erro ao salvar integracao de email:', error)
             toast.error(getFriendlyEmailError(error.message || t('integrations.error.save')))
         } finally {
             setSaving(false)
@@ -2429,7 +2452,7 @@ export function Integrations() {
                         </div>
                         <div className="mt-8 flex justify-end">
                             <Button
-                                onClick={handleSaveAll}
+                                onClick={() => void handleSaveWhatsappIntegration()}
                                 disabled={saving}
                                 className="rounded-2xl px-6 h-11 font-black uppercase text-[10px] tracking-widest shadow-xl transition-all"
                                 style={{
@@ -2616,7 +2639,7 @@ export function Integrations() {
                                     {testingEmail ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Testar conexao'}
                                 </Button>
                                 <Button
-                                    onClick={handleSaveAll}
+                                    onClick={() => void handleSaveEmailIntegration()}
                                     disabled={saving}
                                     className="rounded-xl px-4"
                                     style={{
@@ -2767,7 +2790,7 @@ export function Integrations() {
                                 </div>
                                 <div className="flex flex-wrap gap-3">
                                     <Button
-                                        onClick={handleSaveAll}
+                                        onClick={() => void handleSaveEmailIntegration()}
                                         disabled={saving}
                                         className="rounded-2xl px-6 h-11 font-black uppercase text-[10px] tracking-widest shadow-xl transition-all"
                                         style={{
@@ -2954,7 +2977,7 @@ export function Integrations() {
                                         </p>
                                     </div>
                                     <Button
-                                        onClick={handleSaveAll}
+                                        onClick={() => void handleSaveEmailIntegration()}
                                         disabled={saving}
                                         className="rounded-2xl px-6 h-11 font-black uppercase text-[10px] tracking-widest shadow-xl transition-all"
                                         style={{
