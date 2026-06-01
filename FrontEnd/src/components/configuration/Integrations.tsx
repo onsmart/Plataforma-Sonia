@@ -21,6 +21,7 @@ import { isIntegrationSectionVisible } from "../../lib/integration-catalog"
 const MICROSOFT_365_CONNECTED_EVENTS = new Set(['outlook-connected', 'microsoft365-connected'])
 const SUPPORTED_CRM_SLUGS = new Set(['hubspot', 'mailchimp'])
 const MASKED_SECRET_VALUE = "************"
+const WHATSAPP_PHONE_PLACEHOLDER = "+55 11 91234-5678"
 const isMaskedSecretValue = (value: string) => value === MASKED_SECRET_VALUE
 const normalizeSecretInput = (nextValue: string, currentValue: string) =>
     isMaskedSecretValue(currentValue) ? nextValue.replace(MASKED_SECRET_VALUE, '') : nextValue
@@ -36,7 +37,11 @@ type WhatsAppValidationResult = {
 type WhatsAppIntegrationRow = {
     id: string
     phone_number?: string | null
+    phone_number_masked?: string | null
+    has_phone_number?: boolean
     app_key?: string | null
+    app_key_masked?: string | null
+    has_app_key?: boolean
     access_token?: string | null
     auth_token?: string | null
     meta_app_secret?: string | null
@@ -51,6 +56,14 @@ type WhatsAppIntegrationRow = {
     linked_agent_id?: string | null
     linked_agent_name?: string | null
     linked_agent_status_id?: number | string | null
+}
+
+type WhatsappLockedSummary = {
+    phoneMasked: string | null
+    appKeyMasked: string | null
+    agentName: string | null
+    flowName: string | null
+    automationMode: 'agent' | 'flow' | 'hybrid' | null
 }
 
 type AssignableAgent = {
@@ -389,6 +402,8 @@ export function Integrations() {
     // Status de conexão
     const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>('unknown')
     const [whatsappStatusMessage, setWhatsappStatusMessage] = useState("")
+    const [whatsappIsLocked, setWhatsappIsLocked] = useState(false)
+    const [whatsappLockedSummary, setWhatsappLockedSummary] = useState<WhatsappLockedSummary | null>(null)
     const [emailStatus, setEmailStatus] = useState<EmailUiStatus>('unknown')
     const [whatsappConfig, setWhatsappConfig] = useState({ phoneNumberId: "", accessToken: "", verifyToken: "", appSecret: "", phoneNumber: "" })
     const [whatsappIntegrationId, setWhatsappIntegrationId] = useState<string | null>(null)
@@ -728,13 +743,17 @@ export function Integrations() {
 
     const hasCompleteWhatsappConfig = (config: typeof whatsappConfig) =>
         !!(
-            config.phoneNumberId.trim() &&
-            config.accessToken.trim() &&
-            config.verifyToken.trim() &&
-            normalizePhoneNumber(config.phoneNumber)
+            (config.phoneNumberId.trim() || isMaskedSecretValue(config.phoneNumberId)) &&
+            (config.accessToken.trim() || isMaskedSecretValue(config.accessToken)) &&
+            (config.verifyToken.trim() || isMaskedSecretValue(config.verifyToken)) &&
+            (normalizePhoneNumber(config.phoneNumber) || isMaskedSecretValue(config.phoneNumber))
         )
 
-    const fetchCurrentWhatsappIntegration = async (): Promise<WhatsAppIntegrationRow | null> => {
+    const fetchCurrentWhatsappIntegration = async (): Promise<{
+        integration: WhatsAppIntegrationRow | null
+        isLocked: boolean
+        connectionStatus?: string
+    }> => {
         const response = await fetch(`${BASE_URL}/whatsapp/integration/current`, {
             method: 'GET',
             headers: await getAuthHeaders(false)
@@ -746,7 +765,11 @@ export function Integrations() {
             throw new Error(result?.details || result?.error || 'Erro ao carregar integracao do WhatsApp.')
         }
 
-        return result?.integration || null
+        return {
+            integration: result?.integration || null,
+            isLocked: Boolean(result?.is_locked),
+            connectionStatus: typeof result?.connection_status === 'string' ? result.connection_status : undefined,
+        }
     }
 
     const fetchCurrentEmailIntegration = async (): Promise<EmailIntegrationRow | null> => {
@@ -1043,6 +1066,44 @@ export function Integrations() {
         return data?.companies_id || null
     }
 
+    const handleDeleteWhatsappIntegration = async () => {
+        if (!whatsappIntegrationId) return
+
+        const confirmed = window.confirm(
+            'Remover a integracao WhatsApp desta empresa? Voce precisara configurar novamente para voltar a receber mensagens.'
+        )
+        if (!confirmed) return
+
+        setSaving(true)
+        try {
+            await saveCurrentWhatsappIntegration({
+                phone_number: null,
+                app_key: null,
+                access_token: null,
+                auth_token: null,
+                meta_app_secret: null,
+                linked_agent_id: null,
+                linked_flow_id: null,
+                automation_mode: 'agent',
+            })
+            setWhatsappIntegrationId(null)
+            setWhatsappIsLocked(false)
+            setWhatsappLockedSummary(null)
+            setWhatsappConfig({ phoneNumberId: "", accessToken: "", verifyToken: "", appSecret: "", phoneNumber: "" })
+            setWhatsappStatus('unknown')
+            setWhatsappStatusMessage('')
+            setIsWhatsAppExpanded(true)
+            setIsAddingWhatsApp(false)
+            toast.success('Integracao WhatsApp removida.')
+            await loadConfig()
+        } catch (error: any) {
+            console.error('Erro ao remover WhatsApp:', error)
+            toast.error(error.message || 'Erro ao remover integracao WhatsApp.')
+        } finally {
+            setSaving(false)
+        }
+    }
+
     const handleAddWhatsAppIntegration = async () => {
         if (!userId) {
             toast.error(t('integrations.error.unauthorized'))
@@ -1254,32 +1315,53 @@ export function Integrations() {
             }
 
             if (userId) {
-                const whatsappIntegration = await fetchCurrentWhatsappIntegration()
-                const whatsappList = whatsappIntegration ? [whatsappIntegration] : []
+                const whatsappFetch = await fetchCurrentWhatsappIntegration()
+                const whatsappIntegration = whatsappFetch.integration
+                const isLocked = whatsappFetch.isLocked
 
-                if (whatsappList.length > 1) {
-                    console.warn('[Integrations] Múltiplas integrações WhatsApp encontradas para o usuário. Usando a mais recente.', {
-                        count: whatsappList.length,
-                        ids: whatsappList.map((item) => item.id)
-                    })
+                if (whatsappIntegration?.id) {
+                    console.warn('[Integrations] Integracao WhatsApp carregada:', whatsappIntegration.id)
                 }
 
                 const nextWhatsappConfig = {
-                    phoneNumber: whatsappIntegration?.phone_number || "",
-                    phoneNumberId: whatsappIntegration?.app_key || "",
-                    accessToken: whatsappIntegration?.has_access_token || whatsappIntegration?.access_token ? MASKED_SECRET_VALUE : "",
-                    verifyToken: whatsappIntegration?.has_auth_token || whatsappIntegration?.auth_token ? MASKED_SECRET_VALUE : "",
-                    appSecret: whatsappIntegration?.has_meta_app_secret || whatsappIntegration?.meta_app_secret ? MASKED_SECRET_VALUE : "",
+                    phoneNumber: whatsappIntegration?.has_phone_number ? MASKED_SECRET_VALUE : "",
+                    phoneNumberId: whatsappIntegration?.has_app_key ? MASKED_SECRET_VALUE : "",
+                    accessToken: whatsappIntegration?.has_access_token ? MASKED_SECRET_VALUE : "",
+                    verifyToken: whatsappIntegration?.has_auth_token ? MASKED_SECRET_VALUE : "",
+                    appSecret: whatsappIntegration?.has_meta_app_secret ? MASKED_SECRET_VALUE : "",
                 }
 
                 setWhatsappIntegrationId(whatsappIntegration?.id || null)
                 setWhatsappConfig(nextWhatsappConfig)
+                setWhatsappIsLocked(isLocked)
+                setWhatsappLockedSummary(
+                    isLocked
+                        ? {
+                              phoneMasked: whatsappIntegration?.phone_number_masked || null,
+                              appKeyMasked: whatsappIntegration?.app_key_masked || null,
+                              agentName: whatsappIntegration?.linked_agent_name || null,
+                              flowName: whatsappIntegration?.linked_flow_name || null,
+                              automationMode: whatsappIntegration?.automation_mode || null,
+                          }
+                        : null
+                )
                 setSelectedLinkedAgentId(whatsappIntegration?.linked_agent_id ? String(whatsappIntegration.linked_agent_id) : "none")
                 setSelectedLinkedFlowId(whatsappIntegration?.linked_flow_id ? String(whatsappIntegration.linked_flow_id) : "none")
                 setAutomationMode(whatsappIntegration?.automation_mode === 'flow' ? 'flow' : 'agent')
+
+                if (isLocked) {
+                    setWhatsappStatus('connected')
+                    setWhatsappStatusMessage(
+                        'Integracao validada pela Meta. Credenciais ocultas por seguranca — remova para trocar.'
+                    )
+                    return { uiStatus: 'connected' as WhatsAppStatus }
+                }
+
                 return await refreshWhatsappStatus(whatsappIntegration?.id || null, nextWhatsappConfig)
             } else {
                 setWhatsappIntegrationId(null)
+                setWhatsappIsLocked(false)
+                setWhatsappLockedSummary(null)
                 setSelectedLinkedAgentId("none")
                 setSelectedLinkedFlowId("none")
                 setAutomationMode('agent')
@@ -1330,8 +1412,18 @@ export function Integrations() {
                 throw new Error(t('integrations.error.unauthorized'))
             }
 
-            const normalizedPhoneNumber = normalizePhoneNumber(whatsappConfig.phoneNumber)
-            const trimmedPhoneNumberId = whatsappConfig.phoneNumberId.trim()
+            if (whatsappIsLocked) {
+                toast.info('Integracao conectada nao pode ser alterada. Remova e adicione uma nova.')
+                setSaving(false)
+                return
+            }
+
+            const normalizedPhoneNumber = isMaskedSecretValue(whatsappConfig.phoneNumber)
+                ? ''
+                : normalizePhoneNumber(whatsappConfig.phoneNumber)
+            const trimmedPhoneNumberId = isMaskedSecretValue(whatsappConfig.phoneNumberId)
+                ? ''
+                : whatsappConfig.phoneNumberId.trim()
             const trimmedAccessToken = isMaskedSecretValue(whatsappConfig.accessToken) ? '' : whatsappConfig.accessToken.trim()
             const trimmedVerifyToken = isMaskedSecretValue(whatsappConfig.verifyToken) ? '' : whatsappConfig.verifyToken.trim()
             const trimmedAppSecret = isMaskedSecretValue(whatsappConfig.appSecret) ? '' : whatsappConfig.appSecret.trim()
@@ -2095,25 +2187,102 @@ export function Integrations() {
                                 <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <span className="font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
-                                        {whatsappConfig.phoneNumber || 'WhatsApp Business'}
+                                        {whatsappIsLocked
+                                            ? (whatsappLockedSummary?.phoneMasked || 'WhatsApp conectado')
+                                            : whatsappIntegrationId
+                                              ? 'Integracao WhatsApp'
+                                              : 'WhatsApp Business'}
                                     </span>
                                     {getStatusBadge(whatsappStatus)}
                                 </div>
                                 <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                    {whatsappStatus === 'connected'
-                                        ? 'Numero oficial conectado. Clique para ver e editar configuracoes.'
-                                        : 'Clique para configurar credenciais, webhook e automacao principal.'}
+                                    {whatsappIsLocked
+                                        ? 'Integracao validada. Credenciais ocultas — remova para reconfigurar.'
+                                        : whatsappIntegrationId
+                                          ? 'Clique para revisar ou concluir a configuracao.'
+                                          : 'Clique para configurar credenciais, webhook e automacao principal.'}
                                 </p>
                                 </div>
                             </div>
                             <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isWhatsAppExpanded ? 'rotate-180' : ''}`} />
                         </button>
-                        {isWhatsAppExpanded && (
+                        {isWhatsAppExpanded && whatsappIsLocked && (
+                            <div
+                                className="space-y-5 rounded-2xl border p-6"
+                                style={{
+                                    backgroundColor: isDark ? '#27272a' : 'rgba(248, 250, 252, 0.85)',
+                                    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.25)',
+                                }}
+                            >
+                                <p className="text-sm leading-relaxed" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
+                                    Esta integracao foi validada pela Meta. Por seguranca, tokens e credenciais nao sao exibidos nem
+                                    podem ser editados. Para trocar qualquer valor, remova a integracao e configure uma nova.
+                                </p>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {[
+                                        { label: 'Numero oficial', value: whatsappLockedSummary?.phoneMasked || 'Configurado' },
+                                        { label: 'Phone Number ID', value: whatsappLockedSummary?.appKeyMasked || 'Configurado' },
+                                        { label: 'Access Token', value: 'Configurado (oculto)' },
+                                        { label: 'Verify Token', value: 'Configurado (oculto)' },
+                                        { label: 'App Secret', value: whatsappConfig.appSecret ? 'Configurado (oculto)' : 'Nao informado' },
+                                        {
+                                            label: 'Automacao',
+                                            value:
+                                                whatsappLockedSummary?.automationMode === 'flow'
+                                                    ? `Flow${whatsappLockedSummary?.flowName ? `: ${whatsappLockedSummary.flowName}` : ''}`
+                                                    : `Agente${whatsappLockedSummary?.agentName ? `: ${whatsappLockedSummary.agentName}` : ''}`,
+                                        },
+                                    ].map((row) => (
+                                        <div
+                                            key={row.label}
+                                            className="rounded-xl border px-4 py-3"
+                                            style={{
+                                                borderColor: isDark ? '#3f3f46' : '#e2e8f0',
+                                                backgroundColor: isDark ? '#18181b' : '#ffffff',
+                                            }}
+                                        >
+                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                                {row.label}
+                                            </p>
+                                            <p className="mt-1 text-sm font-medium" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
+                                                {row.value}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                                <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                    Configure na Meta o callback GET/POST /whatsapp/webhook apontando para a URL publica do backend.
+                                </p>
+                                <div className="flex justify-end">
+                                    <Button
+                                        type="button"
+                                        variant="destructive"
+                                        onClick={() => void handleDeleteWhatsappIntegration()}
+                                        disabled={saving}
+                                        className="rounded-xl"
+                                    >
+                                        {saving ? (
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        ) : (
+                                            <Trash2 className="mr-2 h-4 w-4" />
+                                        )}
+                                        Remover integracao
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
+                        {isWhatsAppExpanded && !whatsappIsLocked && (
                             <>
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Phone Number ID</Label>
-                                <Input value={whatsappConfig.phoneNumberId} onChange={(e) => updateWhatsappConfig({ phoneNumberId: e.target.value })} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
+                                <Input
+                                    value={isMaskedSecretValue(whatsappConfig.phoneNumberId) ? '' : whatsappConfig.phoneNumberId}
+                                    onChange={(e) => updateWhatsappConfig({ phoneNumberId: e.target.value })}
+                                    placeholder={whatsappIntegrationId ? 'Phone Number ID salvo — informe novamente para alterar' : 'Phone Number ID da Meta'}
+                                    className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                                    style={inputSurface}
+                                />
                             </div>
                             <div className="space-y-2">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Access Token</Label>
@@ -2135,10 +2304,18 @@ export function Integrations() {
                             </div>
                             <div className="space-y-2 md:col-span-2 max-w-md">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Numero oficial da Meta</Label>
-                                <Input placeholder="+1 555-899-1881" value={whatsappConfig.phoneNumber} onChange={(e) => updateWhatsappConfig({ phoneNumber: e.target.value })} className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
-                                <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
-                                    Os dados sao salvos em tb_integrations: phone_number, app_key, access_token, auth_token e meta_app_secret.
-                                </p>
+                                <Input
+                                    placeholder={WHATSAPP_PHONE_PLACEHOLDER}
+                                    value={isMaskedSecretValue(whatsappConfig.phoneNumber) ? '' : whatsappConfig.phoneNumber}
+                                    onChange={(e) => updateWhatsappConfig({ phoneNumber: e.target.value })}
+                                    className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                                    style={inputSurface}
+                                />
+                                {isMaskedSecretValue(whatsappConfig.phoneNumber) ? (
+                                    <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
+                                        Numero ja configurado. Informe novamente apenas se for alterar.
+                                    </p>
+                                ) : null}
                                 <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
                                     Configure na Meta o callback GET/POST /whatsapp/webhook para este numero oficial.
                                 </p>
@@ -2269,6 +2446,7 @@ export function Integrations() {
                         </div>
                             </>
                         )}
+                        {!whatsappIntegrationId && (
                         <button
                             type="button"
                             onClick={() => {
@@ -2285,7 +2463,8 @@ export function Integrations() {
                             <Plus className="h-5 w-5" />
                             Adicionar integracao WhatsApp
                         </button>
-                        {isAddingWhatsApp && (
+                        )}
+                        {isAddingWhatsApp && !whatsappIntegrationId && (
                             <div className="mt-5 rounded-2xl border p-5" style={{ backgroundColor: isDark ? '#27272a' : '#ffffff', borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
                                 <div className="mb-5 flex items-center justify-between gap-4">
                                     <div>
@@ -2299,7 +2478,7 @@ export function Integrations() {
                                     <Input type="password" placeholder="Access Token" value={newWhatsappConfig.accessToken} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, accessToken: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
                                     <Input placeholder="Verify Token" value={newWhatsappConfig.verifyToken} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, verifyToken: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
                                     <Input type="password" placeholder="App Secret (Meta)" value={newWhatsappConfig.appSecret} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, appSecret: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
-                                    <Input placeholder="Numero oficial da Meta" value={newWhatsappConfig.phoneNumber} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, phoneNumber: e.target.value }))} className="h-12 rounded-xl md:col-span-2" style={inputSurface} />
+                                    <Input placeholder={WHATSAPP_PHONE_PLACEHOLDER} value={newWhatsappConfig.phoneNumber} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, phoneNumber: e.target.value }))} className="h-12 rounded-xl md:col-span-2" style={inputSurface} />
                                 </div>
                                 <div className="mt-5 flex justify-end">
                                     <Button onClick={handleAddWhatsAppIntegration} disabled={saving} className="rounded-xl">

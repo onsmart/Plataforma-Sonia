@@ -273,22 +273,43 @@ function getStoredWhatsAppStatus(direction: unknown, metadata: unknown, isRead?:
   return direction === 'outbound' ? 'accepted' : null
 }
 
+function maskWhatsAppPhoneNumber(phone: string | null | undefined): string | null {
+  const digits = String(phone || '').replace(/\D/g, '')
+  if (!digits) return null
+  if (digits.length <= 4) return '••••'
+  return `•••• ${digits.slice(-4)}`
+}
+
+function maskWhatsAppAppKey(appKey: string | null | undefined): string | null {
+  const value = String(appKey || '').trim()
+  if (!value) return null
+  if (value.length <= 4) return '••••'
+  return `••••${value.slice(-4)}`
+}
+
 function buildWhatsAppIntegrationResponse(
   integration: StoredWhatsAppIntegration | null,
   linkedAgent: LinkedAgent | null,
   linkedFlow?: LinkedFlow | null,
-  options?: { includeSecrets?: boolean }
+  options?: { includeSecrets?: boolean; maskCredentials?: boolean }
 ) {
   if (!integration) {
     return null
   }
 
   const includeSecrets = options?.includeSecrets ?? true
+  const maskCredentials = options?.maskCredentials ?? !includeSecrets
+  const phoneNumber = String(integration.phone_number || '').trim()
+  const appKey = String(integration.app_key || '').trim()
 
   return {
     id: integration.id,
-    phone_number: integration.phone_number,
-    app_key: integration.app_key,
+    phone_number: includeSecrets && !maskCredentials ? integration.phone_number : null,
+    phone_number_masked: maskWhatsAppPhoneNumber(integration.phone_number),
+    has_phone_number: !!phoneNumber,
+    app_key: includeSecrets && !maskCredentials ? integration.app_key : null,
+    app_key_masked: maskWhatsAppAppKey(integration.app_key),
+    has_app_key: !!appKey,
     access_token: includeSecrets ? integration.access_token : null,
     auth_token: includeSecrets ? integration.auth_token : null,
     meta_app_secret: includeSecrets ? integration.meta_app_secret : null,
@@ -1266,9 +1287,20 @@ export async function getCurrentWhatsAppIntegration(req: Request, res: Response)
       ? await loadLinkedFlow(integration.linked_flow_id, platformUser.companies_id)
       : null
 
+    let connectionStatus: 'connected' | 'connecting' | 'disconnected' = 'disconnected'
+    if (integration?.id) {
+      connectionStatus = await checkConnectionStatus(integration.id)
+    }
+    const isLocked = connectionStatus === 'connected'
+
     return res.json({
       success: true,
-      integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, linkedFlow, { includeSecrets: false })
+      connection_status: connectionStatus,
+      is_locked: isLocked,
+      integration: buildWhatsAppIntegrationResponse(integration, linkedAgent, linkedFlow, {
+        includeSecrets: false,
+        maskCredentials: true,
+      })
     })
   } catch (error: any) {
     logger.error('[getCurrentWhatsAppIntegration] Erro ao carregar integracao atual', {
@@ -1344,12 +1376,23 @@ export async function upsertCurrentWhatsAppIntegration(req: Request, res: Respon
       })
     }
 
+    if (primaryOwned?.id) {
+      const currentStatus = await checkConnectionStatus(primaryOwned.id)
+      if (currentStatus === 'connected') {
+        return res.status(403).json({
+          error:
+            'Integracao WhatsApp conectada nao pode ser alterada. Remova a integracao atual e adicione uma nova.',
+          code: 'WHATSAPP_INTEGRATION_LOCKED',
+        })
+      }
+    }
+
     const integrationPayload = {
       user_id: platformUser.id,
       companies_id: platformUser.companies_id,
       provider: 'whatsapp',
-      phone_number: normalizedPayload.phone_number,
-      app_key: normalizedPayload.app_key,
+      phone_number: normalizedPayload.phone_number || primaryOwned?.phone_number || null,
+      app_key: normalizedPayload.app_key || primaryOwned?.app_key || null,
       access_token: normalizedPayload.access_token || primaryOwned?.access_token || null,
       auth_token: normalizedPayload.auth_token || primaryOwned?.auth_token || null,
       meta_app_secret: normalizedPayload.meta_app_secret || primaryOwned?.meta_app_secret || null,
