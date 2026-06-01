@@ -53,10 +53,27 @@ import adminRoutes from './api/routes/admin.routes'
 const app = express()
 app.disable('x-powered-by')
 
+if (process.env.TRUST_PROXY_HTTPS === 'true') {
+  // Nginx/reverse proxy na frente do Node (ex.: webhook.onsmart.ai → 127.0.0.1:3333)
+  app.set('trust proxy', 1)
+}
+
 const corsOrigins = String(process.env.CORS_ALLOWED_ORIGINS || '')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean)
+
+function isAllowedCorsOrigin(origin: string | undefined): boolean {
+  if (!origin) return true
+  if (corsOrigins.includes(origin)) return true
+
+  try {
+    const { hostname } = new URL(origin)
+    return hostname === 'localhost' || hostname === '127.0.0.1'
+  } catch {
+    return false
+  }
+}
 
 registerRealtimeVoiceAgentService(createLocalRealtimeVoiceAgentServiceFromEnv())
 
@@ -70,7 +87,13 @@ app.use(
 
 app.use(
   cors({
-    origin: corsOrigins.length > 0 ? corsOrigins : false,
+    origin(origin, callback) {
+      if (isAllowedCorsOrigin(origin)) {
+        callback(null, true)
+        return
+      }
+      callback(null, false)
+    },
     credentials: true,
   })
 )
