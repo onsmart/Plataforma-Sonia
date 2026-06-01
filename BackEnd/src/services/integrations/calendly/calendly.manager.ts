@@ -1,5 +1,6 @@
 import logger from '../../../lib/logger'
 import { resolvePublicBackendBaseUrl } from '../../../utils/public-backend-url'
+import { assertCalendlyIntegrationOwnedByUser } from '../../../utils/tenant-ownership'
 import { resolveCalendlyWebhookBaseUrl } from './calendly.repository'
 import {
   buildCalendlyIntegrationResponse,
@@ -225,7 +226,7 @@ export async function removeCalendlyIntegrationForUser(userEmail: string, integr
 }
 
 export async function testCalendlyIntegrationForUser(userEmail: string, integrationId: string) {
-  void userEmail
+  await assertCalendlyIntegrationOwnedByUser(integrationId, userEmail)
   const config = await loadCalendlyIntegrationConfig(integrationId)
   const client = new CalendlyApiClient(config)
   const currentUser = await client.getCurrentUser()
@@ -245,7 +246,10 @@ export async function testCalendlyIntegrationForUser(userEmail: string, integrat
   }
 }
 
-export async function listCalendlyEventTypesForIntegration(integrationId: string) {
+export async function listCalendlyEventTypesForIntegration(integrationId: string, userEmail?: string) {
+  if (userEmail) {
+    await assertCalendlyIntegrationOwnedByUser(integrationId, userEmail)
+  }
   const config = await loadCalendlyIntegrationConfig(integrationId)
   const client = new CalendlyApiClient(config)
   let currentUser: CalendlyCurrentUserResource | null = null
@@ -279,8 +283,12 @@ export async function listCalendlyEventTypesForIntegration(integrationId: string
 
 export async function syncCalendlyWebhookForIntegration(
   integrationId: string,
-  requestOrigin?: string | null
+  requestOrigin?: string | null,
+  userEmail?: string
 ) {
+  if (userEmail) {
+    await assertCalendlyIntegrationOwnedByUser(integrationId, userEmail)
+  }
   const config = await loadCalendlyIntegrationConfig(integrationId)
   const client = new CalendlyApiClient(config)
   let ownerUri = config.ownerUri || null
@@ -400,8 +408,12 @@ export async function syncCalendlyWebhookForIntegration(
 
 export async function saveCalendlyMappingsForIntegration(
   integrationId: string,
-  mappings: CalendlyEventTypeMapping[]
+  mappings: CalendlyEventTypeMapping[],
+  userEmail?: string
 ) {
+  if (userEmail) {
+    await assertCalendlyIntegrationOwnedByUser(integrationId, userEmail)
+  }
   const updated = await updateCalendlyIntegrationMetadata(integrationId, {
     eventTypeMappings: mappings,
     lastSyncAt: new Date().toISOString(),
@@ -419,7 +431,6 @@ export async function handleCalendlyWebhookEvent(params: {
   logger.info('[calendly.webhook] Evento recebido', {
     integrationId: params.integrationId,
     event,
-    payload,
   })
   await updateCalendlyIntegrationMetadata(params.integrationId, {
     status: 'connected',

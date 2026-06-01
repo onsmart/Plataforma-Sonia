@@ -4,6 +4,7 @@ import { getCompanyIdByEmail } from '../../utils/company-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 import { requireAuth, requireWorkspace, requireAdmin, userCanManageBilling } from '../../middleware/auth.middleware'
+import { getAuthenticatedEmail } from '../../utils/request-auth'
 import {
   inferPlanIdFromStripePriceKey,
   normalizePlanId,
@@ -38,6 +39,10 @@ import {
 } from '../../services/billing/subscription-billing-notify.service'
 import { clearPlanInfoCache, getPlanInfo } from '../../utils/plan-helper'
 import { getActiveAgentCount, getCurrentMonthConversationCount } from '../../services/usage-tracker.service'
+import {
+  isDuplicateWebhookEvent,
+  markWebhookEventProcessed,
+} from '../../services/security/webhook-idempotency.service'
 
 const router = express.Router()
 
@@ -199,6 +204,8 @@ router.get('/usage', requireAuth, requireWorkspace, async (req, res) => {
             has_rag: planInfo.limits.hasRAG,
             has_governance: planInfo.limits.hasGovernance,
             has_sso: planInfo.limits.hasSSO,
+            has_flows: planInfo.limits.hasFlows,
+            has_crm_api: planInfo.limits.hasCrmApi,
         })
     } catch (error: any) {
         logger.error('[getBillingUsage] Erro:', error)
@@ -280,8 +287,7 @@ router.post('/checkout', requireAuth, requireWorkspace, async (req, res) => {
             return res.status(500).json({ error: 'Stripe initialization failed' })
         }
 
-        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-        const userEmail = (req as any).user?.email || email || req.headers['x-user-email'] as string
+        const userEmail = getAuthenticatedEmail(req)
 
         if (!userEmail) {
             logger.error('[Billing] Email do usuário não encontrado')
@@ -405,28 +411,10 @@ router.post('/checkout', requireAuth, requireWorkspace, async (req, res) => {
  */
 router.get('/subscription', requireAuth, requireWorkspace, requireAdmin, async (req, res) => {
     try {
-        // Obter email
-        let userEmail: string | undefined = req.query.email as string | undefined
-        if (!userEmail) {
-            const emailHeader = req.headers['x-user-email']
-            userEmail = Array.isArray(emailHeader) ? emailHeader[0] : (emailHeader as string | undefined)
-        }
+        const userEmail = getAuthenticatedEmail(req)
 
         if (!userEmail) {
-            const authHeader = req.headers.authorization
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-                const token = authHeader.substring(7)
-                try {
-                    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString())
-                    userEmail = payload.email as string | undefined
-                } catch (e) {
-                    // Ignora erro
-                }
-            }
-        }
-
-        if (!userEmail) {
-            return res.status(400).json({ error: 'User email is required' })
+            return res.status(401).json({ error: 'User email is required' })
         }
 
         const companiesId = await getCompanyIdByEmail(userEmail)
@@ -487,8 +475,7 @@ router.get('/subscription', requireAuth, requireWorkspace, requireAdmin, async (
  */
 router.get('/export', requireAuth, requireWorkspace, requireAdmin, async (req, res) => {
     try {
-        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-        const userEmail = (req as any).user?.email || (req.query.email as string | undefined) || (req.headers['x-user-email'] as string | undefined)
+        const userEmail = getAuthenticatedEmail(req)
 
         if (!userEmail) {
             return res.status(401).json({ 
@@ -625,8 +612,7 @@ router.post('/portal', requireAuth, requireWorkspace, requireAdmin, async (req, 
             return res.status(500).json({ error: 'Stripe not configured' })
         }
 
-        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-        const userEmail = (req as any).user?.email || email || (req.headers['x-user-email'] as string)
+        const userEmail = getAuthenticatedEmail(req)
 
         if (!userEmail) {
             return res.status(401).json({ 
@@ -842,8 +828,6 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
         return res.status(500).json({ error: 'Webhook secret not configured' })
     }
 
-    console.log('🔑 Webhook Secret configurado:', webhookSecret.substring(0, 10) + '...')
-
     let event: Stripe.Event
 
     try {
@@ -866,6 +850,11 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
 
     console.log(`✅ [Billing] Webhook recebido: ${event.type}`)
     logger.log(`[Billing] Webhook recebido: ${event.type}`)
+
+    if (isDuplicateWebhookEvent('stripe', event.id)) {
+      return res.json({ received: true, duplicate: true })
+    }
+    markWebhookEventProcessed('stripe', event.id)
 
     try {
         // Processar diferentes tipos de eventos
@@ -1010,14 +999,5 @@ export async function handleStripeWebhook(req: express.Request, res: express.Res
         res.status(500).json({ error: 'Webhook processing failed' })
     }
 }
-
-/**
- * POST /billing/webhook
- * Webhook do Stripe para processar eventos de pagamento
- * IMPORTANTE: Esta rota deve usar express.raw() para receber o body bruto
- * Nota: A rota principal está registrada no index.ts antes do express.json()
- * Esta rota aqui é apenas para manter compatibilidade
- */
-router.post('/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook)
 
 export default router

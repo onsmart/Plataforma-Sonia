@@ -195,7 +195,7 @@ Comparado ao snapshot de 2026-05-06 (export blocos 1–4):
 |------|---------|
 | **Nova tabela** | `tb_flow_mock_appointments` — slots/agendamentos simulados para nós de fluxo (appointment). |
 | **`tb_subscriptions`** | Colunas: `stripe_customer_id`, `stripe_subscription_id`, `plan` (default `free`), `status` (default `inactive`), `current_period_*`, `canceled_at`. CHECK `plan` inclui `free`, `rec_*`, `com_*`. CHECK `status`: `active`, `inactive`, `canceled`, `past_due`, `trialing`. |
-| **`tb_integrations`** | `automation_mode` (default `agent`), `linked_flow_id` → FK `tb_flows`. |
+| **`tb_integrations`** | `automation_mode` (default `agent`), `linked_flow_id` → FK `tb_flows`; `meta_app_secret` (App Secret Meta por integração WhatsApp, migration `MIGRATION_WHATSAPP_META_APP_SECRET.sql`). |
 | **`tb_whatsapp_messages`** | `whatsapp_contact_id` é **`text`** (não `uuid`); **não há FK** declarada no catálogo para `tb_whatsapp_contacts`. `metadata` jsonb. |
 | **`tb_service_sessions`** | FK confirmada: `whatsapp_contact_id` → `tb_whatsapp_contacts.id` (**uuid**). |
 | **`tb_files`** | `companies_id` e `uploader_id` NOT NULL; **sem FK nomeada** para `tb_companies` no inventário pg (tenant por convenção + RPCs). |

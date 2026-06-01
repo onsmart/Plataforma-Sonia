@@ -12,25 +12,20 @@ import {
   refineFlowDescriptionClaude,
   refineFlowDescriptionStatus,
 } from '../controllers/flows.controller'
-import { requireAuth, requireWorkspace, requireAdmin } from '../../middleware/auth.middleware'
+import { requireAuth, requireWorkspace, requirePermission } from '../../middleware/auth.middleware'
 
 const router = Router()
 
-// ✅ Listar e ver flows: qualquer usuário autenticado
-router.get('/', requireAuth, requireWorkspace, listFlows)
-router.get('/refine-description/status', requireAuth, requireWorkspace, requireAdmin, refineFlowDescriptionStatus)
-router.get('/:id', requireAuth, requireWorkspace, getFlow)
-
-// ✅ Executar flow: qualquer usuário autenticado
-router.post('/execute', requireAuth, requireWorkspace, executeFlow)
-
-// ✅ SÓ ADMIN: Criar, atualizar e deletar flows
-router.post('/generate-mvp', requireAuth, requireWorkspace, requireAdmin, generateFlowMvp)
-router.post('/generate-test-conditional-switch', requireAuth, requireWorkspace, requireAdmin, generateConditionalSwitchTestFlowController)
-router.post('/refine-description', requireAuth, requireWorkspace, requireAdmin, refineFlowDescriptionClaude)
-router.post('/', requireAuth, requireWorkspace, requireAdmin, createFlow)
-router.put('/:id', requireAuth, requireWorkspace, requireAdmin, updateFlow)
-router.post('/:id/publish', requireAuth, requireWorkspace, requireAdmin, publishFlow)
-router.delete('/:id', requireAuth, requireWorkspace, requireAdmin, deleteFlow)
+router.get('/', requireAuth, requireWorkspace, requirePermission('basic.read'), listFlows)
+router.get('/refine-description/status', requireAuth, requireWorkspace, requirePermission('basic.write'), refineFlowDescriptionStatus)
+router.get('/:id', requireAuth, requireWorkspace, requirePermission('basic.read'), getFlow)
+router.post('/execute', requireAuth, requireWorkspace, requirePermission('basic.read'), executeFlow)
+router.post('/generate-mvp', requireAuth, requireWorkspace, requirePermission('basic.write'), generateFlowMvp)
+router.post('/generate-test-conditional-switch', requireAuth, requireWorkspace, requirePermission('basic.write'), generateConditionalSwitchTestFlowController)
+router.post('/refine-description', requireAuth, requireWorkspace, requirePermission('basic.write'), refineFlowDescriptionClaude)
+router.post('/', requireAuth, requireWorkspace, requirePermission('basic.write'), createFlow)
+router.put('/:id', requireAuth, requireWorkspace, requirePermission('basic.write'), updateFlow)
+router.post('/:id/publish', requireAuth, requireWorkspace, requirePermission('basic.write'), publishFlow)
+router.delete('/:id', requireAuth, requireWorkspace, requirePermission('basic.write'), deleteFlow)
 
 export default router

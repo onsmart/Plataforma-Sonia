@@ -1,6 +1,10 @@
 import { Request, Response } from 'express'
 import logger from '../../lib/logger'
-import { getCompanyIdByEmail } from '../../utils/company-helper'
+import { getAuthenticatedEmail, getAuthenticatedCompaniesId } from '../../utils/request-auth'
+import {
+  assertIntegrationToolPayloadOwned,
+  TenantOwnershipError,
+} from '../../utils/tenant-ownership'
 import { supabase } from '../../lib/supabase'
 import {
   buildToolKey,
@@ -35,7 +39,7 @@ export async function listIntegrationToolsCatalog(req: Request, res: Response) {
 
 export async function listIntegrationToolsCatalogForSetup(req: Request, res: Response) {
   try {
-    const email = String(req.user?.email || req.query.email || '').trim()
+    const email = getAuthenticatedEmail(req)
     if (!email) {
       return res.status(401).json({ error: 'Usuario nao autenticado.' })
     }
@@ -54,14 +58,9 @@ export async function listIntegrationToolsCatalogForSetup(req: Request, res: Res
 export async function getAgentEnabledTools(req: Request, res: Response) {
   try {
     const agentId = String(req.params.agentId || '').trim()
-    const email = String(req.user?.email || '').trim()
-    if (!agentId || !email) {
+    const companiesId = getAuthenticatedCompaniesId(req)
+    if (!agentId || !companiesId) {
       return res.status(400).json({ error: 'agentId e autenticacao sao obrigatorios.' })
-    }
-
-    const companiesId = await getCompanyIdByEmail(email)
-    if (!companiesId) {
-      return res.status(403).json({ error: 'Empresa nao encontrada.' })
     }
 
     const { data: agent, error } = await supabase
@@ -91,12 +90,27 @@ export async function getAgentEnabledTools(req: Request, res: Response) {
 
 export async function runIntegrationTool(req: Request, res: Response) {
   try {
+    const email = getAuthenticatedEmail(req)
+    if (!email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado.' })
+    }
+
     const provider = String(req.body?.provider || '').trim()
     const toolName = String(req.body?.toolName || req.body?.tool_name || '').trim()
     const payload =
       req.body?.payload && typeof req.body.payload === 'object' && !Array.isArray(req.body.payload)
         ? (req.body.payload as Record<string, unknown>)
         : {}
+
+    try {
+      await assertIntegrationToolPayloadOwned(email, provider, payload)
+    } catch (err) {
+      if (err instanceof TenantOwnershipError) {
+        return res.status(err.statusCode).json({ error: err.message, code: err.code })
+      }
+      throw err
+    }
+
     const result = await executeIntegrationTool({ provider, toolName, payload })
     return res.json({ success: result.success, result })
   } catch (error: any) {

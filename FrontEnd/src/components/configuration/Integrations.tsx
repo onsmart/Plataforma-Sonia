@@ -16,6 +16,7 @@ import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import i18n from "../../i18n/config"
 import { BASE_URL, getAuthHeaders } from "../../services/api"
+import { isIntegrationSectionVisible } from "../../lib/integration-catalog"
 
 const MICROSOFT_365_CONNECTED_EVENTS = new Set(['outlook-connected', 'microsoft365-connected'])
 const SUPPORTED_CRM_SLUGS = new Set(['hubspot', 'mailchimp'])
@@ -38,8 +39,10 @@ type WhatsAppIntegrationRow = {
     app_key?: string | null
     access_token?: string | null
     auth_token?: string | null
+    meta_app_secret?: string | null
     has_access_token?: boolean
     has_auth_token?: boolean
+    has_meta_app_secret?: boolean
     provider?: string | null
     automation_mode?: 'agent' | 'flow' | 'hybrid' | null
     linked_flow_id?: string | null
@@ -262,6 +265,7 @@ type WhatsAppConfigState = {
     phoneNumberId: string
     accessToken: string
     verifyToken: string
+    appSecret: string
     phoneNumber: string
 }
 
@@ -378,7 +382,7 @@ export function Integrations() {
     const [emailProviderPreset, setEmailProviderPreset] = useState<EmailProviderPreset>('gmail')
     const [isEmailAdvancedOpen, setIsEmailAdvancedOpen] = useState(false)
     const [newEmailProviderPreset, setNewEmailProviderPreset] = useState<EmailProviderPreset>('gmail')
-    const [newWhatsappConfig, setNewWhatsappConfig] = useState<WhatsAppConfigState>({ phoneNumberId: "", accessToken: "", verifyToken: "", phoneNumber: "" })
+    const [newWhatsappConfig, setNewWhatsappConfig] = useState<WhatsAppConfigState>({ phoneNumberId: "", accessToken: "", verifyToken: "", appSecret: "", phoneNumber: "" })
     const [newEmailConfig, setNewEmailConfig] = useState<EmailConfigState>(createDefaultEmailConfig())
     const [emailIntegrations, setEmailIntegrations] = useState<EmailIntegrationRow[]>([])
     
@@ -386,7 +390,7 @@ export function Integrations() {
     const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus>('unknown')
     const [whatsappStatusMessage, setWhatsappStatusMessage] = useState("")
     const [emailStatus, setEmailStatus] = useState<EmailUiStatus>('unknown')
-    const [whatsappConfig, setWhatsappConfig] = useState({ phoneNumberId: "", accessToken: "", verifyToken: "", phoneNumber: "" })
+    const [whatsappConfig, setWhatsappConfig] = useState({ phoneNumberId: "", accessToken: "", verifyToken: "", appSecret: "", phoneNumber: "" })
     const [whatsappIntegrationId, setWhatsappIntegrationId] = useState<string | null>(null)
     const [assignableAgents, setAssignableAgents] = useState<AssignableAgent[]>([])
     const [assignableFlows, setAssignableFlows] = useState<AssignableFlow[]>([])
@@ -922,6 +926,7 @@ export function Integrations() {
         app_key: string | null
         access_token: string | null
         auth_token: string | null
+        meta_app_secret?: string | null
         linked_agent_id?: string | null
         linked_flow_id?: string | null
         automation_mode?: 'agent' | 'flow'
@@ -1048,6 +1053,7 @@ export function Integrations() {
         const trimmedPhoneNumberId = newWhatsappConfig.phoneNumberId.trim()
         const trimmedAccessToken = newWhatsappConfig.accessToken.trim()
         const trimmedVerifyToken = newWhatsappConfig.verifyToken.trim()
+        const trimmedAppSecret = newWhatsappConfig.appSecret.trim()
 
         if (!normalizedPhoneNumber || !trimmedPhoneNumberId || !trimmedAccessToken || !trimmedVerifyToken) {
             toast.error('Preencha numero oficial, Phone Number ID, Access Token e Verify Token para adicionar outra integracao.')
@@ -1065,13 +1071,14 @@ export function Integrations() {
                 app_key: trimmedPhoneNumberId,
                 access_token: trimmedAccessToken,
                 auth_token: trimmedVerifyToken,
+                meta_app_secret: trimmedAppSecret || null,
                 automation_mode: 'agent',
                 linked_flow_id: null,
             })
 
             if (error) throw error
 
-            setNewWhatsappConfig({ phoneNumberId: "", accessToken: "", verifyToken: "", phoneNumber: "" })
+            setNewWhatsappConfig({ phoneNumberId: "", accessToken: "", verifyToken: "", appSecret: "", phoneNumber: "" })
             setIsAddingWhatsApp(false)
             toast.success('Nova integracao WhatsApp adicionada.')
             await loadConfig()
@@ -1223,8 +1230,9 @@ export function Integrations() {
             await Promise.all([
                 loadAssignableAgents(user.email),
                 loadAssignableFlows(),
-                fetchVoiceRuntimeStatus()
+                ...(isIntegrationSectionVisible('voice') ? [fetchVoiceRuntimeStatus()] : []),
             ])
+            if (isIntegrationSectionVisible('email')) {
             try {
                 const [emailIntegration, emailList] = await Promise.all([
                     fetchCurrentEmailIntegration(),
@@ -1243,6 +1251,7 @@ export function Integrations() {
                 setEmailIntegrations([])
                 setIsEmailExpanded(!(legacyEmail.integrationId || legacyEmail.emailAddress || legacyEmail.username))
             }
+            }
 
             if (userId) {
                 const whatsappIntegration = await fetchCurrentWhatsappIntegration()
@@ -1259,7 +1268,8 @@ export function Integrations() {
                     phoneNumber: whatsappIntegration?.phone_number || "",
                     phoneNumberId: whatsappIntegration?.app_key || "",
                     accessToken: whatsappIntegration?.has_access_token || whatsappIntegration?.access_token ? MASKED_SECRET_VALUE : "",
-                    verifyToken: whatsappIntegration?.has_auth_token || whatsappIntegration?.auth_token ? MASKED_SECRET_VALUE : ""
+                    verifyToken: whatsappIntegration?.has_auth_token || whatsappIntegration?.auth_token ? MASKED_SECRET_VALUE : "",
+                    appSecret: whatsappIntegration?.has_meta_app_secret || whatsappIntegration?.meta_app_secret ? MASKED_SECRET_VALUE : "",
                 }
 
                 setWhatsappIntegrationId(whatsappIntegration?.id || null)
@@ -1324,6 +1334,7 @@ export function Integrations() {
             const trimmedPhoneNumberId = whatsappConfig.phoneNumberId.trim()
             const trimmedAccessToken = isMaskedSecretValue(whatsappConfig.accessToken) ? '' : whatsappConfig.accessToken.trim()
             const trimmedVerifyToken = isMaskedSecretValue(whatsappConfig.verifyToken) ? '' : whatsappConfig.verifyToken.trim()
+            const trimmedAppSecret = isMaskedSecretValue(whatsappConfig.appSecret) ? '' : whatsappConfig.appSecret.trim()
             const normalizedAutomationMode: 'agent' | 'flow' = automationMode === 'flow' ? 'flow' : 'agent'
 
             if (normalizedAutomationMode === 'flow' && selectedLinkedFlowId === 'none') {
@@ -1337,6 +1348,7 @@ export function Integrations() {
                 app_key: string | null
                 access_token: string | null
                 auth_token: string | null
+                meta_app_secret?: string | null
                 linked_agent_id?: string | null
                 linked_flow_id?: string | null
                 automation_mode?: 'agent' | 'flow'
@@ -1345,6 +1357,7 @@ export function Integrations() {
                 app_key: trimmedPhoneNumberId || null,
                 access_token: trimmedAccessToken || null,
                 auth_token: trimmedVerifyToken || null,
+                meta_app_secret: trimmedAppSecret || null,
                 linked_agent_id: normalizedAutomationMode === 'agent' && selectedLinkedAgentId !== 'none' ? selectedLinkedAgentId : null,
                 linked_flow_id: normalizedAutomationMode === 'flow' && selectedLinkedFlowId !== 'none' ? selectedLinkedFlowId : null,
                 automation_mode: normalizedAutomationMode
@@ -2113,11 +2126,18 @@ export function Integrations() {
                                     Esse valor pode ser criado por voce e deve ser o mesmo usado na verificacao do webhook da Meta.
                                 </p>
                             </div>
+                            <div className="space-y-2">
+                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>App Secret (Meta)</Label>
+	                                <Input type="password" value={whatsappConfig.appSecret} onFocus={(event) => event.currentTarget.select()} onChange={(e) => setWhatsappConfig((current) => ({ ...current, appSecret: normalizeSecretInput(e.target.value, current.appSecret) }))} onBlur={() => setWhatsappConfig((current) => ({ ...current, appSecret: whatsappIntegrationId && !current.appSecret.trim() ? MASKED_SECRET_VALUE : current.appSecret }))} placeholder={whatsappIntegrationId ? 'App Secret salvo - digite para rotacionar' : 'App Secret do app Meta'} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
+                                <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
+                                    App Secret do seu app em Meta for Developers. Usado para validar webhooks recebidos (por integracao). Fallback opcional: WHATSAPP_META_APP_SECRET no backend.
+                                </p>
+                            </div>
                             <div className="space-y-2 md:col-span-2 max-w-md">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Numero oficial da Meta</Label>
                                 <Input placeholder="+1 555-899-1881" value={whatsappConfig.phoneNumber} onChange={(e) => updateWhatsappConfig({ phoneNumber: e.target.value })} className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
                                 <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
-                                    Os dados sao salvos em tb_integrations como provider=whatsapp, phone_number, app_key, access_token e auth_token.
+                                    Os dados sao salvos em tb_integrations: phone_number, app_key, access_token, auth_token e meta_app_secret.
                                 </p>
                                 <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
                                     Configure na Meta o callback GET/POST /whatsapp/webhook para este numero oficial.
@@ -2278,7 +2298,8 @@ export function Integrations() {
                                     <Input placeholder="Phone Number ID" value={newWhatsappConfig.phoneNumberId} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, phoneNumberId: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
                                     <Input type="password" placeholder="Access Token" value={newWhatsappConfig.accessToken} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, accessToken: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
                                     <Input placeholder="Verify Token" value={newWhatsappConfig.verifyToken} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, verifyToken: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
-                                    <Input placeholder="Numero oficial da Meta" value={newWhatsappConfig.phoneNumber} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, phoneNumber: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    <Input type="password" placeholder="App Secret (Meta)" value={newWhatsappConfig.appSecret} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, appSecret: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
+                                    <Input placeholder="Numero oficial da Meta" value={newWhatsappConfig.phoneNumber} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, phoneNumber: e.target.value }))} className="h-12 rounded-xl md:col-span-2" style={inputSurface} />
                                 </div>
                                 <div className="mt-5 flex justify-end">
                                     <Button onClick={handleAddWhatsAppIntegration} disabled={saving} className="rounded-xl">
@@ -2291,7 +2312,8 @@ export function Integrations() {
                     </CardContent>
                 </Card>
 
-                {/* 3. CARD EMAIL - LARANJA */}
+                {/* 3. CARD EMAIL - oculto até implementação completa */}
+                {isIntegrationSectionVisible('email') && (
                 <Card 
                     className="border-none overflow-hidden transition-all hover:shadow-xl hover:shadow-slate-300/40 dark:hover:shadow-black/40"
                     style={integrationCardStyle}
@@ -2947,8 +2969,10 @@ export function Integrations() {
                         )}
                     </CardContent>
                 </Card>
+                )}
 
-                {/* 4. CARD VOZ - EM BREVE */}
+                {/* 4. CARD VOZ - oculto até implementação completa */}
+                {isIntegrationSectionVisible('voice') && (
                 <Card 
                     className="border-none overflow-hidden transition-all"
                     style={{ 
@@ -3036,6 +3060,7 @@ export function Integrations() {
                         </button>
                     </CardContent>
                 </Card>
+                )}
 
             </div>
         </div>

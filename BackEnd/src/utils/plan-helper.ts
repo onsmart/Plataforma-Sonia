@@ -35,6 +35,8 @@ export interface PlanLimits {
   hasGovernance: boolean
   hasCustomDeployment: boolean
   hasActiveOutbound: boolean
+  hasFlows: boolean
+  hasCrmApi: boolean
   productLine: 'rec' | 'com'
 }
 
@@ -405,6 +407,62 @@ export async function canUseRAG(companiesId: string): Promise<{
     return {
       allowed: false,
       reason: `A base de conhecimento (RAG) não está incluída no plano ${planInfo.planTitle}. Faça upgrade para ${getPlanCatalogEntry(upgradePlan).title}.`,
+      upgradePlan,
+    }
+  }
+
+  return { allowed: true }
+}
+
+export async function canUseFlows(companiesId: string): Promise<{
+  allowed: boolean
+  reason?: string
+  upgradePlan?: PlanId
+}> {
+  const planInfo = await getPlanInfo(companiesId)
+
+  if (planInfo.status !== 'active') {
+    return {
+      allowed: false,
+      reason:
+        'Você não tem uma assinatura ativa. Contrate o plano Receptivo Growth para usar fluxos visuais.',
+      upgradePlan: 'rec_growth',
+    }
+  }
+
+  if (!planInfo.limits.hasFlows) {
+    const upgradePlan = suggestUpgradePlan(planInfo.plan)
+    return {
+      allowed: false,
+      reason: `Fluxos visuais não estão incluídos no plano ${planInfo.planTitle}. Faça upgrade para ${getPlanCatalogEntry(upgradePlan).title}.`,
+      upgradePlan,
+    }
+  }
+
+  return { allowed: true }
+}
+
+export async function canUseCrmApi(companiesId: string): Promise<{
+  allowed: boolean
+  reason?: string
+  upgradePlan?: PlanId
+}> {
+  const planInfo = await getPlanInfo(companiesId)
+
+  if (planInfo.status !== 'active') {
+    return {
+      allowed: false,
+      reason:
+        'Você não tem uma assinatura ativa. Contrate o plano Receptivo Growth para integrações CRM/API.',
+      upgradePlan: 'rec_growth',
+    }
+  }
+
+  if (!planInfo.limits.hasCrmApi) {
+    const upgradePlan = suggestUpgradePlan(planInfo.plan)
+    return {
+      allowed: false,
+      reason: `Integrações CRM e API não estão incluídas no plano ${planInfo.planTitle}. Faça upgrade para ${getPlanCatalogEntry(upgradePlan).title}.`,
       upgradePlan,
     }
   }

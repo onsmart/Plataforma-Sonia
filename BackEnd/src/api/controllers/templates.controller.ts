@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { supabase } from '../../lib/supabase'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
 import logger from '../../lib/logger'
+import { getAuthenticatedEmail } from '../../utils/request-auth'
 import { getCalendlyTestTemplatePack } from '../../content/calendly-test-template-pack'
 import { getFlexibleSchedulingTemplatePack } from '../../content/flexible-scheduling-template-pack'
 
@@ -23,7 +24,7 @@ function isTemplateForeignKeyInUse(err: { code?: string; message?: string } | nu
  */
 export async function listTemplates(req: Request, res: Response) {
   try {
-    const email = req.user?.email || req.query.email as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -120,7 +121,7 @@ export async function listTemplates(req: Request, res: Response) {
  */
 export async function createTemplate(req: Request, res: Response) {
   try {
-    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -188,7 +189,7 @@ export async function createTemplate(req: Request, res: Response) {
 export async function updateTemplate(req: Request, res: Response) {
   try {
     const { id } = req.params
-    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -291,7 +292,7 @@ export async function updateTemplate(req: Request, res: Response) {
 export async function deleteTemplate(req: Request, res: Response) {
   try {
     const { id } = req.params
-    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({

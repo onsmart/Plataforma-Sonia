@@ -38,6 +38,10 @@ export interface PlanCatalogEntry {
   hasCustomDeployment: boolean
   /** IA ativa / SDR / campanhas outbound */
   hasActiveOutbound: boolean
+  /** Editor de fluxos visuais e publicação */
+  hasFlows: boolean
+  /** Integrações CRM, API e webhooks avançados */
+  hasCrmApi: boolean
   stripePriceKeyMonthly: string
   stripePriceKeyYearly: string
   priceDisplayMonthly: string
@@ -166,6 +170,8 @@ export const FREE_PLAN_LIMITS = {
   hasGovernance: false,
   hasCustomDeployment: false,
   hasActiveOutbound: false,
+  hasFlows: false,
+  hasCrmApi: false,
   productLine: 'rec' as PlanProductLine,
 }
 
@@ -188,6 +194,8 @@ export const FREE_PLAN_CATALOG: PlanCatalogEntry = {
   hasGovernance: false,
   hasCustomDeployment: false,
   hasActiveOutbound: false,
+  hasFlows: false,
+  hasCrmApi: false,
   stripePriceKeyMonthly: '',
   stripePriceKeyYearly: '',
   priceDisplayMonthly: 'Gratuito',
@@ -202,7 +210,7 @@ export const SONIA_PLANS: PlanCatalogEntry[] = [
     tier: 'start',
     commercialLevel: 'Start',
     title: 'Sonia Receptiva — Start',
-    description: 'IA receptiva: inbound, FAQ e triagem. Sem operação SDR/ativa.',
+    description: 'FAQ receptiva, triagem de conversas e handoff para humano.',
     monthlyConversations: 200,
     volumeLabel: 'Até 200 atendimentos/mês',
     usageCriterion: 'Atendimentos (sessões de atendimento no mês)',
@@ -213,6 +221,8 @@ export const SONIA_PLANS: PlanCatalogEntry[] = [
     hasGovernance: false,
     hasCustomDeployment: false,
     hasActiveOutbound: false,
+    hasFlows: false,
+    hasCrmApi: false,
     stripePriceKeyMonthly: 'price_rec_start_monthly',
     stripePriceKeyYearly: 'price_rec_start_yearly',
     priceDisplayMonthly: 'A definir',
@@ -225,7 +235,7 @@ export const SONIA_PLANS: PlanCatalogEntry[] = [
     tier: 'growth',
     commercialLevel: 'Growth',
     title: 'Sonia Receptiva — Growth',
-    description: 'IA receptiva com fluxos, CRM/API e maior volume.',
+    description: 'Fluxos visuais, integrações CRM/API e base de conhecimento (RAG).',
     monthlyConversations: 1500,
     volumeLabel: '201 a 1.500 atendimentos/mês',
     usageCriterion: 'Atendimentos (sessões de atendimento no mês)',
@@ -236,6 +246,8 @@ export const SONIA_PLANS: PlanCatalogEntry[] = [
     hasGovernance: false,
     hasCustomDeployment: false,
     hasActiveOutbound: false,
+    hasFlows: true,
+    hasCrmApi: true,
     stripePriceKeyMonthly: 'price_rec_growth_monthly',
     stripePriceKeyYearly: 'price_rec_growth_yearly',
     priceDisplayMonthly: 'A definir',
@@ -259,6 +271,8 @@ export const SONIA_PLANS: PlanCatalogEntry[] = [
     hasGovernance: true,
     hasCustomDeployment: true,
     hasActiveOutbound: false,
+    hasFlows: true,
+    hasCrmApi: true,
     stripePriceKeyMonthly: 'price_rec_enterprise_monthly',
     stripePriceKeyYearly: 'price_rec_enterprise_yearly',
     priceDisplayMonthly: 'Sob proposta',
@@ -282,6 +296,8 @@ export const SONIA_PLANS: PlanCatalogEntry[] = [
     hasGovernance: false,
     hasCustomDeployment: false,
     hasActiveOutbound: true,
+    hasFlows: false,
+    hasCrmApi: false,
     stripePriceKeyMonthly: 'price_com_start_monthly',
     stripePriceKeyYearly: 'price_com_start_yearly',
     priceDisplayMonthly: 'A definir',
@@ -305,6 +321,8 @@ export const SONIA_PLANS: PlanCatalogEntry[] = [
     hasGovernance: false,
     hasCustomDeployment: false,
     hasActiveOutbound: true,
+    hasFlows: true,
+    hasCrmApi: true,
     stripePriceKeyMonthly: 'price_com_growth_monthly',
     stripePriceKeyYearly: 'price_com_growth_yearly',
     priceDisplayMonthly: 'A definir',
@@ -328,6 +346,8 @@ export const SONIA_PLANS: PlanCatalogEntry[] = [
     hasGovernance: true,
     hasCustomDeployment: true,
     hasActiveOutbound: true,
+    hasFlows: true,
+    hasCrmApi: true,
     stripePriceKeyMonthly: 'price_com_enterprise_monthly',
     stripePriceKeyYearly: 'price_com_enterprise_yearly',
     priceDisplayMonthly: 'Sob proposta',
@@ -373,8 +393,18 @@ export function planLimitsFromCatalog(planId: string | null | undefined) {
     hasGovernance: entry.hasGovernance,
     hasCustomDeployment: entry.hasCustomDeployment,
     hasActiveOutbound: entry.hasActiveOutbound,
+    hasFlows: entry.hasFlows,
+    hasCrmApi: entry.hasCrmApi,
     productLine: entry.productLine,
   }
+}
+
+/** Planos com checkout self-serve no MVP comercial (somente linha receptiva Start e Growth). */
+export const SELF_SERVE_PLAN_IDS: readonly PlanId[] = ['rec_start', 'rec_growth'] as const
+
+/** Demais planos pagos aparecem na vitrine como "Em breve" até liberação comercial. */
+export function isPlanComingSoon(planId: PlanId): boolean {
+  return !isFreePlanId(planId) && !SELF_SERVE_PLAN_IDS.includes(planId)
 }
 
 /** Self-serve Stripe checkout: apenas REC Start e REC Growth no MVP receptivo. */
@@ -430,10 +460,13 @@ export function getPlanForApi(plan: PlanCatalogEntry) {
     hasGovernance: plan.hasGovernance,
     hasCustomDeployment: plan.hasCustomDeployment,
     hasActiveOutbound: plan.hasActiveOutbound,
+    hasFlows: plan.hasFlows,
+    hasCrmApi: plan.hasCrmApi,
     priceDisplayMonthly: displayMonthly,
     billing_interval: BILLING_INTERVAL,
     stripe_price_key: plan.stripePriceKeyMonthly,
     checkout_available: isStripeCheckoutAvailable(plan.id),
+    coming_soon: isPlanComingSoon(plan.id),
     sales_assisted: isSalesAssistedPlan(plan.id),
   }
 }

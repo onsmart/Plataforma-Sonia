@@ -18,7 +18,8 @@ import {
   Terminal,
   User,
   CreditCard,
-  LogOut
+  LogOut,
+  Activity,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
@@ -190,6 +191,7 @@ const SIDEBAR_FALLBACK: Record<string, string> = {
   "menuItems.insights": "Insights & Data",
   "menuItems.configuration": "Configuration",
   "menuItems.integrations": "Integrações",
+  "menuItems.platformHealth": "Saúde da plataforma",
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -411,6 +413,9 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           { labelKey: "groups.admin", items: [
             { id: 'integrations', nameKey: 'menuItems.integrations', icon: Plug },
             { id: 'configuration', nameKey: 'menuItems.configuration', icon: Settings2 },
+            ...(isAdmin === true
+              ? [{ id: 'platform-health' as const, nameKey: 'menuItems.platformHealth', icon: Activity }]
+              : []),
           ]}
         ].map((group, groupIndex) => (
           <SidebarGroup key={group.labelKey || groupIndex}>

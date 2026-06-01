@@ -2,6 +2,7 @@ import { Request, Response } from 'express'
 import { calculateKPIs, KPIFilters, KPIMetrics } from '../../services/kpis/kpis.service'
 import { getUserIdAndCompanyIdByEmail } from '../../utils/company-helper'
 import logger from '../../lib/logger'
+import { getAuthenticatedEmail } from '../../utils/request-auth'
 
 const ZERO_KPIS: KPIMetrics = {
   taskSuccessRate: 0,
@@ -29,11 +30,7 @@ const ZERO_KPIS: KPIMetrics = {
  */
 export async function getKPIs(req: Request, res: Response) {
   try {
-    // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-    const userEmail = (req as any).user?.email || 
-                      (req.query.email as string) || 
-                      (req.headers['x-user-email'] as string) ||
-                      (req.body?.email as string)
+    const userEmail = getAuthenticatedEmail(req)
 
     if (!userEmail) {
       return res.status(401).json({
@@ -99,10 +96,7 @@ export async function getKPIs(req: Request, res: Response) {
  */
 export async function saveFeedback(req: Request, res: Response) {
   try {
-    const userEmail =
-      (req as any).user?.email ||
-      (req.headers['x-user-email'] as string) ||
-      (req as any).userEmail
+    const userEmail = getAuthenticatedEmail(req)
 
     if (!userEmail) {
       return res.status(401).json({

@@ -10,6 +10,8 @@ export type PlanCapabilities = {
   hasRag: boolean
   hasGovernance: boolean
   hasActiveOutbound: boolean
+  hasFlows: boolean
+  hasCrmApi: boolean
   conversationsUsed: number
   conversationsLimit: number | null
   agentsUsed: number
@@ -31,6 +33,8 @@ export function usePlanCapabilities(): PlanCapabilities {
     hasRag: false,
     hasGovernance: false,
     hasActiveOutbound: false,
+    hasFlows: false,
+    hasCrmApi: false,
     conversationsUsed: 0,
     conversationsLimit: null as number | null,
     agentsUsed: 0,
@@ -58,6 +62,8 @@ export function usePlanCapabilities(): PlanCapabilities {
         hasRag: Boolean(usage?.has_rag) && hasPaidAccess,
         hasGovernance: Boolean(usage?.has_governance) && hasPaidAccess,
         hasActiveOutbound: Boolean(usage?.has_active_outbound) && hasPaidAccess,
+        hasFlows: Boolean(usage?.has_flows) && hasPaidAccess,
+        hasCrmApi: Boolean(usage?.has_crm_api) && hasPaidAccess,
         conversationsUsed: Number(usage?.conversations_used ?? 0),
         conversationsLimit:
           usage?.conversations_limit != null ? Number(usage.conversations_limit) : null,

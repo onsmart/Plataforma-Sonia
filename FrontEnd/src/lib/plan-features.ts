@@ -11,6 +11,8 @@ type FeatureKey =
   | 'agents'
   | 'conversations'
   | 'rag'
+  | 'flows'
+  | 'crmApi'
   | 'governance'
   | 'outbound'
   | 'sso'
@@ -20,6 +22,8 @@ const FEATURE_LABELS: Record<FeatureKey, string> = {
   agents: 'Agentes de IA',
   conversations: 'Atendimentos no mês',
   rag: 'Base de conhecimento (RAG)',
+  flows: 'Fluxos visuais e automações',
+  crmApi: 'Integrações CRM e API',
   governance: 'Governança avançada',
   outbound: 'Operação ativa / SDR',
   sso: 'SSO corporativo',
@@ -32,11 +36,23 @@ export function buildPlanFeatureList(params: {
   hasRag: boolean
   hasGovernance: boolean
   hasActiveOutbound: boolean
+  hasFlows?: boolean
+  hasCrmApi?: boolean
   hasSso?: boolean
   isPaid: boolean
 }): PlanFeatureItem[] {
-  const { plan, agentsLimit, conversationsLimit, hasRag, hasGovernance, hasActiveOutbound, hasSso, isPaid } =
-    params
+  const {
+    plan,
+    agentsLimit,
+    conversationsLimit,
+    hasRag,
+    hasGovernance,
+    hasActiveOutbound,
+    hasFlows = false,
+    hasCrmApi = false,
+    hasSso,
+    isPaid,
+  } = params
 
   if (!isPaid || plan === 'free') {
     return [
@@ -58,6 +74,8 @@ export function buildPlanFeatureList(params: {
     { id: 'whatsapp', label: FEATURE_LABELS.whatsapp, enabled: true },
     { id: 'agents', label: agentsLabel, enabled: (agentsLimit ?? 1) > 0 },
     { id: 'conversations', label: convLabel, enabled: (conversationsLimit ?? 1) > 0 },
+    { id: 'flows', label: FEATURE_LABELS.flows, enabled: hasFlows },
+    { id: 'crmApi', label: FEATURE_LABELS.crmApi, enabled: hasCrmApi },
     { id: 'rag', label: FEATURE_LABELS.rag, enabled: hasRag },
     { id: 'governance', label: FEATURE_LABELS.governance, enabled: hasGovernance },
     { id: 'outbound', label: FEATURE_LABELS.outbound, enabled: hasActiveOutbound },

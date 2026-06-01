@@ -13,6 +13,7 @@ import {
   type GovernanceConfig,
 } from '../../services/governance/governance.service'
 import logger from '../../lib/logger'
+import { getAuthenticatedEmail, getAuthenticatedCompaniesId } from '../../utils/request-auth'
 
 const SIMULATION_BASE_AGENT_PROMPT = 'Você é um assistente de atendimento da empresa.'
 
@@ -105,7 +106,7 @@ function toApiJson(config: GovernanceConfig, lastUpdated?: string) {
  */
 export async function getGovernanceConfig(req: Request, res: Response) {
   try {
-    const email = req.user?.email || req.query.email as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -188,7 +189,7 @@ export async function getGovernanceConfig(req: Request, res: Response) {
  */
 export async function updateGovernanceConfig(req: Request, res: Response) {
   try {
-    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -320,7 +321,7 @@ export async function updateGovernanceConfig(req: Request, res: Response) {
  */
 export async function postGovernanceTest(req: Request, res: Response) {
   try {
-    const email = req.user?.email || (req.headers['x-user-email'] as string)
+    const email = getAuthenticatedEmail(req)
     if (!email) {
       return res.status(401).json({ error: 'Email é obrigatório' })
     }

@@ -1726,6 +1726,18 @@ export const AgentService = {
         }
     },
 
+    async getPlatformHealth(): Promise<any> {
+        const res = await fetch(`${BASE_URL}/admin/platform-health`, {
+            headers: await getAuthHeaders(),
+        });
+        if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body?.error || 'Falha ao carregar saúde da plataforma');
+        }
+        const payload = await res.json();
+        return payload;
+    },
+
     async getSubscriptionUsage(sync = false): Promise<any> {
         try {
             const usage = await this.getBillingUsage(sync);

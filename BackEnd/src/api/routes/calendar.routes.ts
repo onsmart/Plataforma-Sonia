@@ -8,7 +8,6 @@ import {
   deleteCalendlyIntegration,
   listCalendlyEventTypes,
   listCalendlyIntegrations,
-  receiveCalendlyWebhook,
   saveCalendlyMappings,
   setDefaultCalendlyIntegration,
   syncCalendlyWebhook,
@@ -30,7 +29,6 @@ router.delete('/integrations/:id', requireAuth, requireWorkspace, deleteCalendly
 router.get('/integrations/:id/event-types', requireAuth, requireWorkspace, listCalendlyEventTypes)
 router.post('/integrations/:id/mappings', requireAuth, requireWorkspace, saveCalendlyMappings)
 router.post('/integrations/:id/webhook/sync', requireAuth, requireWorkspace, syncCalendlyWebhook)
-router.post('/webhook/:id', receiveCalendlyWebhook)
 
 export default router
 

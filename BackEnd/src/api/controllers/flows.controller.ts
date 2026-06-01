@@ -1,6 +1,8 @@
 import { Request, Response } from 'express'
 import { FlowService } from '../../services/flows'
 import { getCompanyIdByEmail } from '../../utils/company-helper'
+import { getAuthenticatedEmail, getAuthenticatedCompaniesId } from '../../utils/request-auth'
+import { canUseFlows } from '../../utils/plan-helper'
 import { supabase } from '../../lib/supabase'
 import logger from '../../lib/logger'
 import { executeFlowForChannel, parseFlowResumeSession } from '../../services/flows/flow-channel-runtime'
@@ -18,13 +20,29 @@ import {
   publishFlowDraft,
 } from '../../services/flows/flow-versioning'
 
+async function rejectIfFlowsNotAllowed(
+  res: Response,
+  companiesId: string
+): Promise<boolean> {
+  const flowsCheck = await canUseFlows(companiesId)
+  if (!flowsCheck.allowed) {
+    res.status(403).json({
+      error: flowsCheck.reason,
+      code: 'PLAN_FLOWS',
+      upgradePlan: flowsCheck.upgradePlan,
+    })
+    return true
+  }
+  return false
+}
+
 /**
  * Lista flows do usuário (da empresa + globais)
  */
 export async function listFlows(req: Request, res: Response) {
   try {
     // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-    const email = req.user?.email || (req.query.email as string)
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -184,7 +202,7 @@ export async function getFlow(req: Request, res: Response) {
   try {
     const flowId = typeof req.params.id === 'string' ? req.params.id : req.params.id[0]
     // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-    const email = req.user?.email || (req.query.email as string)
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -222,7 +240,7 @@ export async function getFlow(req: Request, res: Response) {
  */
 export async function createFlow(req: Request, res: Response) {
   try {
-    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -238,6 +256,10 @@ export async function createFlow(req: Request, res: Response) {
         error: 'Empresa não encontrada',
         details: 'Usuário não pertence a nenhuma empresa'
       })
+    }
+
+    if (await rejectIfFlowsNotAllowed(res, companiesId)) {
+      return
     }
 
     const { name, nodes, user_email } = req.body
@@ -307,7 +329,7 @@ export async function createFlow(req: Request, res: Response) {
 export async function updateFlow(req: Request, res: Response) {
   try {
     const { id } = req.params
-    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -331,6 +353,10 @@ export async function updateFlow(req: Request, res: Response) {
       })
     }
 
+    if (await rejectIfFlowsNotAllowed(res, companiesId)) {
+      return
+    }
+
     // Verificar se o flow pertence à empresa (não pode atualizar globais)
     const { data: flow, error: flowError } = await supabase
       .from('tb_flows')
@@ -346,7 +372,15 @@ export async function updateFlow(req: Request, res: Response) {
     }
 
     // Só pode atualizar flows da própria empresa (não globais)
-    if (flow.companies_id && flow.companies_id !== companiesId) {
+    if (!flow.companies_id) {
+      return res.status(403).json({
+        error: 'Fluxo global',
+        details: 'Fluxos globais da plataforma não podem ser editados.',
+        code: 'FLOW_GLOBAL',
+      })
+    }
+
+    if (flow.companies_id !== companiesId) {
       return res.status(403).json({
         error: 'Flow não pertence à sua empresa',
         details: 'Você não pode atualizar flows de outras empresas'
@@ -409,7 +443,7 @@ export async function updateFlow(req: Request, res: Response) {
 export async function publishFlow(req: Request, res: Response) {
   try {
     const { id } = req.params
-    const email = req.user?.email || req.body.email || (req.headers['x-user-email'] as string)
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -430,6 +464,10 @@ export async function publishFlow(req: Request, res: Response) {
       })
     }
 
+    if (await rejectIfFlowsNotAllowed(res, companiesId)) {
+      return
+    }
+
     const { data: flowRow, error: flowError } = await supabase
       .from('tb_flows')
       .select('id, companies_id, nodes')
@@ -440,7 +478,15 @@ export async function publishFlow(req: Request, res: Response) {
       return res.status(404).json({ error: 'Flow não encontrado' })
     }
 
-    if (flowRow.companies_id && flowRow.companies_id !== companiesId) {
+    if (!flowRow.companies_id) {
+      return res.status(403).json({
+        error: 'Fluxo global',
+        details: 'Fluxos globais da plataforma não podem ser publicados.',
+        code: 'FLOW_GLOBAL',
+      })
+    }
+
+    if (flowRow.companies_id !== companiesId) {
       return res.status(403).json({ error: 'Flow não pertence à sua empresa' })
     }
 
@@ -485,7 +531,7 @@ export async function publishFlow(req: Request, res: Response) {
 export async function deleteFlow(req: Request, res: Response) {
   try {
     const { id } = req.params
-    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -590,13 +636,25 @@ export async function deleteFlow(req: Request, res: Response) {
  */
 export async function generateFlowMvp(req: Request, res: Response) {
   try {
-    const email = req.user?.email || req.body.email
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
         error: 'Email é obrigatório',
         details: 'Token de autenticação inválido ou email não fornecido',
       })
+    }
+
+    const companiesId = await getCompanyIdByEmail(email)
+    if (!companiesId) {
+      return res.status(403).json({
+        error: 'Empresa não encontrada',
+        details: 'Usuário não pertence a nenhuma empresa',
+      })
+    }
+
+    if (await rejectIfFlowsNotAllowed(res, companiesId)) {
+      return
     }
 
     const description = typeof req.body.description === 'string' ? req.body.description.trim() : ''
@@ -648,13 +706,25 @@ export async function generateFlowMvp(req: Request, res: Response) {
  */
 export async function generateConditionalSwitchTestFlowController(req: Request, res: Response) {
   try {
-    const email = req.user?.email || req.body.email
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
         error: 'Email é obrigatório',
         details: 'Token de autenticação inválido ou email não fornecido',
       })
+    }
+
+    const companiesId = await getCompanyIdByEmail(email)
+    if (!companiesId) {
+      return res.status(403).json({
+        error: 'Empresa não encontrada',
+        details: 'Usuário não pertence a nenhuma empresa',
+      })
+    }
+
+    if (await rejectIfFlowsNotAllowed(res, companiesId)) {
+      return
     }
 
     const language =
@@ -703,7 +773,7 @@ export async function generateConditionalSwitchTestFlowController(req: Request, 
  */
 export async function refineFlowDescriptionClaude(req: Request, res: Response) {
   try {
-    const email = req.user?.email || req.body.email
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -767,7 +837,7 @@ export async function refineFlowDescriptionClaude(req: Request, res: Response) {
 /** GET /flows/refine-description/status — se Claude está disponível (para habilitar botão no front). */
 export async function refineFlowDescriptionStatus(req: Request, res: Response) {
   try {
-    const email = req.user?.email || (req.query.email as string)
+    const email = getAuthenticatedEmail(req)
     if (!email) {
       return res.status(401).json({
         error: 'Email é obrigatório',

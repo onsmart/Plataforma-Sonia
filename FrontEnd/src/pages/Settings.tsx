@@ -111,6 +111,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             prioritySupport: 'Priority Support',
             acquired: 'Acquired',
             contactSales: 'Talk to sales',
+            comingSoon: 'Coming soon',
             currentPlanBadge: 'Current plan'
         }
         : isSpanish
@@ -149,6 +150,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 prioritySupport: 'Soporte Prioritario',
                 acquired: 'Adquirido',
                 contactSales: 'Hablar con ventas',
+                comingSoon: 'Próximamente',
                 currentPlanBadge: 'Plan actual'
             }
             : {
@@ -186,6 +188,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                 prioritySupport: 'Suporte Prioritário',
                 acquired: 'Adquirido',
                 contactSales: 'Falar com vendas',
+                comingSoon: 'Em breve',
                 currentPlanBadge: 'Plano atual'
             }
 
@@ -965,8 +968,9 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                         popular: billingCopy.plusPlanBadge,
                                         usageLimitReached: billingCopy.usageLimitReached,
                                         perMonth: billingCopy.perMonth,
-                                        contactSales: billingCopy.contactSales,
-                                        currentPlanBadge: billingCopy.currentPlanBadge,
+            contactSales: billingCopy.contactSales,
+            comingSoon: billingCopy.comingSoon,
+            currentPlanBadge: billingCopy.currentPlanBadge,
                                     }}
                                 />
                             </CardContent>

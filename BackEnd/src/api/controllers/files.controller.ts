@@ -196,28 +196,18 @@ export class FilesController {
 
     async process(req: Request, res: Response) {
         const { fileId } = req.params
-        // Espera-se que o middleware de auth popule req.user ou que venha no body/header por enquanto
-        // Como o frontend manda email no header ou body, vamos simplificar
-        // TODO: Usar middleware de auth real
-        const emailHeader = req.headers['x-user-email']
-        const email = ((Array.isArray(emailHeader) ? emailHeader[0] : emailHeader) || req.body.email) as string
+        const email = req.user?.email
+        const companiesId = req.user?.companiesId
+
+        if (!email || !companiesId) {
+            return res.status(401).json({ error: 'Autenticação e workspace são obrigatórios' })
+        }
 
         if (!fileId) {
             return res.status(400).json({ error: 'File ID is required' })
         }
 
-        if (!email) {
-            return res.status(401).json({ error: 'User email is required for context' })
-        }
-
         try {
-            // Validar acesso (basic)
-            const companiesId = await getCompanyIdByEmail(email)
-
-            if (!companiesId) {
-                return res.status(403).json({ error: 'User does not belong to any company' })
-            }
-
             const { purpose = 'rag' } = req.body
             const bodyPurpose = String(purpose).toLowerCase() === 'skills' ? 'skills' : 'rag'
 
@@ -348,25 +338,17 @@ export class FilesController {
 
     async getSkills(req: Request, res: Response) {
         const { fileId } = req.params
-        const emailHeader = req.headers['x-user-email']
-        const email = ((Array.isArray(emailHeader) ? emailHeader[0] : emailHeader) || req.body.email) as string
+        const companiesId = req.user?.companiesId
+
+        if (!companiesId) {
+            return res.status(401).json({ error: 'Autenticação e workspace são obrigatórios' })
+        }
 
         if (!fileId) {
             return res.status(400).json({ error: 'File ID is required' })
         }
 
-        if (!email) {
-            return res.status(401).json({ error: 'User email is required' })
-        }
-
         try {
-            const companiesId = await getCompanyIdByEmail(email)
-
-            if (!companiesId) {
-                return res.status(403).json({ error: 'User does not belong to any company' })
-            }
-
-            // Buscar skills do arquivo
             const { data: skills, error } = await supabase
                 .from('tb_file_skills')
                 .select('*')
@@ -392,24 +374,17 @@ export class FilesController {
 
     async delete(req: Request, res: Response) {
         const { fileId } = req.params
-        const emailHeader = req.headers['x-user-email']
-        const email = (req.user?.email || (Array.isArray(emailHeader) ? emailHeader[0] : emailHeader) || req.body.email) as string
+        const companiesId = req.user?.companiesId
+
+        if (!companiesId) {
+            return res.status(401).json({ error: 'Autenticação e workspace são obrigatórios' })
+        }
 
         if (!fileId) {
             return res.status(400).json({ error: 'File ID is required' })
         }
 
-        if (!email) {
-            return res.status(401).json({ error: 'User email is required' })
-        }
-
         try {
-            const companiesId = await getCompanyIdByEmail(email)
-
-            if (!companiesId) {
-                return res.status(403).json({ error: 'User does not belong to any company' })
-            }
-
             const { data: file, error: fileError } = await supabase
                 .from('tb_files')
                 .select('id, bucket, path, original_name')

@@ -1,8 +1,8 @@
 
 // --- CONFIGURATION ---
 // In production, these should be strictly environment variables.
-const QDRANT_URL = Deno.env.get("QDRANT_URL") || "https://3fbf1733-7584-42d4-a84f-31827395e1a9.sa-east-1-0.aws.cloud.qdrant.io";
-const QDRANT_KEY = Deno.env.get("QDRANT_API_KEY") || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.2Mq8vS_deKNwukdRroQ-Z7ZHt7EXSTKeKyHF7I0xhNY";
+const QDRANT_URL = Deno.env.get("QDRANT_URL") || "";
+const QDRANT_KEY = Deno.env.get("QDRANT_API_KEY") || "";
 const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY");
 
 const COLLECTION_NAME = "sonia_knowledge_base";

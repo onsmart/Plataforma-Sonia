@@ -1,5 +1,7 @@
 import { Request, Response } from 'express'
 import logger from '../../lib/logger'
+import { getCompanyIdByEmail } from '../../utils/company-helper'
+import { canUseCrmApi } from '../../utils/plan-helper'
 import {
   listCRMIntegrationsForUserManager,
   removeCRMIntegrationForUser,
@@ -27,6 +29,29 @@ function handleControllerError(res: Response, scope: string, fallbackMessage: st
   })
 }
 
+async function rejectIfCrmApiNotAllowed(
+  res: Response,
+  email: string
+): Promise<boolean> {
+  const companiesId = await getCompanyIdByEmail(email)
+  if (!companiesId) {
+    res.status(403).json({ error: 'Empresa não encontrada.' })
+    return true
+  }
+
+  const crmCheck = await canUseCrmApi(companiesId)
+  if (!crmCheck.allowed) {
+    res.status(403).json({
+      error: crmCheck.reason,
+      code: 'PLAN_CRM_API',
+      upgradePlan: crmCheck.upgradePlan,
+    })
+    return true
+  }
+
+  return false
+}
+
 export async function listCRMIntegrations(req: Request, res: Response) {
   try {
     const authenticatedEmail = getAuthenticatedEmail(req)
@@ -49,6 +74,10 @@ export async function upsertCRMIntegration(req: Request, res: Response) {
   try {
     const authenticatedEmail = getAuthenticatedEmail(req)
     if (!authenticatedEmail) return res.status(401).json({ error: 'Usuario nao autenticado.' })
+
+    if (await rejectIfCrmApiNotAllowed(res, authenticatedEmail)) {
+      return
+    }
 
     const integration = await upsertCRMIntegrationForUser(authenticatedEmail, {
       integrationId: req.body?.integrationId ?? req.body?.integration_id ?? null,
@@ -78,6 +107,10 @@ export async function deleteCRMIntegration(req: Request, res: Response) {
     if (!authenticatedEmail) return res.status(401).json({ error: 'Usuario nao autenticado.' })
     if (!integrationId) return res.status(400).json({ error: 'integration_id nao informado.' })
 
+    if (await rejectIfCrmApiNotAllowed(res, authenticatedEmail)) {
+      return
+    }
+
     const result = await removeCRMIntegrationForUser(authenticatedEmail, integrationId)
     return res.json(result)
   } catch (error: any) {
@@ -97,6 +130,10 @@ export async function testCRMIntegration(req: Request, res: Response) {
     if (!authenticatedEmail) return res.status(401).json({ error: 'Usuario nao autenticado.' })
     if (!integrationId) return res.status(400).json({ error: 'integration_id nao informado.' })
 
+    if (await rejectIfCrmApiNotAllowed(res, authenticatedEmail)) {
+      return
+    }
+
     const result = await testCRMIntegrationForUser(authenticatedEmail, integrationId)
     return res.json({ success: result.success, result })
   } catch (error: any) {
@@ -113,6 +150,10 @@ export async function testCRMDraftConnection(req: Request, res: Response) {
   try {
     const authenticatedEmail = getAuthenticatedEmail(req)
     if (!authenticatedEmail) return res.status(401).json({ error: 'Usuario nao autenticado.' })
+
+    if (await rejectIfCrmApiNotAllowed(res, authenticatedEmail)) {
+      return
+    }
 
     const provider = String(req.body?.provider || 'hubspot').trim()
     const token = String(req.body?.token || '').trim()

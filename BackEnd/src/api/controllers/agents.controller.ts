@@ -9,6 +9,12 @@ import logger from '../../lib/logger'
 import { normalizeAgentLanguageCode } from '../../utils/agent-language'
 import { sendAgentWhatsAppResponseWithVoiceFallback } from '../../modules/voice/services/voiceRuntime.service'
 import { getAgentSetupHealth } from '../../services/agents/agent-setup-health.service'
+import {
+  assertAgentDecisionOwnedByCompany,
+  assertWhatsAppMessageOwnedByCompany,
+  TenantOwnershipError,
+} from '../../utils/tenant-ownership'
+import { getAuthenticatedEmail, getAuthenticatedCompaniesId, getAuthenticatedUserId } from '../../utils/request-auth'
 
 function normalizeIntegrationId(value: unknown): string | null {
   const normalized = String(value || '').trim()
@@ -75,7 +81,7 @@ async function validateMetaWhatsAppIntegration(integrationId: string, companiesI
 export async function listAgents(req: Request, res: Response) {
   try {
     // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-    const email = req.user?.email || (req.query.email as string)
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({ 
@@ -101,7 +107,7 @@ export async function listAgents(req: Request, res: Response) {
  */
 export async function getAgentSkillsForRequest(req: Request, res: Response) {
   try {
-    const email = req.user?.email || (req.query.email as string)
+    const email = getAuthenticatedEmail(req)
     if (!email) {
       return res.status(401).json({
         error: 'Email é obrigatório',
@@ -152,7 +158,7 @@ export async function getAgentSkillsForRequest(req: Request, res: Response) {
 export async function createAgent(req: Request, res: Response) {
   try {
     // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({ 
@@ -275,7 +281,7 @@ export async function createAgent(req: Request, res: Response) {
 export async function updateAgent(req: Request, res: Response) {
   try {
     const id = typeof req.params.id === 'string' ? req.params.id : req.params.id[0]
-    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({
@@ -391,7 +397,7 @@ export async function activateAgent(req: Request, res: Response) {
   try {
     const id = typeof req.params.id === 'string' ? req.params.id : req.params.id[0]
     // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({ 
@@ -497,7 +503,7 @@ export async function activateAgent(req: Request, res: Response) {
 export async function getAgentSetupHealthController(req: Request, res: Response) {
   try {
     const id = String(req.params.id || '').trim()
-    const email = String(req.user?.email || (req.query.email as string) || '').trim()
+    const email = getAuthenticatedEmail(req)
 
     if (!id || !email) {
       return res.status(400).json({ error: 'id do agente e autenticacao sao obrigatorios.' })
@@ -573,60 +579,52 @@ export async function agentChat(req: Request, res: Response) {
 export async function approveDecision(req: Request, res: Response) {
   try {
     const { id } = req.params
-    const { edited_answer, user_id } = req.body
-    
-    if (!user_id) {
-      return res.status(400).json({ error: 'user_id é obrigatório' })
+    const { edited_answer } = req.body
+    const companiesId = getAuthenticatedCompaniesId(req)
+    const user_id = getAuthenticatedUserId(req)
+
+    if (!companiesId || !user_id) {
+      return res.status(401).json({ error: 'Autenticação e workspace são obrigatórios' })
     }
-    
+
     if (!id) {
       return res.status(400).json({ error: 'id é obrigatório' })
     }
-    
-    // 1. Buscar decisão
-    const { data: decision, error: fetchError } = await supabase
-      .from('tb_agent_decisions')
-      .select('*')
-      .eq('id', id)
-      .single()
-    
-    if (fetchError) {
-      console.error('[approveDecision] Erro ao buscar decisão:', fetchError)
-      return res.status(500).json({ 
-        error: 'Erro ao buscar decisão',
-        details: fetchError.message 
-      })
+
+    let decision
+    try {
+      decision = await assertAgentDecisionOwnedByCompany(id, companiesId)
+    } catch (err) {
+      if (err instanceof TenantOwnershipError) {
+        return res.status(err.statusCode).json({ error: err.message, code: err.code })
+      }
+      throw err
     }
-    
-    if (!decision) {
-      return res.status(404).json({ error: 'Decisão não encontrada' })
-    }
-    
+
     if (decision.status !== 'pending_approval') {
       return res.status(400).json({ error: 'Decisão já foi processada' })
     }
-    
-    // 2. Atualizar decisão
+
     const finalAnswer = edited_answer || decision.answer
     const wasEdited = edited_answer && edited_answer !== decision.answer
-    
+
     const updateData: any = {
       status: 'approved',
       approved_by: user_id,
       approved_at: new Date().toISOString(),
       approved_answer: finalAnswer
     }
-    
+
     if (wasEdited) {
       updateData.edited_by = user_id
       updateData.edited_at = new Date().toISOString()
     }
-    
+
     const { error: updateError } = await supabase
       .from('tb_agent_decisions')
       .update(updateData)
       .eq('id', id)
-    
+
     if (updateError) {
       console.error('[approveDecision] Erro ao atualizar:', updateError)
       return res.status(500).json({ 
@@ -743,28 +741,31 @@ export async function approveDecision(req: Request, res: Response) {
 export async function rejectDecision(req: Request, res: Response) {
   try {
     const { id } = req.params
-    const { user_id } = req.body
-    
-    // Buscar decisão antes de atualizar para ter os dados
-    const { data: decision, error: fetchError } = await supabase
-      .from('tb_agent_decisions')
-      .select('*')
-      .eq('id', id)
-      .single()
-    
-    if (fetchError || !decision) {
-      return res.status(404).json({ error: 'Decisão não encontrada' })
+    const companiesId = getAuthenticatedCompaniesId(req)
+    const user_id = getAuthenticatedUserId(req)
+
+    if (!companiesId) {
+      return res.status(401).json({ error: 'Autenticação e workspace são obrigatórios' })
     }
-    
+
+    let decision
+    try {
+      decision = await assertAgentDecisionOwnedByCompany(String(id), companiesId)
+    } catch (err) {
+      if (err instanceof TenantOwnershipError) {
+        return res.status(err.statusCode).json({ error: err.message, code: err.code })
+      }
+      throw err
+    }
+
     const { error } = await supabase
       .from('tb_agent_decisions')
       .update({
         status: 'rejected',
         rejected_at: new Date().toISOString()
-        // Nota: rejected_by não existe na tabela, removido para evitar erro
       })
       .eq('id', id)
-    
+
     if (error) {
       console.error('[rejectDecision] Erro:', error)
       return res.status(500).json({ error: 'Erro ao rejeitar decisão' })
@@ -843,12 +844,12 @@ export async function rejectDecision(req: Request, res: Response) {
  */
 export async function assignAgent(req: Request, res: Response) {
   try {
-    const email = req.user?.email || req.body.email || req.headers['x-user-email'] as string
+    const companiesId = getAuthenticatedCompaniesId(req)
 
-    if (!email) {
+    if (!companiesId) {
       return res.status(401).json({
-        error: 'Email é obrigatório',
-        details: 'Token de autenticação inválido ou email não fornecido'
+        error: 'Autenticação e workspace são obrigatórios',
+        code: 'AUTH_REQUIRED',
       })
     }
 
@@ -861,31 +862,15 @@ export async function assignAgent(req: Request, res: Response) {
       })
     }
 
-    // Buscar companies_id
-    const companiesId = await getCompanyIdByEmail(email)
-    if (!companiesId) {
-      return res.status(403).json({
-        error: 'Empresa não encontrada',
-        details: 'Usuário não pertence a nenhuma empresa'
-      })
+    try {
+      await assertWhatsAppMessageOwnedByCompany(String(message_id), companiesId)
+    } catch (err) {
+      if (err instanceof TenantOwnershipError) {
+        return res.status(err.statusCode).json({ error: err.message, code: err.code })
+      }
+      throw err
     }
 
-    // Verificar se a mensagem existe e pertence à empresa
-    const { data: message, error: messageError } = await supabase
-      .from('tb_whatsapp_messages')
-      .select('id, integrations_id')
-      .eq('id', message_id)
-      .maybeSingle()
-
-    if (messageError || !message) {
-      logger.error('[assignAgent] Erro ao buscar mensagem:', messageError)
-      return res.status(404).json({
-        error: 'Mensagem não encontrada',
-        details: messageError?.message || 'A mensagem especificada não existe'
-      })
-    }
-
-    // Verificar se o agente pertence à empresa
     const { data: agent, error: agentError } = await supabase
       .from('tb_agents')
       .select('id, companies_id')
@@ -939,7 +924,7 @@ export async function assignAgent(req: Request, res: Response) {
 export async function deleteAgent(req: Request, res: Response) {
   try {
     const id = typeof req.params.id === 'string' ? req.params.id : req.params.id[0]
-    const email = req.user?.email || req.headers['x-user-email'] as string
+    const email = getAuthenticatedEmail(req)
 
     if (!email) {
       return res.status(401).json({

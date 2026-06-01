@@ -36,11 +36,14 @@ type PlanCatalogEntry = {
   hasGovernance?: boolean
   hasCustomDeployment?: boolean
   hasActiveOutbound: boolean
+  hasFlows?: boolean
+  hasCrmApi?: boolean
   priceDisplayMonthly: string
   stripePriceKeyMonthly: string
   stripe_price_key?: string
   billing_interval?: 'month'
   checkout_available?: boolean
+  coming_soon?: boolean
   sales_assisted?: boolean
 }
 
@@ -198,7 +201,9 @@ function PlanIcon({ plan, className }: { plan: PlanCatalogEntry; className?: str
 
 function buildPlanDetails(plan: PlanCatalogEntry): PlanDetail[] {
   const isEnterprise = plan.tier === 'enterprise'
-  const isGrowth = plan.tier === 'growth'
+  const hasFlows = Boolean(plan.hasFlows)
+  const hasCrmApi = Boolean(plan.hasCrmApi)
+  const isRecStart = plan.id === 'rec_start'
 
   const items: PlanDetail[] = [
     { label: plan.volumeLabel, included: true, emphasis: true },
@@ -218,8 +223,18 @@ function buildPlanDetails(plan: PlanCatalogEntry): PlanDetail[] {
       included: true,
     },
     {
+      label: 'FAQ receptiva e triagem automatizada',
+      included: plan.productLine === 'rec',
+      emphasis: plan.productLine === 'rec',
+    },
+    {
+      label: 'Handoff para atendente humano',
+      included: plan.productLine === 'rec',
+      emphasis: isRecStart,
+    },
+    {
       label: 'Fluxos visuais e editor de automações',
-      included: isGrowth || isEnterprise || plan.productLine === 'com',
+      included: hasFlows,
     },
   ]
 
@@ -234,15 +249,11 @@ function buildPlanDetails(plan: PlanCatalogEntry): PlanDetail[] {
     )
   } else {
     items.push(
-      { label: 'IA receptiva: inbound, FAQ e triagem automatizada', included: true, emphasis: true },
       { label: 'Operação SDR / outbound', included: false }
     )
   }
 
-  if (isGrowth || isEnterprise) {
-    items.push({ label: 'Integrações CRM, API e webhooks', included: true })
-  }
-
+  items.push({ label: 'Integrações CRM, API e webhooks', included: hasCrmApi })
   items.push(
     { label: 'Base de conhecimento (RAG)', included: plan.hasRAG },
     { label: 'Governança e aprovações de resposta', included: Boolean(plan.hasGovernance) },
@@ -283,6 +294,7 @@ interface BillingPlansSectionProps {
     usageLimitReached: string
     perMonth: string
     contactSales: string
+    comingSoon: string
     currentPlanBadge: string
   }
 }
@@ -336,7 +348,12 @@ export function BillingPlansSection({
     const details = buildPlanDetails(plan)
     const priceKey = plan.stripe_price_key || plan.stripePriceKeyMonthly
     const isCheckingOut = checkoutPlanId === priceKey
-    const needsSales = plan.sales_assisted || plan.tier === 'enterprise' || plan.checkout_available === false
+    const isComingSoon = plan.coming_soon === true
+    const canCheckout = plan.checkout_available === true && !isComingSoon
+    const needsSales =
+      !isComingSoon &&
+      !canCheckout &&
+      (plan.sales_assisted || plan.tier === 'enterprise')
 
     const convLimit = plan.monthlyConversations
     const showUsage = isCurrent && convLimit !== null
@@ -543,7 +560,7 @@ export function BillingPlansSection({
                 SLA
               </span>
             )}
-            {(plan.tier === 'growth' || plan.tier === 'enterprise') && (
+            {(plan.hasFlows || plan.tier === 'enterprise') && (
               <span
                 className={cn(
                   'inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium',
@@ -551,7 +568,18 @@ export function BillingPlansSection({
                 )}
               >
                 <Workflow className="h-3 w-3" />
-                Integrações
+                {plan.hasFlows ? 'Fluxos' : 'Integrações'}
+              </span>
+            )}
+            {plan.hasCrmApi && (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] font-medium',
+                  lineTheme.chipClass
+                )}
+              >
+                <Workflow className="h-3 w-3" />
+                CRM / API
               </span>
             )}
           </div>
@@ -563,6 +591,17 @@ export function BillingPlansSection({
               <Check className="h-4 w-4" />
               {labels.acquired}
             </div>
+          ) : isComingSoon ? (
+            <Button
+              className={cn(
+                'h-11 w-full rounded-xl text-[11px] font-bold uppercase tracking-[0.08em]',
+                lineTheme.salesButtonClass
+              )}
+              variant="outline"
+              disabled
+            >
+              {labels.comingSoon}
+            </Button>
           ) : needsSales ? (
             <Button
               className={cn(

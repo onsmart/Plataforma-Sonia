@@ -7,6 +7,8 @@ import {
   canUseActiveOutbound,
   canUseGovernance,
   canUseRAG,
+  canUseFlows,
+  canUseCrmApi,
   canUseSSO,
   getPlanInfo,
   planInfoCache,
@@ -249,6 +251,30 @@ describe('Plan Helper - canUseRAG', () => {
     await mockSubscription('com_growth')
     const result = await canUseRAG('test-company-id')
     expect(result.allowed).toBe(true)
+  })
+})
+
+describe('Plan Helper - canUseFlows e canUseCrmApi', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    planInfoCache.clear()
+  })
+
+  it('bloqueia fluxos no rec_start', async () => {
+    await mockSubscription('rec_start')
+    expect((await canUseFlows('test-company-id')).allowed).toBe(false)
+    expect((await canUseFlows('test-company-id')).upgradePlan).toBe('rec_growth')
+  })
+
+  it('permite fluxos e CRM no rec_growth', async () => {
+    await mockSubscription('rec_growth')
+    expect((await canUseFlows('test-company-id')).allowed).toBe(true)
+    expect((await canUseCrmApi('test-company-id')).allowed).toBe(true)
+  })
+
+  it('bloqueia CRM no rec_start', async () => {
+    await mockSubscription('rec_start')
+    expect((await canUseCrmApi('test-company-id')).allowed).toBe(false)
   })
 })
 

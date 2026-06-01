@@ -39,6 +39,21 @@ export function planHasRag(planId: string): boolean {
   return id === 'rec_growth' || id === 'rec_enterprise' || id === 'com_growth' || id === 'com_enterprise'
 }
 
+export function planHasFlows(planId: string): boolean {
+  const id = normalizePlanId(planId)
+  return id === 'rec_growth' || id === 'rec_enterprise' || id === 'com_growth' || id === 'com_enterprise'
+}
+
+export function planHasCrmApi(planId: string): boolean {
+  const id = normalizePlanId(planId)
+  return id === 'rec_growth' || id === 'rec_enterprise' || id === 'com_growth' || id === 'com_enterprise'
+}
+
+export function isSelfServePlan(planId: string): boolean {
+  const id = normalizePlanId(planId)
+  return id === 'rec_start' || id === 'rec_growth'
+}
+
 export function planTitle(planId: string): string {
   const id = normalizePlanId(planId)
   if (id === 'free') return 'Plano gratuito'

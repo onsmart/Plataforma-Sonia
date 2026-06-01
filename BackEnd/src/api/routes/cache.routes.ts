@@ -1,12 +1,22 @@
 import { Router } from 'express'
 import { clearCache, getCacheStatus } from '../controllers/cache.controller'
+import { requireAuth, requireAdmin } from '../../middleware/auth.middleware'
 
 const router = Router()
+const cacheAdminEnabled = process.env.ENABLE_CACHE_ADMIN !== 'false'
 
-// POST /cache/clear → limpa o cache do Supabase
-router.post('/clear', clearCache)
+function cacheAdminDisabled(_req: import('express').Request, res: import('express').Response) {
+  return res.status(404).json({ error: 'Not found' })
+}
 
-// GET /cache/status → verifica o status do cache
-router.get('/status', getCacheStatus)
+const cacheGuard = cacheAdminEnabled
+  ? [requireAuth, requireAdmin]
+  : [cacheAdminDisabled]
+
+// POST /cache/clear → limpa o cache do Supabase (admin only)
+router.post('/clear', ...cacheGuard, clearCache)
+
+// GET /cache/status → verifica o status do cache (admin only)
+router.get('/status', ...cacheGuard, getCacheStatus)
 
 export default router

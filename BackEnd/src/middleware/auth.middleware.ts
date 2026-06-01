@@ -360,3 +360,91 @@ export async function requireWorkspace(req: Request, res: Response, next: NextFu
     })
   }
 }
+
+export type PermissionKey = 'basic.admin' | 'basic.write' | 'basic.read'
+
+const PERMISSION_RANK: Record<PermissionKey, number> = {
+  'basic.read': 1,
+  'basic.write': 2,
+  'basic.admin': 3,
+}
+
+async function getEffectivePermissionRank(
+  userEmail: string,
+  companiesId: string
+): Promise<number> {
+  const adminCtx = await resolveBillingAdminContext(userEmail)
+  if (adminCtx.allowed) {
+    return PERMISSION_RANK['basic.admin']
+  }
+
+  const { data: userData } = await supabase
+    .from('tb_users')
+    .select('id')
+    .eq('email', userEmail)
+    .maybeSingle()
+
+  if (!userData?.id) return 0
+
+  const { data: companyUser } = await supabase
+    .from('tb_company_users')
+    .select('role')
+    .eq('user_id', userData.id)
+    .eq('companies_id', companiesId)
+    .maybeSingle()
+
+  if (!companyUser) return 0
+
+  if (companyUser.role === 'owner' || companyUser.role === 'admin') {
+    return PERMISSION_RANK['basic.admin']
+  }
+
+  let rank = PERMISSION_RANK['basic.read']
+
+  const { data: permissionRows } = await supabase
+    .from('tb_user_permissions')
+    .select('permission_id, tb_permissions(key)')
+    .eq('user_id', userData.id)
+    .eq('companies_id', companiesId)
+
+  for (const row of permissionRows || []) {
+    const key = String((row as { tb_permissions?: { key?: string } }).tb_permissions?.key || '')
+      .trim() as PermissionKey
+    if (key in PERMISSION_RANK) {
+      rank = Math.max(rank, PERMISSION_RANK[key])
+    }
+  }
+
+  return rank
+}
+
+/** RBAC fino — exige `requireAuth` + `requireWorkspace` antes. Owner/admin ou permissão equivalente. */
+export function requirePermission(minPermission: PermissionKey) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.email || !req.user.companiesId) {
+        return res.status(401).json({
+          error: 'Autenticação e workspace são obrigatórios',
+          code: 'AUTH_REQUIRED',
+        })
+      }
+
+      const rank = await getEffectivePermissionRank(req.user.email, req.user.companiesId)
+      if (rank < PERMISSION_RANK[minPermission]) {
+        return res.status(403).json({
+          error: 'Permissão insuficiente para esta ação',
+          code: 'PERMISSION_DENIED',
+          required: minPermission,
+        })
+      }
+
+      return next()
+    } catch (error: unknown) {
+      logger.error('[requirePermission] Erro:', error)
+      return res.status(500).json({
+        error: 'Erro ao verificar permissões',
+        code: 'PERMISSION_ERROR',
+      })
+    }
+  }
+}

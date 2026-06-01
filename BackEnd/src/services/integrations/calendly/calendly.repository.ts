@@ -2,6 +2,7 @@ import logger from '../../../lib/logger'
 import { supabase } from '../../../lib/supabase'
 import { getUserIdAndCompanyIdByEmail } from '../../../utils/company-helper'
 import { resolvePublicBackendBaseUrl } from '../../../utils/public-backend-url'
+import { assertCalendlyIntegrationOwnedByUser } from '../../../utils/tenant-ownership'
 
 function isPrivateOrLocalWebhookUrl(url: string): boolean {
   const value = String(url || '').trim().toLowerCase()
@@ -399,6 +400,9 @@ export async function persistCalendlyIntegrationForUser(
   }
 
   let existingConfig = integrationId ? await loadCalendlyIntegrationConfig(integrationId).catch(() => null) : null
+  if (integrationId) {
+    await assertCalendlyIntegrationOwnedByUser(integrationId, userEmail)
+  }
   const accessTokenInput = String(body.accessToken || '').trim()
   if (!integrationId && !accessTokenInput && !existingConfig?.accessToken) {
     const err = new Error('Informe o Personal Access Token do Calendly para criar a integracao.') as Error & {

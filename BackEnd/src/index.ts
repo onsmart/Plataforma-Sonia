@@ -3,6 +3,7 @@ import { logFlowHandoffEmailStartupStatus } from './services/flows/flow-team-not
 import { logPlatformEmailStartupStatus } from './services/platform-email.service'
 import express from 'express'
 import cors from 'cors'
+import helmet from 'helmet'
 import agentsRoutes from './api/routes/agents.routes'
 import authRoutes from './api/routes/auth.routes'
 import flowsRoutes from './api/routes/flows.routes'
@@ -38,45 +39,71 @@ import {
 } from './api/controllers/notifications.controller'
 import { registerRealtimeVoiceAgentService } from './modules/voice/services/voiceRuntime.service'
 import { createLocalRealtimeVoiceAgentServiceFromEnv } from './modules/voice/services/localRealtimeVoiceAgent.service'
-import { getWhatsAppMetaAppSecret } from './middleware/meta-webhook.middleware'
+import { isMetaWebhookConfigured } from './services/integrations/whatsapp/meta-webhook-secret.service'
+import { validateCalendlyWebhook } from './middleware/calendly-webhook.middleware'
+import { receiveCalendlyWebhook } from './api/controllers/calendar.controller'
+import {
+  globalRateLimiter,
+  webhookRateLimiter,
+  agentChatRateLimiter,
+} from './middleware/rate-limit.middleware'
+import { errorHandler, notFoundHandler } from './middleware/error-handler.middleware'
+import adminRoutes from './api/routes/admin.routes'
 
 const app = express()
+app.disable('x-powered-by')
+
+const corsOrigins = String(process.env.CORS_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean)
 
 registerRealtimeVoiceAgentService(createLocalRealtimeVoiceAgentServiceFromEnv())
 
-app.use(cors())
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    hsts: process.env.TRUST_PROXY_HTTPS === 'true' ? undefined : false,
+  })
+)
 
-// ✅ ENDPOINT DE TESTE - Para verificar se a rota está acessível
-app.get('/billing/webhook/test', (req, res) => {
-    console.log('✅ [TEST] Endpoint de teste acessado!')
-    res.json({ 
-        success: true, 
-        message: 'Webhook endpoint está acessível',
-        timestamp: new Date().toISOString(),
-        server: '192.168.15.31:3333'
+app.use(
+  cors({
+    origin: corsOrigins.length > 0 ? corsOrigins : false,
+    credentials: true,
+  })
+)
+
+app.use(globalRateLimiter)
+
+if (process.env.NODE_ENV !== 'production') {
+  app.get('/billing/webhook/test', (_req, res) => {
+    res.json({
+      success: true,
+      message: 'Webhook endpoint está acessível',
+      timestamp: new Date().toISOString(),
     })
-})
+  })
+}
 
 // ✅ CRÍTICO: Registrar webhook do Stripe ANTES de qualquer parsing de JSON
 // O Stripe precisa do body raw para verificar a assinatura do webhook
-app.post('/billing/webhook', express.raw({ type: 'application/json' }), (req, res, next) => {
-    console.log('')
-    console.log('═══════════════════════════════════════════════════════════')
-    console.log('🔔 [Index] Rota /billing/webhook chamada!')
-    console.log('═══════════════════════════════════════════════════════════')
-    console.log('📥 Method:', req.method)
-    console.log('📥 URL:', req.url)
-    console.log('📥 IP:', req.ip || req.connection.remoteAddress)
-    console.log('📥 Headers stripe-signature:', req.headers['stripe-signature'] ? 'presente' : 'ausente')
-    console.log('📥 Content-Type:', req.headers['content-type'])
-    console.log('📥 Body type:', typeof req.body)
-    console.log('📥 Body length:', req.body?.length || 0)
+app.post('/billing/webhook', webhookRateLimiter, express.raw({ type: 'application/json' }), (req, res) => {
     handleStripeWebhook(req, res)
 })
 
-// Webhook WhatsApp (Meta): corpo bruto + X-Hub-Signature-256 antes do express.json()
+app.post(
+  '/calendar/webhook/:id',
+  webhookRateLimiter,
+  express.raw({ type: 'application/json' }),
+  validateCalendlyWebhook,
+  receiveCalendlyWebhook
+)
+
 app.post(
   '/whatsapp/webhook',
+  webhookRateLimiter,
   express.raw({
     type: (req) => String(req.headers['content-type'] || '').includes('application/json'),
   }),
@@ -87,8 +114,8 @@ app.post(
 
 // Aumentar limite para suportar webhooks grandes
 // Agora aplicar express.json() para todas as outras rotas
-app.use(express.json({ limit: '50mb' }))
-app.use(express.urlencoded({ limit: '50mb', extended: true }))
+app.use(express.json({ limit: '12mb' }))
+app.use(express.urlencoded({ limit: '12mb', extended: true }))
 
 // Rotas de agentes (execução direta - mantido para compatibilidade)
 app.use('/agents', agentsRoutes)
@@ -97,7 +124,7 @@ app.use('/agents', agentsRoutes)
 app.use('/flows', flowsRoutes)
 
 // Rotas de Chat (Atalho para /agents/chat — requer autenticação)
-app.post('/chat', requireAuth, requireWorkspace, agentChat)
+app.post('/chat', requireAuth, requireWorkspace, agentChatRateLimiter, agentChat)
 
 // Rotas de autenticação
 app.use('/auth/outlook', authRoutes)
@@ -145,6 +172,7 @@ app.use('/voice', voiceRoutes)
 
 // Sonia Copilot (assistente fixa da plataforma)
 app.use('/copilot', copilotRoutes)
+app.use('/admin', adminRoutes)
 
 // Rotas que existiam na Edge Function e o front chama no BASE_URL (porta 3333)
 app.get('/dashboard', requireAuth, requireWorkspace, getDashboard)
@@ -152,6 +180,9 @@ app.get('/insights', requireAuth, requireWorkspace, getInsightsApi)
 app.get('/notifications', requireAuth, requireWorkspace, listNotifications)
 app.post('/notifications/mark-read', requireAuth, requireWorkspace, markNotificationRead)
 app.post('/notifications/test', requireAuth, requireWorkspace, testNotification)
+
+app.use(notFoundHandler)
+app.use(errorHandler)
 
 // Inicia worker de fila para processar respostas do WhatsApp
 let queueWorkerStarted = false
@@ -172,20 +203,18 @@ app.listen(3333, '0.0.0.0', async () => {
   logFlowHandoffEmailStartupStatus()
   logPlatformEmailStartupStatus()
   console.log('🚀 Backend rodando em http://0.0.0.0:3333')
-  console.log('🌐 Acessível em: http://192.168.15.31:3333')
   console.log('📊 Flows disponíveis em /flows')
   console.log('🤖 Agentes disponíveis em /agents')
   console.log('📱 WhatsApp disponível em /whatsapp')
-  const metaWebhookSecretConfigured = Boolean(getWhatsAppMetaAppSecret())
+  const metaWebhookSecretConfigured = await isMetaWebhookConfigured()
   console.log(
     metaWebhookSecretConfigured
-      ? '🔐 POST /whatsapp/webhook exige X-Hub-Signature-256 (HMAC Meta ativo)'
-      : '⚠️ WHATSAPP_META_APP_SECRET ausente — POST /whatsapp/webhook retornará 403'
+      ? '🔐 POST /whatsapp/webhook exige X-Hub-Signature-256 (env ou meta_app_secret por integração)'
+      : '⚠️ Nenhum App Secret Meta (env ou integração) — POST /whatsapp/webhook retornará 403'
   )
   console.log('🧹 Cache disponível em /cache')
   console.log('💳 Billing disponível em /billing')
   console.log('💳 Billing Webhook disponível em /billing/webhook')
-  console.log('🧪 Teste do Webhook: http://192.168.15.31:3333/billing/webhook/test')
   console.log('📈 KPIs disponíveis em /kpis')
   console.log('📊 Dashboard em /dashboard | Insights em /insights | Notificações em /notifications')
 

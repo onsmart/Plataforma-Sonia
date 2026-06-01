@@ -6,16 +6,17 @@
     <title>Plataforma de Atendimento SONIA</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 
-    <!-- CSP aberta para desenvolvimento -->
+    <!-- CSP: restrita; em dev o Vite pode exigir ajustes locais -->
     <meta
       http-equiv="Content-Security-Policy"
       content="
-        default-src * 'unsafe-inline' 'unsafe-eval';
-        connect-src *;
-        script-src * 'unsafe-inline' 'unsafe-eval';
-        style-src * 'unsafe-inline';
-        img-src * data:;
-        media-src * blob: data:;
+        default-src 'self';
+        connect-src 'self' https: wss: http://localhost:* http://127.0.0.1:*;
+        script-src 'self' 'unsafe-inline';
+        style-src 'self' 'unsafe-inline';
+        img-src 'self' data: https:;
+        media-src 'self' blob: data:;
+        frame-ancestors 'none';
       "
     />
   </head>

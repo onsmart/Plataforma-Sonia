@@ -27,19 +27,35 @@ const BRAND_LABELS: Record<IntegrationBrandKey, string> = {
   generic: 'E-mail',
 }
 
-/** Logos oficiais em /public/integrations (Simple Icons + marcas em cores) */
-const BRAND_LOGO_SRC: Record<IntegrationBrandKey, string> = {
-  calendly: '/integrations/calendly.svg',
-  hubspot: '/integrations/hubspot.svg',
-  whatsapp: '/integrations/whatsapp.svg',
-  mailchimp: '/integrations/mailchimp.svg',
-  gmail: '/integrations/gmail.svg',
-  google: '/integrations/google.svg',
-  microsoft365: '/integrations/microsoft.svg',
-  microsoft: '/integrations/microsoft.svg',
-  yahoo: '/integrations/yahoo.svg',
-  email: '/integrations/email.svg',
-  generic: '/integrations/email.svg',
+type BrandAsset = {
+  src: string
+  boxedSrc?: string
+  boxBackground?: string
+}
+
+/** Logos oficiais em /public/integrations */
+const BRAND_ASSETS: Record<IntegrationBrandKey, BrandAsset> = {
+  calendly: {
+    src: '/integrations/calendly.svg',
+    boxedSrc: '/integrations/calendly-mark.svg',
+    boxBackground: '#006BFF',
+  },
+  hubspot: {
+    src: '/integrations/hubspot.svg',
+  },
+  whatsapp: {
+    src: '/integrations/whatsapp.svg',
+    boxedSrc: '/integrations/whatsapp-mark.svg',
+    boxBackground: '#25D366',
+  },
+  mailchimp: { src: '/integrations/mailchimp.svg', boxBackground: '#FFE01B' },
+  gmail: { src: '/integrations/gmail.svg', boxBackground: '#ffffff' },
+  google: { src: '/integrations/google.svg', boxBackground: '#ffffff' },
+  microsoft365: { src: '/integrations/microsoft.svg', boxBackground: '#ffffff' },
+  microsoft: { src: '/integrations/microsoft.svg', boxBackground: '#ffffff' },
+  yahoo: { src: '/integrations/yahoo.svg', boxBackground: '#ffffff' },
+  email: { src: '/integrations/email.svg', boxBackground: '#ffffff' },
+  generic: { src: '/integrations/email.svg', boxBackground: '#ffffff' },
 }
 
 export function normalizeIntegrationBrandKey(
@@ -80,14 +96,20 @@ export function getIntegrationBrandLabel(key: IntegrationBrandKey): string {
   return BRAND_LABELS[key] || BRAND_LABELS.generic
 }
 
-export function getIntegrationLogoSrc(key: IntegrationBrandKey): string {
-  return BRAND_LOGO_SRC[key] || BRAND_LOGO_SRC.generic
+export function getIntegrationLogoSrc(key: IntegrationBrandKey, boxed = false): string {
+  const asset = BRAND_ASSETS[key] || BRAND_ASSETS.generic
+  if (boxed && asset.boxedSrc) return asset.boxedSrc
+  return asset.src
 }
 
 export function getIntegrationIconBoxStyle(
-  _key: IntegrationBrandKey,
+  key: IntegrationBrandKey,
   isDark?: boolean
 ): { backgroundColor: string } {
+  const asset = BRAND_ASSETS[key] || BRAND_ASSETS.generic
+  if (asset.boxBackground) {
+    return { backgroundColor: asset.boxBackground }
+  }
   return {
     backgroundColor: isDark ? 'rgba(255, 255, 255, 0.96)' : '#ffffff',
   }
@@ -99,7 +121,6 @@ export interface IntegrationBrandIconProps {
   preset?: string | null
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
   className?: string
-  /** Quadrado com fundo claro (estilo card de integração) */
   boxed?: boolean
   isDark?: boolean
 }
@@ -122,7 +143,7 @@ export function IntegrationBrandIcon({
   isDark = false,
 }: IntegrationBrandIconProps) {
   const brandKey = normalizeIntegrationBrandKey(slug || preset || provider)
-  const src = getIntegrationLogoSrc(brandKey)
+  const src = getIntegrationLogoSrc(brandKey, boxed)
   const label = getIntegrationBrandLabel(brandKey)
   const sizes = SIZE_MAP[size]
 

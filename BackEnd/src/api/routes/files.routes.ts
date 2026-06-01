@@ -12,11 +12,15 @@ filesRoutes.post('/upload', requireAuth, requireWorkspace, (req, res) => filesCo
 
 // Rota para processar vetorização de arquivo
 // POST /files/:fileId/process
-filesRoutes.post('/:fileId/process', (req, res) => filesController.process(req, res))
+filesRoutes.post('/:fileId/process', requireAuth, requireWorkspace, (req, res) =>
+  filesController.process(req, res)
+)
 
 // Rota para listar skills de um arquivo
 // GET /files/:fileId/skills
-filesRoutes.get('/:fileId/skills', (req, res) => filesController.getSkills(req, res))
+filesRoutes.get('/:fileId/skills', requireAuth, requireWorkspace, (req, res) =>
+  filesController.getSkills(req, res)
+)
 
 // GET /files/:fileId/readiness — arquivo processado e pronto para o agente
 filesRoutes.get('/:fileId/readiness', requireAuth, requireWorkspace, (req, res) => filesController.readiness(req, res))
