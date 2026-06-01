@@ -46,6 +46,8 @@ exports.canAcceptConversation = canAcceptConversation;
 exports.canSendMessage = canSendMessage;
 exports.canUseActiveOutbound = canUseActiveOutbound;
 exports.canUseRAG = canUseRAG;
+exports.canUseFlows = canUseFlows;
+exports.canUseCrmApi = canUseCrmApi;
 exports.canUseSSO = canUseSSO;
 exports.canUseGovernance = canUseGovernance;
 const supabase_1 = require("../lib/supabase");
@@ -323,6 +325,44 @@ async function canUseRAG(companiesId) {
         return {
             allowed: false,
             reason: `A base de conhecimento (RAG) não está incluída no plano ${planInfo.planTitle}. Faça upgrade para ${(0, plans_catalog_1.getPlanCatalogEntry)(upgradePlan).title}.`,
+            upgradePlan,
+        };
+    }
+    return { allowed: true };
+}
+async function canUseFlows(companiesId) {
+    const planInfo = await getPlanInfo(companiesId);
+    if (planInfo.status !== 'active') {
+        return {
+            allowed: false,
+            reason: 'Você não tem uma assinatura ativa. Contrate o plano Receptivo Growth para usar fluxos visuais.',
+            upgradePlan: 'rec_growth',
+        };
+    }
+    if (!planInfo.limits.hasFlows) {
+        const upgradePlan = suggestUpgradePlan(planInfo.plan);
+        return {
+            allowed: false,
+            reason: `Fluxos visuais não estão incluídos no plano ${planInfo.planTitle}. Faça upgrade para ${(0, plans_catalog_1.getPlanCatalogEntry)(upgradePlan).title}.`,
+            upgradePlan,
+        };
+    }
+    return { allowed: true };
+}
+async function canUseCrmApi(companiesId) {
+    const planInfo = await getPlanInfo(companiesId);
+    if (planInfo.status !== 'active') {
+        return {
+            allowed: false,
+            reason: 'Você não tem uma assinatura ativa. Contrate o plano Receptivo Growth para integrações CRM/API.',
+            upgradePlan: 'rec_growth',
+        };
+    }
+    if (!planInfo.limits.hasCrmApi) {
+        const upgradePlan = suggestUpgradePlan(planInfo.plan);
+        return {
+            allowed: false,
+            reason: `Integrações CRM e API não estão incluídas no plano ${planInfo.planTitle}. Faça upgrade para ${(0, plans_catalog_1.getPlanCatalogEntry)(upgradePlan).title}.`,
             upgradePlan,
         };
     }

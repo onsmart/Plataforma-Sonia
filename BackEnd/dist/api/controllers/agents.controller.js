@@ -47,7 +47,6 @@ exports.approveDecision = approveDecision;
 exports.rejectDecision = rejectDecision;
 exports.assignAgent = assignAgent;
 exports.deleteAgent = deleteAgent;
-exports.provisionOnsmartDemoController = provisionOnsmartDemoController;
 const agents_1 = require("../../services/agents");
 const agent_turn_service_1 = require("../../services/agents/agent-turn.service");
 const supabase_1 = require("../../lib/supabase");
@@ -56,8 +55,9 @@ const plan_helper_1 = require("../../utils/plan-helper");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const agent_language_1 = require("../../utils/agent-language");
 const voiceRuntime_service_1 = require("../../modules/voice/services/voiceRuntime.service");
-const provision_onsmart_demo_service_1 = require("../../services/agents/provision-onsmart-demo.service");
 const agent_setup_health_service_1 = require("../../services/agents/agent-setup-health.service");
+const tenant_ownership_1 = require("../../utils/tenant-ownership");
+const request_auth_1 = require("../../utils/request-auth");
 function normalizeIntegrationId(value) {
     const normalized = String(value || '').trim();
     if (!normalized || normalized === 'none' || normalized === 'loading') {
@@ -114,7 +114,7 @@ async function validateMetaWhatsAppIntegration(integrationId, companiesId) {
 async function listAgents(req, res) {
     try {
         // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-        const email = req.user?.email || req.query.email;
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({
                 error: 'Email é obrigatório',
@@ -137,7 +137,7 @@ async function listAgents(req, res) {
  */
 async function getAgentSkillsForRequest(req, res) {
     try {
-        const email = req.user?.email || req.query.email;
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({
                 error: 'Email é obrigatório',
@@ -183,7 +183,7 @@ async function getAgentSkillsForRequest(req, res) {
 async function createAgent(req, res) {
     try {
         // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({
                 error: 'Email é obrigatório',
@@ -284,7 +284,7 @@ async function createAgent(req, res) {
 async function updateAgent(req, res) {
     try {
         const id = typeof req.params.id === 'string' ? req.params.id : req.params.id[0];
-        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({
                 error: 'Email é obrigatório',
@@ -385,7 +385,7 @@ async function activateAgent(req, res) {
     try {
         const id = typeof req.params.id === 'string' ? req.params.id : req.params.id[0];
         // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({
                 error: 'Email é obrigatório',
@@ -479,7 +479,7 @@ async function activateAgent(req, res) {
 async function getAgentSetupHealthController(req, res) {
     try {
         const id = String(req.params.id || '').trim();
-        const email = String(req.user?.email || req.query.email || '').trim();
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!id || !email) {
             return res.status(400).json({ error: 'id do agente e autenticacao sao obrigatorios.' });
         }
@@ -543,34 +543,30 @@ async function agentChat(req, res) {
 }
 async function approveDecision(req, res) {
     try {
-        const { id } = req.params;
-        const { edited_answer, user_id } = req.body;
-        if (!user_id) {
-            return res.status(400).json({ error: 'user_id é obrigatório' });
+        const { id: rawId } = req.params;
+        const decisionId = String(rawId || '').trim();
+        const { edited_answer } = req.body;
+        const companiesId = (0, request_auth_1.getAuthenticatedCompaniesId)(req);
+        const user_id = (0, request_auth_1.getAuthenticatedUserId)(req);
+        if (!companiesId || !user_id) {
+            return res.status(401).json({ error: 'Autenticação e workspace são obrigatórios' });
         }
-        if (!id) {
+        if (!decisionId) {
             return res.status(400).json({ error: 'id é obrigatório' });
         }
-        // 1. Buscar decisão
-        const { data: decision, error: fetchError } = await supabase_1.supabase
-            .from('tb_agent_decisions')
-            .select('*')
-            .eq('id', id)
-            .single();
-        if (fetchError) {
-            console.error('[approveDecision] Erro ao buscar decisão:', fetchError);
-            return res.status(500).json({
-                error: 'Erro ao buscar decisão',
-                details: fetchError.message
-            });
+        let decision;
+        try {
+            decision = await (0, tenant_ownership_1.assertAgentDecisionOwnedByCompany)(decisionId, companiesId);
         }
-        if (!decision) {
-            return res.status(404).json({ error: 'Decisão não encontrada' });
+        catch (err) {
+            if (err instanceof tenant_ownership_1.TenantOwnershipError) {
+                return res.status(err.statusCode).json({ error: err.message, code: err.code });
+            }
+            throw err;
         }
         if (decision.status !== 'pending_approval') {
             return res.status(400).json({ error: 'Decisão já foi processada' });
         }
-        // 2. Atualizar decisão
         const finalAnswer = edited_answer || decision.answer;
         const wasEdited = edited_answer && edited_answer !== decision.answer;
         const updateData = {
@@ -586,7 +582,7 @@ async function approveDecision(req, res) {
         const { error: updateError } = await supabase_1.supabase
             .from('tb_agent_decisions')
             .update(updateData)
-            .eq('id', id);
+            .eq('id', decisionId);
         if (updateError) {
             console.error('[approveDecision] Erro ao atualizar:', updateError);
             return res.status(500).json({
@@ -605,10 +601,10 @@ async function approveDecision(req, res) {
                 .select('email')
                 .eq('id', user_id)
                 .maybeSingle();
-            let companiesId = decision.companies_id;
-            if (!companiesId && userData?.email) {
+            let logCompaniesId = typeof decision.companies_id === 'string' ? decision.companies_id : undefined;
+            if (!logCompaniesId && userData?.email) {
                 const userCompanyData = await getUserIdAndCompanyIdByEmail(userData.email);
-                companiesId = userCompanyData.companyId || undefined;
+                logCompaniesId = userCompanyData.companyId || undefined;
             }
             // Buscar nome do agente
             const { data: agentData } = await supabase_1.supabase
@@ -616,20 +612,20 @@ async function approveDecision(req, res) {
                 .select('nome')
                 .eq('id', decision.agent_id)
                 .maybeSingle();
-            const agentName = agentData?.nome || decision.agent_id;
+            const agentName = agentData?.nome || String(decision.agent_id);
             const message = wasEdited
                 ? `Decisão do agente "${agentName}" aprovada e editada pelo usuário`
                 : `Decisão do agente "${agentName}" aprovada pelo usuário`;
             await saveSystemLog({
-                companies_id: companiesId,
+                companies_id: logCompaniesId,
                 user_id: user_id,
                 user_email: userData?.email,
-                agent_id: decision.agent_id,
+                agent_id: String(decision.agent_id),
                 log_type: 'decision_approved',
                 level: 'info',
                 message,
                 metadata: {
-                    decision_id: id,
+                    decision_id: decisionId,
                     agent_id: decision.agent_id,
                     agent_name: agentName,
                     was_edited: wasEdited,
@@ -650,12 +646,12 @@ async function approveDecision(req, res) {
         if (decision.channel === 'whatsapp' && decision.integrations_id && decision.contact_id) {
             try {
                 const delivery = await (0, voiceRuntime_service_1.sendAgentWhatsAppResponseWithVoiceFallback)({
-                    integrationId: decision.integrations_id,
-                    text: finalAnswer,
-                    to: decision.contact_id,
-                    agentId: decision.agent_id,
+                    integrationId: String(decision.integrations_id),
+                    text: String(finalAnswer),
+                    to: String(decision.contact_id),
+                    agentId: String(decision.agent_id),
                     context: {
-                        approved_decision_id: id,
+                        approved_decision_id: decisionId,
                         request_started_at: new Date().toISOString(),
                     },
                 });
@@ -682,7 +678,7 @@ async function approveDecision(req, res) {
         }
         return res.json({
             success: true,
-            decision_id: id,
+            decision_id: decisionId,
             message: 'Decisão aprovada e mensagem enviada com sucesso'
         });
     }
@@ -696,25 +692,33 @@ async function approveDecision(req, res) {
 }
 async function rejectDecision(req, res) {
     try {
-        const { id } = req.params;
-        const { user_id } = req.body;
-        // Buscar decisão antes de atualizar para ter os dados
-        const { data: decision, error: fetchError } = await supabase_1.supabase
-            .from('tb_agent_decisions')
-            .select('*')
-            .eq('id', id)
-            .single();
-        if (fetchError || !decision) {
-            return res.status(404).json({ error: 'Decisão não encontrada' });
+        const { id: rawId } = req.params;
+        const decisionId = String(rawId || '').trim();
+        const companiesId = (0, request_auth_1.getAuthenticatedCompaniesId)(req);
+        const user_id = (0, request_auth_1.getAuthenticatedUserId)(req);
+        if (!companiesId) {
+            return res.status(401).json({ error: 'Autenticação e workspace são obrigatórios' });
+        }
+        if (!decisionId) {
+            return res.status(400).json({ error: 'id é obrigatório' });
+        }
+        let decision;
+        try {
+            decision = await (0, tenant_ownership_1.assertAgentDecisionOwnedByCompany)(decisionId, companiesId);
+        }
+        catch (err) {
+            if (err instanceof tenant_ownership_1.TenantOwnershipError) {
+                return res.status(err.statusCode).json({ error: err.message, code: err.code });
+            }
+            throw err;
         }
         const { error } = await supabase_1.supabase
             .from('tb_agent_decisions')
             .update({
             status: 'rejected',
             rejected_at: new Date().toISOString()
-            // Nota: rejected_by não existe na tabela, removido para evitar erro
         })
-            .eq('id', id);
+            .eq('id', decisionId);
         if (error) {
             console.error('[rejectDecision] Erro:', error);
             return res.status(500).json({ error: 'Erro ao rejeitar decisão' });
@@ -725,7 +729,7 @@ async function rejectDecision(req, res) {
             const { getUserIdAndCompanyIdByEmail } = await Promise.resolve().then(() => __importStar(require('../../utils/company-helper')));
             // Buscar email do usuário que rejeitou (se tiver user_id)
             let userEmail;
-            let companiesId = decision.companies_id;
+            let logCompaniesId = typeof decision.companies_id === 'string' ? decision.companies_id : undefined;
             if (user_id) {
                 const { data: userData } = await supabase_1.supabase
                     .from('tb_users')
@@ -733,9 +737,9 @@ async function rejectDecision(req, res) {
                     .eq('id', user_id)
                     .maybeSingle();
                 userEmail = userData?.email;
-                if (!companiesId && userEmail) {
+                if (!logCompaniesId && userEmail) {
                     const userCompanyData = await getUserIdAndCompanyIdByEmail(userEmail);
-                    companiesId = userCompanyData.companyId || undefined;
+                    logCompaniesId = userCompanyData.companyId || undefined;
                 }
             }
             // Buscar nome do agente
@@ -744,18 +748,18 @@ async function rejectDecision(req, res) {
                 .select('nome')
                 .eq('id', decision.agent_id)
                 .maybeSingle();
-            const agentName = agentData?.nome || decision.agent_id;
+            const agentName = agentData?.nome || String(decision.agent_id);
             const message = `Decisão do agente "${agentName}" rejeitada pelo usuário`;
             await saveSystemLog({
-                companies_id: companiesId,
+                companies_id: logCompaniesId,
                 user_id: user_id || undefined,
                 user_email: userEmail,
-                agent_id: decision.agent_id,
+                agent_id: String(decision.agent_id),
                 log_type: 'decision_rejected',
                 level: 'info',
                 message,
                 metadata: {
-                    decision_id: id,
+                    decision_id: decisionId,
                     agent_id: decision.agent_id,
                     agent_name: agentName,
                     original_answer: decision.answer,
@@ -770,7 +774,7 @@ async function rejectDecision(req, res) {
             console.warn('[rejectDecision] Erro ao salvar log de rejeição:', logError);
             // Não bloqueia a rejeição se falhar ao salvar log
         }
-        return res.json({ success: true, decision_id: id });
+        return res.json({ success: true, decision_id: decisionId });
     }
     catch (error) {
         console.error('[rejectDecision] Erro:', error);
@@ -786,11 +790,11 @@ async function rejectDecision(req, res) {
  */
 async function assignAgent(req, res) {
     try {
-        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
-        if (!email) {
+        const companiesId = (0, request_auth_1.getAuthenticatedCompaniesId)(req);
+        if (!companiesId) {
             return res.status(401).json({
-                error: 'Email é obrigatório',
-                details: 'Token de autenticação inválido ou email não fornecido'
+                error: 'Autenticação e workspace são obrigatórios',
+                code: 'AUTH_REQUIRED',
             });
         }
         const { message_id, agent_id } = req.body;
@@ -800,28 +804,15 @@ async function assignAgent(req, res) {
                 details: 'message_id e agent_id são obrigatórios'
             });
         }
-        // Buscar companies_id
-        const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
-        if (!companiesId) {
-            return res.status(403).json({
-                error: 'Empresa não encontrada',
-                details: 'Usuário não pertence a nenhuma empresa'
-            });
+        try {
+            await (0, tenant_ownership_1.assertWhatsAppMessageOwnedByCompany)(String(message_id), companiesId);
         }
-        // Verificar se a mensagem existe e pertence à empresa
-        const { data: message, error: messageError } = await supabase_1.supabase
-            .from('tb_whatsapp_messages')
-            .select('id, integrations_id')
-            .eq('id', message_id)
-            .maybeSingle();
-        if (messageError || !message) {
-            logger_1.default.error('[assignAgent] Erro ao buscar mensagem:', messageError);
-            return res.status(404).json({
-                error: 'Mensagem não encontrada',
-                details: messageError?.message || 'A mensagem especificada não existe'
-            });
+        catch (err) {
+            if (err instanceof tenant_ownership_1.TenantOwnershipError) {
+                return res.status(err.statusCode).json({ error: err.message, code: err.code });
+            }
+            throw err;
         }
-        // Verificar se o agente pertence à empresa
         const { data: agent, error: agentError } = await supabase_1.supabase
             .from('tb_agents')
             .select('id, companies_id')
@@ -871,7 +862,7 @@ async function assignAgent(req, res) {
 async function deleteAgent(req, res) {
     try {
         const id = typeof req.params.id === 'string' ? req.params.id : req.params.id[0];
-        const email = req.user?.email || req.headers['x-user-email'];
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({
                 error: 'Email é obrigatório',
@@ -915,33 +906,6 @@ async function deleteAgent(req, res) {
         return res.status(500).json({
             error: 'Erro ao excluir agente',
             details: error instanceof Error ? error.message : String(error),
-        });
-    }
-}
-/**
- * POST /agents/provision-onsmart-demo
- * Provisiona template + agente Sonia Onsmart (FAQ + Calendly, sem fluxo).
- */
-async function provisionOnsmartDemoController(req, res) {
-    try {
-        const email = req.user?.email;
-        if (!email) {
-            return res.status(401).json({ error: 'Usuario nao autenticado' });
-        }
-        const { calendlyIntegrationId, whatsappIntegrationId, specialty, welcomeMessage, } = req.body || {};
-        const result = await (0, provision_onsmart_demo_service_1.provisionOnsmartDemo)(email, {
-            calendlyIntegrationId,
-            whatsappIntegrationId,
-            specialty,
-            welcomeMessage,
-        });
-        return res.json({ success: true, ...result });
-    }
-    catch (error) {
-        logger_1.default.error('[provisionOnsmartDemo] Erro:', error);
-        return res.status(500).json({
-            error: 'Erro ao provisionar demo Onsmart',
-            details: error?.message || String(error),
         });
     }
 }

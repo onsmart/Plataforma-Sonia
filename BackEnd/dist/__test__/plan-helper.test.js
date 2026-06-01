@@ -238,6 +238,26 @@ async function mockSubscription(plan, status = 'active') {
         (0, vitest_1.expect)(result.allowed).toBe(true);
     });
 });
+(0, vitest_1.describe)('Plan Helper - canUseFlows e canUseCrmApi', () => {
+    (0, vitest_1.beforeEach)(() => {
+        vitest_1.vi.clearAllMocks();
+        plan_helper_1.planInfoCache.clear();
+    });
+    (0, vitest_1.it)('bloqueia fluxos no rec_start', async () => {
+        await mockSubscription('rec_start');
+        (0, vitest_1.expect)((await (0, plan_helper_1.canUseFlows)('test-company-id')).allowed).toBe(false);
+        (0, vitest_1.expect)((await (0, plan_helper_1.canUseFlows)('test-company-id')).upgradePlan).toBe('rec_growth');
+    });
+    (0, vitest_1.it)('permite fluxos e CRM no rec_growth', async () => {
+        await mockSubscription('rec_growth');
+        (0, vitest_1.expect)((await (0, plan_helper_1.canUseFlows)('test-company-id')).allowed).toBe(true);
+        (0, vitest_1.expect)((await (0, plan_helper_1.canUseCrmApi)('test-company-id')).allowed).toBe(true);
+    });
+    (0, vitest_1.it)('bloqueia CRM no rec_start', async () => {
+        await mockSubscription('rec_start');
+        (0, vitest_1.expect)((await (0, plan_helper_1.canUseCrmApi)('test-company-id')).allowed).toBe(false);
+    });
+});
 (0, vitest_1.describe)('Plan Helper - governance e SSO', () => {
     (0, vitest_1.beforeEach)(() => {
         vitest_1.vi.clearAllMocks();

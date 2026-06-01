@@ -15,7 +15,7 @@ async function calculateKPIs(filters) {
         logger_1.default.log('[calculateKPIs] Iniciando cálculo de KPIs para email:', filters.email);
         const companyId = await (0, company_helper_1.getCompanyIdByEmail)(filters.email);
         if (!companyId) {
-            logger_1.default.error('[calculateKPIs] Company ID não encontrado para email:', filters.email);
+            logger_1.default.warn('[calculateKPIs] Workspace não encontrado para email:', filters.email);
             throw new Error('Company ID não encontrado');
         }
         logger_1.default.log('[calculateKPIs] Company ID encontrado:', companyId);

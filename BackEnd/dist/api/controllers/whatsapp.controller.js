@@ -214,8 +214,10 @@ function buildWhatsAppIntegrationResponse(integration, linkedAgent, linkedFlow, 
         app_key: integration.app_key,
         access_token: includeSecrets ? integration.access_token : null,
         auth_token: includeSecrets ? integration.auth_token : null,
+        meta_app_secret: includeSecrets ? integration.meta_app_secret : null,
         has_access_token: !!String(integration.access_token || '').trim(),
         has_auth_token: !!String(integration.auth_token || '').trim(),
+        has_meta_app_secret: !!String(integration.meta_app_secret || '').trim(),
         provider: integration.provider,
         automation_mode: normalizeAutomationMode(integration.automation_mode, integration.linked_flow_id),
         linked_flow_id: integration.linked_flow_id || null,
@@ -397,14 +399,14 @@ async function loadOwnedWhatsAppIntegration(email, integrationId) {
     const platformUser = await getAuthenticatedPlatformUser(email);
     let response = await supabase_1.supabase
         .from('tb_integrations')
-        .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, provider, automation_mode, linked_flow_id, created_at')
+        .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, meta_app_secret, provider, automation_mode, linked_flow_id, created_at')
         .eq('id', integrationId)
         .eq('provider', 'whatsapp')
         .maybeSingle();
     if (response.error && hasAutomationColumnError(response.error)) {
         response = await supabase_1.supabase
             .from('tb_integrations')
-            .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, provider, created_at')
+            .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, meta_app_secret, provider, created_at')
             .eq('id', integrationId)
             .eq('provider', 'whatsapp')
             .maybeSingle();
@@ -423,26 +425,32 @@ function normalizeWhatsappPayload(body) {
     const appKey = String(body?.app_key || body?.phoneNumberId || '').trim();
     const accessToken = String(body?.access_token || body?.accessToken || '').trim();
     const authToken = String(body?.auth_token || body?.verifyToken || '').trim();
+    const metaAppSecret = String(body?.meta_app_secret || body?.metaAppSecret || body?.app_secret || body?.appSecret || '').trim();
     return {
         phone_number: phoneNumber || null,
         app_key: appKey || null,
         access_token: accessToken || null,
-        auth_token: authToken || null
+        auth_token: authToken || null,
+        meta_app_secret: metaAppSecret || null,
     };
 }
 function hasAnyWhatsAppConfig(payload) {
-    return !!(payload.phone_number || payload.app_key || payload.access_token || payload.auth_token);
+    return !!(payload.phone_number ||
+        payload.app_key ||
+        payload.access_token ||
+        payload.auth_token ||
+        payload.meta_app_secret);
 }
 async function loadCandidateWhatsAppIntegrations() {
     let response = await supabase_1.supabase
         .from('tb_integrations')
-        .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, provider, automation_mode, linked_flow_id, created_at')
+        .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, meta_app_secret, provider, automation_mode, linked_flow_id, created_at')
         .eq('provider', 'whatsapp')
         .order('created_at', { ascending: false });
     if (response.error && hasAutomationColumnError(response.error)) {
         response = await supabase_1.supabase
             .from('tb_integrations')
-            .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, provider, created_at')
+            .select('id, user_id, companies_id, phone_number, app_key, access_token, auth_token, meta_app_secret, provider, created_at')
             .eq('provider', 'whatsapp')
             .order('created_at', { ascending: false });
     }
@@ -1050,7 +1058,8 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
             phone_number: normalizedPayload.phone_number,
             app_key: normalizedPayload.app_key,
             access_token: normalizedPayload.access_token || primaryOwned?.access_token || null,
-            auth_token: normalizedPayload.auth_token || primaryOwned?.auth_token || null
+            auth_token: normalizedPayload.auth_token || primaryOwned?.auth_token || null,
+            meta_app_secret: normalizedPayload.meta_app_secret || primaryOwned?.meta_app_secret || null,
         };
         const integrationPayloadWithAutomation = {
             ...integrationPayload,

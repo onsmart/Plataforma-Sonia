@@ -41,6 +41,7 @@ const flow_team_notify_config_1 = require("./services/flows/flow-team-notify.con
 const platform_email_service_1 = require("./services/platform-email.service");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
+const helmet_1 = __importDefault(require("helmet"));
 const agents_routes_1 = __importDefault(require("./api/routes/agents.routes"));
 const auth_routes_1 = __importDefault(require("./api/routes/auth.routes"));
 const flows_routes_1 = __importDefault(require("./api/routes/flows.routes"));
@@ -61,6 +62,7 @@ const calendar_routes_1 = __importDefault(require("./api/routes/calendar.routes"
 const crm_routes_1 = __importDefault(require("./api/routes/crm.routes"));
 const integration_tools_routes_1 = __importDefault(require("./api/routes/integration-tools.routes"));
 const voice_routes_1 = __importDefault(require("./modules/voice/routes/voice.routes"));
+const copilot_routes_1 = __importDefault(require("./api/routes/copilot.routes"));
 const auth_middleware_1 = require("./middleware/auth.middleware");
 const agents_controller_1 = require("./api/controllers/agents.controller");
 const dashboard_controller_1 = require("./api/controllers/dashboard.controller");
@@ -68,50 +70,57 @@ const insights_api_controller_1 = require("./api/controllers/insights-api.contro
 const notifications_controller_1 = require("./api/controllers/notifications.controller");
 const voiceRuntime_service_1 = require("./modules/voice/services/voiceRuntime.service");
 const localRealtimeVoiceAgent_service_1 = require("./modules/voice/services/localRealtimeVoiceAgent.service");
-const meta_webhook_middleware_2 = require("./middleware/meta-webhook.middleware");
+const meta_webhook_secret_service_1 = require("./services/integrations/whatsapp/meta-webhook-secret.service");
+const calendly_webhook_middleware_1 = require("./middleware/calendly-webhook.middleware");
+const calendar_controller_1 = require("./api/controllers/calendar.controller");
+const rate_limit_middleware_1 = require("./middleware/rate-limit.middleware");
+const error_handler_middleware_1 = require("./middleware/error-handler.middleware");
+const admin_routes_1 = __importDefault(require("./api/routes/admin.routes"));
 const app = (0, express_1.default)();
+app.disable('x-powered-by');
+const corsOrigins = String(process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 (0, voiceRuntime_service_1.registerRealtimeVoiceAgentService)((0, localRealtimeVoiceAgent_service_1.createLocalRealtimeVoiceAgentServiceFromEnv)());
-app.use((0, cors_1.default)());
-// ✅ ENDPOINT DE TESTE - Para verificar se a rota está acessível
-app.get('/billing/webhook/test', (req, res) => {
-    console.log('✅ [TEST] Endpoint de teste acessado!');
-    res.json({
-        success: true,
-        message: 'Webhook endpoint está acessível',
-        timestamp: new Date().toISOString(),
-        server: '192.168.15.31:3333'
+app.use((0, helmet_1.default)({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    hsts: process.env.TRUST_PROXY_HTTPS === 'true' ? undefined : false,
+}));
+app.use((0, cors_1.default)({
+    origin: corsOrigins.length > 0 ? corsOrigins : false,
+    credentials: true,
+}));
+app.use(rate_limit_middleware_1.globalRateLimiter);
+if (process.env.NODE_ENV !== 'production') {
+    app.get('/billing/webhook/test', (_req, res) => {
+        res.json({
+            success: true,
+            message: 'Webhook endpoint está acessível',
+            timestamp: new Date().toISOString(),
+        });
     });
-});
+}
 // ✅ CRÍTICO: Registrar webhook do Stripe ANTES de qualquer parsing de JSON
 // O Stripe precisa do body raw para verificar a assinatura do webhook
-app.post('/billing/webhook', express_1.default.raw({ type: 'application/json' }), (req, res, next) => {
-    console.log('');
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('🔔 [Index] Rota /billing/webhook chamada!');
-    console.log('═══════════════════════════════════════════════════════════');
-    console.log('📥 Method:', req.method);
-    console.log('📥 URL:', req.url);
-    console.log('📥 IP:', req.ip || req.connection.remoteAddress);
-    console.log('📥 Headers stripe-signature:', req.headers['stripe-signature'] ? 'presente' : 'ausente');
-    console.log('📥 Content-Type:', req.headers['content-type']);
-    console.log('📥 Body type:', typeof req.body);
-    console.log('📥 Body length:', req.body?.length || 0);
+app.post('/billing/webhook', rate_limit_middleware_1.webhookRateLimiter, express_1.default.raw({ type: 'application/json' }), (req, res) => {
     (0, billing_routes_2.handleStripeWebhook)(req, res);
 });
-// Webhook WhatsApp (Meta): corpo bruto + X-Hub-Signature-256 antes do express.json()
-app.post('/whatsapp/webhook', express_1.default.raw({
+app.post('/calendar/webhook/:id', rate_limit_middleware_1.webhookRateLimiter, express_1.default.raw({ type: 'application/json' }), calendly_webhook_middleware_1.validateCalendlyWebhook, calendar_controller_1.receiveCalendlyWebhook);
+app.post('/whatsapp/webhook', rate_limit_middleware_1.webhookRateLimiter, express_1.default.raw({
     type: (req) => String(req.headers['content-type'] || '').includes('application/json'),
 }), meta_webhook_middleware_1.validateMetaWhatsAppWebhook, meta_webhook_middleware_1.parseMetaWhatsAppWebhookJson, whatsapp_controller_1.receiveWhatsAppWebhook);
 // Aumentar limite para suportar webhooks grandes
 // Agora aplicar express.json() para todas as outras rotas
-app.use(express_1.default.json({ limit: '50mb' }));
-app.use(express_1.default.urlencoded({ limit: '50mb', extended: true }));
+app.use(express_1.default.json({ limit: '12mb' }));
+app.use(express_1.default.urlencoded({ limit: '12mb', extended: true }));
 // Rotas de agentes (execução direta - mantido para compatibilidade)
 app.use('/agents', agents_routes_1.default);
 // Rotas de flows (orquestração central - NOVO)
 app.use('/flows', flows_routes_1.default);
 // Rotas de Chat (Atalho para /agents/chat — requer autenticação)
-app.post('/chat', auth_middleware_1.requireAuth, agents_controller_1.agentChat);
+app.post('/chat', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, rate_limit_middleware_1.agentChatRateLimiter, agents_controller_1.agentChat);
 // Rotas de autenticação
 app.use('/auth/outlook', auth_routes_1.default);
 // Rotas de WhatsApp (Meta Cloud API)
@@ -142,12 +151,17 @@ app.use('/crm', crm_routes_1.default);
 app.use('/integrations/tools', integration_tools_routes_1.default);
 // Rotas de Voz dos agentes
 app.use('/voice', voice_routes_1.default);
+// Sonia Copilot (assistente fixa da plataforma)
+app.use('/copilot', copilot_routes_1.default);
+app.use('/admin', admin_routes_1.default);
 // Rotas que existiam na Edge Function e o front chama no BASE_URL (porta 3333)
-app.get('/dashboard', auth_middleware_1.requireAuth, dashboard_controller_1.getDashboard);
-app.get('/insights', auth_middleware_1.requireAuth, insights_api_controller_1.getInsightsApi);
-app.get('/notifications', auth_middleware_1.requireAuth, notifications_controller_1.listNotifications);
-app.post('/notifications/mark-read', auth_middleware_1.requireAuth, notifications_controller_1.markNotificationRead);
-app.post('/notifications/test', auth_middleware_1.requireAuth, notifications_controller_1.testNotification);
+app.get('/dashboard', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, dashboard_controller_1.getDashboard);
+app.get('/insights', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, insights_api_controller_1.getInsightsApi);
+app.get('/notifications', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, notifications_controller_1.listNotifications);
+app.post('/notifications/mark-read', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, notifications_controller_1.markNotificationRead);
+app.post('/notifications/test', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, notifications_controller_1.testNotification);
+app.use(error_handler_middleware_1.notFoundHandler);
+app.use(error_handler_middleware_1.errorHandler);
 // Inicia worker de fila para processar respostas do WhatsApp
 let queueWorkerStarted = false;
 async function startQueueWorkerIfNeeded() {
@@ -167,18 +181,16 @@ app.listen(3333, '0.0.0.0', async () => {
     (0, flow_team_notify_config_1.logFlowHandoffEmailStartupStatus)();
     (0, platform_email_service_1.logPlatformEmailStartupStatus)();
     console.log('🚀 Backend rodando em http://0.0.0.0:3333');
-    console.log('🌐 Acessível em: http://192.168.15.31:3333');
     console.log('📊 Flows disponíveis em /flows');
     console.log('🤖 Agentes disponíveis em /agents');
     console.log('📱 WhatsApp disponível em /whatsapp');
-    const metaWebhookSecretConfigured = Boolean((0, meta_webhook_middleware_2.getWhatsAppMetaAppSecret)());
+    const metaWebhookSecretConfigured = await (0, meta_webhook_secret_service_1.isMetaWebhookConfigured)();
     console.log(metaWebhookSecretConfigured
-        ? '🔐 POST /whatsapp/webhook exige X-Hub-Signature-256 (HMAC Meta ativo)'
-        : '⚠️ WHATSAPP_META_APP_SECRET ausente — POST /whatsapp/webhook retornará 403');
+        ? '🔐 POST /whatsapp/webhook exige X-Hub-Signature-256 (env ou meta_app_secret por integração)'
+        : '⚠️ Nenhum App Secret Meta (env ou integração) — POST /whatsapp/webhook retornará 403');
     console.log('🧹 Cache disponível em /cache');
     console.log('💳 Billing disponível em /billing');
     console.log('💳 Billing Webhook disponível em /billing/webhook');
-    console.log('🧪 Teste do Webhook: http://192.168.15.31:3333/billing/webhook/test');
     console.log('📈 KPIs disponíveis em /kpis');
     console.log('📊 Dashboard em /dashboard | Insights em /insights | Notificações em /notifications');
     // Inicia worker de fila

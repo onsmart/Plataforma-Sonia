@@ -14,6 +14,7 @@ const governance_preprocessing_1 = require("../../services/governance/governance
 const governance_prompt_1 = require("../../services/governance/governance-prompt");
 const governance_service_1 = require("../../services/governance/governance.service");
 const logger_1 = __importDefault(require("../../lib/logger"));
+const request_auth_1 = require("../../utils/request-auth");
 const SIMULATION_BASE_AGENT_PROMPT = 'Você é um assistente de atendimento da empresa.';
 function mergeGovernanceWithFilterPreview(base, preview) {
     if (preview == null ||
@@ -89,7 +90,7 @@ function toApiJson(config, lastUpdated) {
  */
 async function getGovernanceConfig(req, res) {
     try {
-        const email = req.user?.email || req.query.email;
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({
                 error: 'Email é obrigatório',
@@ -163,7 +164,7 @@ async function getGovernanceConfig(req, res) {
  */
 async function updateGovernanceConfig(req, res) {
     try {
-        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({
                 error: 'Email é obrigatório',
@@ -281,7 +282,7 @@ async function updateGovernanceConfig(req, res) {
  */
 async function postGovernanceTest(req, res) {
     try {
-        const email = req.user?.email || req.headers['x-user-email'];
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({ error: 'Email é obrigatório' });
         }

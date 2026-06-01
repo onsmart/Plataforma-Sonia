@@ -41,6 +41,7 @@ exports.saveFeedback = saveFeedback;
 const kpis_service_1 = require("../../services/kpis/kpis.service");
 const company_helper_1 = require("../../utils/company-helper");
 const logger_1 = __importDefault(require("../../lib/logger"));
+const request_auth_1 = require("../../utils/request-auth");
 const ZERO_KPIS = {
     taskSuccessRate: 0,
     averageResponseTime: 0,
@@ -66,11 +67,7 @@ const ZERO_KPIS = {
  */
 async function getKPIs(req, res) {
     try {
-        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-        const userEmail = req.user?.email ||
-            req.query.email ||
-            req.headers['x-user-email'] ||
-            req.body?.email;
+        const userEmail = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!userEmail) {
             return res.status(401).json({
                 success: false,
@@ -92,11 +89,13 @@ async function getKPIs(req, res) {
         }
         catch (calcErr) {
             if (calcErr?.message?.includes('Company ID não encontrado')) {
-                logger_1.default.warn('[getKPIs] Sem empresa para o usuário — retornando KPIs zerados');
-                return res.json({
-                    success: true,
+                logger_1.default.warn('[getKPIs] Sem workspace — retornando KPIs zerados');
+                return res.status(403).json({
+                    success: false,
+                    error: 'Workspace não configurado',
+                    code: 'WORKSPACE_REQUIRED',
                     data: ZERO_KPIS,
-                    filters
+                    filters,
                 });
             }
             throw calcErr;
@@ -129,9 +128,7 @@ async function getKPIs(req, res) {
  */
 async function saveFeedback(req, res) {
     try {
-        const userEmail = req.user?.email ||
-            req.headers['x-user-email'] ||
-            req.userEmail;
+        const userEmail = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!userEmail) {
             return res.status(401).json({
                 success: false,

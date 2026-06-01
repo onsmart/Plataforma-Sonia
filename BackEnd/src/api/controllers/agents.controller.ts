@@ -578,7 +578,8 @@ export async function agentChat(req: Request, res: Response) {
 
 export async function approveDecision(req: Request, res: Response) {
   try {
-    const { id } = req.params
+    const { id: rawId } = req.params
+    const decisionId = String(rawId || '').trim()
     const { edited_answer } = req.body
     const companiesId = getAuthenticatedCompaniesId(req)
     const user_id = getAuthenticatedUserId(req)
@@ -587,13 +588,13 @@ export async function approveDecision(req: Request, res: Response) {
       return res.status(401).json({ error: 'Autenticação e workspace são obrigatórios' })
     }
 
-    if (!id) {
+    if (!decisionId) {
       return res.status(400).json({ error: 'id é obrigatório' })
     }
 
     let decision
     try {
-      decision = await assertAgentDecisionOwnedByCompany(id, companiesId)
+      decision = await assertAgentDecisionOwnedByCompany(decisionId, companiesId)
     } catch (err) {
       if (err instanceof TenantOwnershipError) {
         return res.status(err.statusCode).json({ error: err.message, code: err.code })
@@ -623,7 +624,7 @@ export async function approveDecision(req: Request, res: Response) {
     const { error: updateError } = await supabase
       .from('tb_agent_decisions')
       .update(updateData)
-      .eq('id', id)
+      .eq('id', decisionId)
 
     if (updateError) {
       console.error('[approveDecision] Erro ao atualizar:', updateError)
@@ -646,10 +647,11 @@ export async function approveDecision(req: Request, res: Response) {
         .eq('id', user_id)
         .maybeSingle()
       
-      let companiesId = decision.companies_id
-      if (!companiesId && userData?.email) {
+      let logCompaniesId: string | undefined =
+        typeof decision.companies_id === 'string' ? decision.companies_id : undefined
+      if (!logCompaniesId && userData?.email) {
         const userCompanyData = await getUserIdAndCompanyIdByEmail(userData.email)
-        companiesId = userCompanyData.companyId || undefined
+        logCompaniesId = userCompanyData.companyId || undefined
       }
       
       // Buscar nome do agente
@@ -659,21 +661,21 @@ export async function approveDecision(req: Request, res: Response) {
         .eq('id', decision.agent_id)
         .maybeSingle()
       
-      const agentName = agentData?.nome || decision.agent_id
+      const agentName = agentData?.nome || String(decision.agent_id)
       const message = wasEdited 
         ? `Decisão do agente "${agentName}" aprovada e editada pelo usuário`
         : `Decisão do agente "${agentName}" aprovada pelo usuário`
       
       await saveSystemLog({
-        companies_id: companiesId,
+        companies_id: logCompaniesId,
         user_id: user_id,
         user_email: userData?.email,
-        agent_id: decision.agent_id,
+        agent_id: String(decision.agent_id),
         log_type: 'decision_approved',
         level: 'info',
         message,
         metadata: {
-          decision_id: id,
+          decision_id: decisionId,
           agent_id: decision.agent_id,
           agent_name: agentName,
           was_edited: wasEdited,
@@ -694,12 +696,12 @@ export async function approveDecision(req: Request, res: Response) {
     if (decision.channel === 'whatsapp' && decision.integrations_id && decision.contact_id) {
       try {
         const delivery = await sendAgentWhatsAppResponseWithVoiceFallback({
-          integrationId: decision.integrations_id,
-          text: finalAnswer,
-          to: decision.contact_id,
-          agentId: decision.agent_id,
+          integrationId: String(decision.integrations_id),
+          text: String(finalAnswer),
+          to: String(decision.contact_id),
+          agentId: String(decision.agent_id),
           context: {
-            approved_decision_id: id,
+            approved_decision_id: decisionId,
             request_started_at: new Date().toISOString(),
           },
         })
@@ -726,7 +728,7 @@ export async function approveDecision(req: Request, res: Response) {
     
     return res.json({ 
       success: true, 
-      decision_id: id,
+      decision_id: decisionId,
       message: 'Decisão aprovada e mensagem enviada com sucesso'
     })
   } catch (error: any) {
@@ -740,7 +742,8 @@ export async function approveDecision(req: Request, res: Response) {
 
 export async function rejectDecision(req: Request, res: Response) {
   try {
-    const { id } = req.params
+    const { id: rawId } = req.params
+    const decisionId = String(rawId || '').trim()
     const companiesId = getAuthenticatedCompaniesId(req)
     const user_id = getAuthenticatedUserId(req)
 
@@ -748,9 +751,13 @@ export async function rejectDecision(req: Request, res: Response) {
       return res.status(401).json({ error: 'Autenticação e workspace são obrigatórios' })
     }
 
+    if (!decisionId) {
+      return res.status(400).json({ error: 'id é obrigatório' })
+    }
+
     let decision
     try {
-      decision = await assertAgentDecisionOwnedByCompany(String(id), companiesId)
+      decision = await assertAgentDecisionOwnedByCompany(decisionId, companiesId)
     } catch (err) {
       if (err instanceof TenantOwnershipError) {
         return res.status(err.statusCode).json({ error: err.message, code: err.code })
@@ -764,7 +771,7 @@ export async function rejectDecision(req: Request, res: Response) {
         status: 'rejected',
         rejected_at: new Date().toISOString()
       })
-      .eq('id', id)
+      .eq('id', decisionId)
 
     if (error) {
       console.error('[rejectDecision] Erro:', error)
@@ -778,7 +785,8 @@ export async function rejectDecision(req: Request, res: Response) {
       
       // Buscar email do usuário que rejeitou (se tiver user_id)
       let userEmail: string | undefined
-      let companiesId = decision.companies_id
+      let logCompaniesId: string | undefined =
+        typeof decision.companies_id === 'string' ? decision.companies_id : undefined
       
       if (user_id) {
         const { data: userData } = await supabase
@@ -788,9 +796,9 @@ export async function rejectDecision(req: Request, res: Response) {
           .maybeSingle()
         
         userEmail = userData?.email
-        if (!companiesId && userEmail) {
+        if (!logCompaniesId && userEmail) {
           const userCompanyData = await getUserIdAndCompanyIdByEmail(userEmail)
-          companiesId = userCompanyData.companyId || undefined
+          logCompaniesId = userCompanyData.companyId || undefined
         }
       }
       
@@ -801,19 +809,19 @@ export async function rejectDecision(req: Request, res: Response) {
         .eq('id', decision.agent_id)
         .maybeSingle()
       
-      const agentName = agentData?.nome || decision.agent_id
+      const agentName = agentData?.nome || String(decision.agent_id)
       const message = `Decisão do agente "${agentName}" rejeitada pelo usuário`
       
       await saveSystemLog({
-        companies_id: companiesId,
+        companies_id: logCompaniesId,
         user_id: user_id || undefined,
         user_email: userEmail,
-        agent_id: decision.agent_id,
+        agent_id: String(decision.agent_id),
         log_type: 'decision_rejected',
         level: 'info',
         message,
         metadata: {
-          decision_id: id,
+          decision_id: decisionId,
           agent_id: decision.agent_id,
           agent_name: agentName,
           original_answer: decision.answer,
@@ -828,7 +836,7 @@ export async function rejectDecision(req: Request, res: Response) {
       // Não bloqueia a rejeição se falhar ao salvar log
     }
     
-    return res.json({ success: true, decision_id: id })
+    return res.json({ success: true, decision_id: decisionId })
   } catch (error: any) {
     console.error('[rejectDecision] Erro:', error)
     return res.status(500).json({ 

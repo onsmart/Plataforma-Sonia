@@ -7,8 +7,11 @@ exports.requireAuth = requireAuth;
 exports.optionalAuth = optionalAuth;
 exports.userCanManageBilling = userCanManageBilling;
 exports.requireAdmin = requireAdmin;
+exports.requireWorkspace = requireWorkspace;
+exports.requirePermission = requirePermission;
 const supabase_1 = require("../lib/supabase");
 const logger_1 = __importDefault(require("../lib/logger"));
+const company_helper_1 = require("../utils/company-helper");
 /**
  * Indica falha de rede ao falar com Supabase Auth (timeout, DNS, firewall),
  * distinto de JWT inválido ou expirado.
@@ -280,4 +283,110 @@ async function requireAdmin(req, res, next) {
             code: 'PERMISSION_ERROR'
         });
     }
+}
+/**
+ * Exige workspace (tb_company_users) após requireAuth.
+ * PF e PJ usam o mesmo tenant em tb_companies — onboarding incompleto retorna 403.
+ */
+async function requireWorkspace(req, res, next) {
+    try {
+        if (!req.user?.email) {
+            return res.status(401).json({
+                error: 'Token de autenticação não fornecido',
+                details: 'Faça login primeiro',
+                code: 'AUTH_REQUIRED',
+            });
+        }
+        const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(req.user.email);
+        if (!companiesId) {
+            logger_1.default.warn('[requireWorkspace] Workspace não configurado:', req.user.email);
+            return res.status(403).json({
+                error: 'Workspace não configurado',
+                details: 'Complete o cadastro (pessoa física ou jurídica) para continuar.',
+                code: 'WORKSPACE_REQUIRED',
+            });
+        }
+        req.user.companiesId = companiesId;
+        next();
+    }
+    catch (error) {
+        logger_1.default.error('[requireWorkspace] Erro:', error);
+        return res.status(500).json({
+            error: 'Erro ao validar workspace',
+            details: error instanceof Error ? error.message : String(error),
+            code: 'WORKSPACE_CHECK_ERROR',
+        });
+    }
+}
+const PERMISSION_RANK = {
+    'basic.read': 1,
+    'basic.write': 2,
+    'basic.admin': 3,
+};
+async function getEffectivePermissionRank(userEmail, companiesId) {
+    const adminCtx = await resolveBillingAdminContext(userEmail);
+    if (adminCtx.allowed) {
+        return PERMISSION_RANK['basic.admin'];
+    }
+    const { data: userData } = await supabase_1.supabase
+        .from('tb_users')
+        .select('id')
+        .eq('email', userEmail)
+        .maybeSingle();
+    if (!userData?.id)
+        return 0;
+    const { data: companyUser } = await supabase_1.supabase
+        .from('tb_company_users')
+        .select('role')
+        .eq('user_id', userData.id)
+        .eq('companies_id', companiesId)
+        .maybeSingle();
+    if (!companyUser)
+        return 0;
+    if (companyUser.role === 'owner' || companyUser.role === 'admin') {
+        return PERMISSION_RANK['basic.admin'];
+    }
+    let rank = PERMISSION_RANK['basic.read'];
+    const { data: permissionRows } = await supabase_1.supabase
+        .from('tb_user_permissions')
+        .select('permission_id, tb_permissions(key)')
+        .eq('user_id', userData.id)
+        .eq('companies_id', companiesId);
+    for (const row of permissionRows || []) {
+        const key = String(row.tb_permissions?.key || '')
+            .trim();
+        if (key in PERMISSION_RANK) {
+            rank = Math.max(rank, PERMISSION_RANK[key]);
+        }
+    }
+    return rank;
+}
+/** RBAC fino — exige `requireAuth` + `requireWorkspace` antes. Owner/admin ou permissão equivalente. */
+function requirePermission(minPermission) {
+    return async (req, res, next) => {
+        try {
+            if (!req.user?.email || !req.user.companiesId) {
+                return res.status(401).json({
+                    error: 'Autenticação e workspace são obrigatórios',
+                    code: 'AUTH_REQUIRED',
+                });
+            }
+            const rank = await getEffectivePermissionRank(req.user.email, req.user.companiesId);
+            if (rank < PERMISSION_RANK[minPermission]) {
+                return res.status(403).json({
+                    error: 'Permissão insuficiente para esta ação',
+                    code: 'PERMISSION_DENIED',
+                    required: minPermission,
+                });
+            }
+            return next();
+        }
+        catch (error) {
+            logger_1.default.error('[requirePermission] Erro:', error);
+            return res.status(500).json({
+                error: 'Erro ao verificar permissões',
+                code: 'PERMISSION_ERROR',
+            });
+        }
+    };
 }

@@ -12,6 +12,7 @@ exports.getFlexibleSchedulingPack = getFlexibleSchedulingPack;
 const supabase_1 = require("../../lib/supabase");
 const company_helper_1 = require("../../utils/company-helper");
 const logger_1 = __importDefault(require("../../lib/logger"));
+const request_auth_1 = require("../../utils/request-auth");
 const calendly_test_template_pack_1 = require("../../content/calendly-test-template-pack");
 const flexible_scheduling_template_pack_1 = require("../../content/flexible-scheduling-template-pack");
 /** Postgres 23503 — template ainda referenciado por tb_agents.role_template_id */
@@ -31,7 +32,7 @@ function isTemplateForeignKeyInUse(err) {
  */
 async function listTemplates(req, res) {
     try {
-        const email = req.user?.email || req.query.email;
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({
                 error: 'Email é obrigatório',
@@ -120,7 +121,7 @@ async function listTemplates(req, res) {
  */
 async function createTemplate(req, res) {
     try {
-        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({
                 error: 'Email é obrigatório',
@@ -181,7 +182,7 @@ async function createTemplate(req, res) {
 async function updateTemplate(req, res) {
     try {
         const { id } = req.params;
-        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({
                 error: 'Email é obrigatório',
@@ -279,7 +280,7 @@ async function updateTemplate(req, res) {
 async function deleteTemplate(req, res) {
     try {
         const { id } = req.params;
-        const email = req.user?.email || req.body.email || req.headers['x-user-email'];
+        const email = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!email) {
             return res.status(401).json({
                 error: 'Email é obrigatório',

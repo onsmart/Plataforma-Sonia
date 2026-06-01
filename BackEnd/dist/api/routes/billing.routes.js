@@ -10,11 +10,13 @@ const company_helper_1 = require("../../utils/company-helper");
 const supabase_1 = require("../../lib/supabase");
 const logger_1 = __importDefault(require("../../lib/logger"));
 const auth_middleware_1 = require("../../middleware/auth.middleware");
+const request_auth_1 = require("../../utils/request-auth");
 const plans_catalog_1 = require("../../config/plans.catalog");
 const stripe_subscription_sync_service_1 = require("../../services/billing/stripe-subscription-sync.service");
 const subscription_billing_notify_service_1 = require("../../services/billing/subscription-billing-notify.service");
 const plan_helper_1 = require("../../utils/plan-helper");
 const usage_tracker_service_1 = require("../../services/usage-tracker.service");
+const webhook_idempotency_service_1 = require("../../services/security/webhook-idempotency.service");
 const router = express_1.default.Router();
 // Inicializa o Stripe com a chave secreta do .env
 const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY || '', {
@@ -67,7 +69,7 @@ router.get('/plans', (_req, res) => {
  * GET /billing/usage
  * Uso atual (conversas distintas no mês + agentes) conforme plano ativo
  */
-router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
+router.get('/usage', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, async (req, res) => {
     try {
         const userEmail = req.user?.email;
         if (!userEmail) {
@@ -96,10 +98,13 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
             (0, usage_tracker_service_1.getCurrentMonthConversationCount)(companiesId),
             (0, usage_tracker_service_1.getActiveAgentCount)(companiesId),
         ]);
+        const planInfo = await (0, plan_helper_1.getPlanInfo)(companiesId);
         const catalogPlan = (0, plans_catalog_1.normalizePlanId)(subscriptionRow?.plan);
-        const contractedCatalog = (0, plans_catalog_1.getPlanCatalogEntry)(catalogPlan);
-        const usageLimitReached = contractedCatalog.monthlyConversations !== null &&
-            conversationsUsed >= contractedCatalog.monthlyConversations;
+        const hasPaidAccess = (0, plans_catalog_1.hasEffectivePaidAccess)(subscriptionRow || {});
+        const contractedCatalog = (0, plans_catalog_1.getPlanCatalogEntry)(hasPaidAccess ? catalogPlan : plans_catalog_1.FREE_PLAN_ID);
+        const usageLimitReached = !hasPaidAccess ||
+            (planInfo.limits.conversations !== null &&
+                conversationsUsed >= planInfo.limits.conversations);
         const billingSnapshot = (0, stripe_subscription_sync_service_1.buildBillingSnapshot)(subscriptionRow || {}, {
             usageLimitReached,
         });
@@ -111,8 +116,6 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
             current_period_end: billingSnapshot.current_period_end,
             catalog_plan: catalogPlan,
         });
-        const planInfo = await (0, plan_helper_1.getPlanInfo)(companiesId);
-        const effectiveCatalog = (0, plans_catalog_1.getPlanCatalogEntry)(planInfo.plan);
         const subscriptionStatus = billingSnapshot.status;
         const canManageBilling = await (0, auth_middleware_1.userCanManageBilling)(userEmail);
         void (0, subscription_billing_notify_service_1.maybeNotifyLocalSubscriptionPeriodEnded)(companiesId).catch((err) => {
@@ -123,14 +126,15 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
         });
         return res.json({
             plan: planInfo.plan,
-            plan_code: effectiveCatalog.code,
-            plan_title: effectiveCatalog.title,
-            product_line: effectiveCatalog.productLine,
+            plan_code: contractedCatalog.code,
+            plan_title: planInfo.planTitle,
+            product_line: contractedCatalog.productLine,
             status: planInfo.status,
             subscription_status: subscriptionStatus,
-            catalog_plan: catalogPlan,
+            catalog_plan: hasPaidAccess ? catalogPlan : plans_catalog_1.FREE_PLAN_ID,
             effective_plan: planInfo.plan,
             gates_use_effective_plan: true,
+            is_free_account: !billingSnapshot.has_paid_access,
             current_period_start: billingSnapshot.current_period_start,
             current_period_end: billingSnapshot.current_period_end,
             canceled_at: billingSnapshot.canceled_at,
@@ -142,7 +146,7 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
             can_manage_billing: canManageBilling,
             subscribed_at: subscriptionRow?.created_at || null,
             conversations_used: conversationsUsed,
-            conversations_limit: contractedCatalog.monthlyConversations,
+            conversations_limit: planInfo.limits.conversations,
             usage_limit_reached: usageLimitReached,
             access_revoked_by_usage: billingSnapshot.cancel_at_period_end &&
                 usageLimitReached &&
@@ -154,6 +158,8 @@ router.get('/usage', auth_middleware_1.requireAuth, async (req, res) => {
             has_rag: planInfo.limits.hasRAG,
             has_governance: planInfo.limits.hasGovernance,
             has_sso: planInfo.limits.hasSSO,
+            has_flows: planInfo.limits.hasFlows,
+            has_crm_api: planInfo.limits.hasCrmApi,
         });
     }
     catch (error) {
@@ -197,7 +203,7 @@ function getRealPriceId(priceId) {
  * Body: { priceId: string, email?: string }
  * ✅ Requer autenticação
  */
-router.post('/checkout', auth_middleware_1.requireAuth, async (req, res) => {
+router.post('/checkout', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, async (req, res) => {
     try {
         logger_1.default.log('[Billing] Requisição de checkout recebida');
         const { priceId, email } = req.body;
@@ -226,8 +232,7 @@ router.post('/checkout', auth_middleware_1.requireAuth, async (req, res) => {
             logger_1.default.error('[Billing] Stripe não inicializado');
             return res.status(500).json({ error: 'Stripe initialization failed' });
         }
-        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-        const userEmail = req.user?.email || email || req.headers['x-user-email'];
+        const userEmail = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!userEmail) {
             logger_1.default.error('[Billing] Email do usuário não encontrado');
             return res.status(401).json({
@@ -335,29 +340,11 @@ router.post('/checkout', auth_middleware_1.requireAuth, async (req, res) => {
  * Retorna informações da assinatura atual do usuário
  * ✅ Requer autenticação e ser admin
  */
-router.get('/subscription', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, async (req, res) => {
+router.get('/subscription', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, auth_middleware_1.requireAdmin, async (req, res) => {
     try {
-        // Obter email
-        let userEmail = req.query.email;
+        const userEmail = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!userEmail) {
-            const emailHeader = req.headers['x-user-email'];
-            userEmail = Array.isArray(emailHeader) ? emailHeader[0] : emailHeader;
-        }
-        if (!userEmail) {
-            const authHeader = req.headers.authorization;
-            if (authHeader && authHeader.startsWith('Bearer ')) {
-                const token = authHeader.substring(7);
-                try {
-                    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-                    userEmail = payload.email;
-                }
-                catch (e) {
-                    // Ignora erro
-                }
-            }
-        }
-        if (!userEmail) {
-            return res.status(400).json({ error: 'User email is required' });
+            return res.status(401).json({ error: 'User email is required' });
         }
         const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(userEmail);
         if (!companiesId) {
@@ -410,10 +397,9 @@ router.get('/subscription', auth_middleware_1.requireAuth, auth_middleware_1.req
  * Query: email (opcional, pode vir do header x-user-email), startDate, endDate
  * ✅ Requer autenticação e ser admin
  */
-router.get('/export', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, async (req, res) => {
+router.get('/export', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, auth_middleware_1.requireAdmin, async (req, res) => {
     try {
-        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-        const userEmail = req.user?.email || req.query.email || req.headers['x-user-email'];
+        const userEmail = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!userEmail) {
             return res.status(401).json({
                 error: 'User email is required',
@@ -521,14 +507,13 @@ router.get('/export', auth_middleware_1.requireAuth, auth_middleware_1.requireAd
  * Body: { email?: string }
  * ✅ Requer autenticação e ser admin
  */
-router.post('/portal', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, async (req, res) => {
+router.post('/portal', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, auth_middleware_1.requireAdmin, async (req, res) => {
     try {
         const { email } = req.body;
         if (!stripe || !process.env.STRIPE_SECRET_KEY) {
             return res.status(500).json({ error: 'Stripe not configured' });
         }
-        // ✅ Email vem do middleware (validado) ou fallback para compatibilidade
-        const userEmail = req.user?.email || email || req.headers['x-user-email'];
+        const userEmail = (0, request_auth_1.getAuthenticatedEmail)(req);
         if (!userEmail) {
             return res.status(401).json({
                 error: 'User email is required',
@@ -592,7 +577,7 @@ async function buildBillingActionResponse(companiesId, stripeSubscriptionId, pat
  * Agenda cancelamento ao fim do ciclo pago (mantém benefícios até current_period_end).
  * Sempre atualiza o Stripe primeiro; o banco reflete a resposta confirmada do Stripe.
  */
-router.post('/cancel-renewal', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, async (req, res) => {
+router.post('/cancel-renewal', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, auth_middleware_1.requireAdmin, async (req, res) => {
     try {
         if (!stripe || !process.env.STRIPE_SECRET_KEY) {
             return res.status(500).json({ error: 'Stripe not configured' });
@@ -634,7 +619,7 @@ router.post('/cancel-renewal', auth_middleware_1.requireAuth, auth_middleware_1.
  * Desfaz cancelamento agendado (continua renovando automaticamente).
  * Sempre atualiza o Stripe primeiro.
  */
-router.post('/reactivate-renewal', auth_middleware_1.requireAuth, auth_middleware_1.requireAdmin, async (req, res) => {
+router.post('/reactivate-renewal', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, auth_middleware_1.requireAdmin, async (req, res) => {
     try {
         if (!stripe || !process.env.STRIPE_SECRET_KEY) {
             return res.status(500).json({ error: 'Stripe not configured' });
@@ -697,7 +682,6 @@ async function handleStripeWebhook(req, res) {
         logger_1.default.error('[Billing] STRIPE_WEBHOOK_SECRET não configurado');
         return res.status(500).json({ error: 'Webhook secret not configured' });
     }
-    console.log('🔑 Webhook Secret configurado:', webhookSecret.substring(0, 10) + '...');
     let event;
     try {
         // Verificar assinatura do webhook
@@ -719,6 +703,10 @@ async function handleStripeWebhook(req, res) {
     }
     console.log(`✅ [Billing] Webhook recebido: ${event.type}`);
     logger_1.default.log(`[Billing] Webhook recebido: ${event.type}`);
+    if ((0, webhook_idempotency_service_1.isDuplicateWebhookEvent)('stripe', event.id)) {
+        return res.json({ received: true, duplicate: true });
+    }
+    (0, webhook_idempotency_service_1.markWebhookEventProcessed)('stripe', event.id);
     try {
         // Processar diferentes tipos de eventos
         switch (event.type) {
@@ -832,12 +820,4 @@ async function handleStripeWebhook(req, res) {
         res.status(500).json({ error: 'Webhook processing failed' });
     }
 }
-/**
- * POST /billing/webhook
- * Webhook do Stripe para processar eventos de pagamento
- * IMPORTANTE: Esta rota deve usar express.raw() para receber o body bruto
- * Nota: A rota principal está registrada no index.ts antes do express.json()
- * Esta rota aqui é apenas para manter compatibilidade
- */
-router.post('/webhook', express_1.default.raw({ type: 'application/json' }), handleStripeWebhook);
 exports.default = router;
