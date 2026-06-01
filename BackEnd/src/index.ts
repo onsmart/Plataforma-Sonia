@@ -26,6 +26,7 @@ import calendarRoutes from './api/routes/calendar.routes'
 import crmRoutes from './api/routes/crm.routes'
 import integrationToolsRoutes from './api/routes/integration-tools.routes'
 import voiceRoutes from './modules/voice/routes/voice.routes'
+import copilotRoutes from './api/routes/copilot.routes'
 import { requireAuth, requireWorkspace } from './middleware/auth.middleware'
 import { agentChat } from './api/controllers/agents.controller'
 import { getDashboard } from './api/controllers/dashboard.controller'
@@ -141,6 +142,9 @@ app.use('/integrations/tools', integrationToolsRoutes)
 
 // Rotas de Voz dos agentes
 app.use('/voice', voiceRoutes)
+
+// Sonia Copilot (assistente fixa da plataforma)
+app.use('/copilot', copilotRoutes)
 
 // Rotas que existiam na Edge Function e o front chama no BASE_URL (porta 3333)
 app.get('/dashboard', requireAuth, requireWorkspace, getDashboard)

@@ -27,7 +27,7 @@ export {
   buildToolKey,
 }
 
-/** Somente para POST /agents/provision-onsmart-demo — não usado no runtime de outros agentes */
+/** Configuração de extra_features para agentes Onsmart com Calendly */
 export function buildOnsmartExtraFeaturesJson(input: {
   calendlyIntegrationId: string
   specialty?: string

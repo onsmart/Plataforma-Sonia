@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useRef, ReactNod
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../utils/supabase/client";
 import { resolveUserProfileNames } from "../lib/user-display";
+import { getLogoutTimings } from "../components/auth/auth-theme";
 
 interface AuthContextType {
   session: Session | null;
@@ -13,6 +14,7 @@ interface AuthContextType {
   hasCompany: boolean;
   companyReady: boolean;
   loading: boolean;
+  signingOut: boolean;
   signOut: () => Promise<void>;
   refreshCompany: () => Promise<void>;
   refreshUserProfile: () => Promise<void>;
@@ -32,6 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
   const [companyReady, setCompanyReady] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [signingOut, setSigningOut] = useState(false);
   
   // ============================================================================
   // REFS PARA CONTROLE E PREVENÇÃO DE PROBLEMAS
@@ -352,29 +355,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchUserData]);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    setUserId(null);
-    setFirstName(null);
-    setLastName(null);
-    setCompaniesId(null);
-    setCompanyReady(false);
-    localStorage.removeItem('companies_id');
+    if (signingOut) return;
+
+    setSigningOut(true);
+    const { minMs } = getLogoutTimings();
+    const startedAt = Date.now();
+
+    try {
+      await supabase.auth.signOut();
+      setUserId(null);
+      setFirstName(null);
+      setLastName(null);
+      setCompaniesId(null);
+      setCompanyReady(false);
+      localStorage.removeItem("companies_id");
+      lastEmailRef.current = null;
+    } finally {
+      const elapsed = Date.now() - startedAt;
+      const remaining = minMs - elapsed;
+      if (remaining > 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, remaining));
+      }
+      setSigningOut(false);
+    }
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      session, 
-      user, 
-      userId, 
-      firstName, 
-      lastName, 
+    <AuthContext.Provider value={{
+      session,
+      user,
+      userId,
+      firstName,
+      lastName,
       companiesId,
       hasCompany: companiesId !== null,
       companyReady,
-      loading, 
+      loading,
+      signingOut,
       signOut,
       refreshCompany,
-      refreshUserProfile
+      refreshUserProfile,
     }}>
       {children}
     </AuthContext.Provider>

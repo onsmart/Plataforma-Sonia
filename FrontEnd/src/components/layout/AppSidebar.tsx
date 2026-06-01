@@ -199,7 +199,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     resolvedTheme === 'light' ||
     (theme === 'system' && resolvedTheme !== 'dark')
   const { navigate, currentRoute } = useNavigation()
-  const { userId, firstName, lastName, signOut, user } = useAuth()
+  const { userId, firstName, lastName, signOut, signingOut, user } = useAuth()
   const planCaps = usePlanCapabilities()
   const { t, i18n } = useTranslation('sidebar')
   const [isAdmin, setIsAdmin] = React.useState<boolean | null>(null)
@@ -502,12 +502,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             )}
             <DropdownMenuSeparator className={sidebarPalette.userMenuSeparatorClass} />
             <DropdownMenuItem
-              onClick={signOut}
+              onClick={() => void signOut()}
+              disabled={signingOut}
               variant="destructive"
               className={sidebarPalette.userMenuItemDestructiveClass}
             >
               <LogOut size={16} strokeWidth={2.25} />
-              <span>{t('userMenu.logout', { defaultValue: 'Sair' })}</span>
+              <span>
+                {signingOut
+                  ? t("userMenu.loggingOut", { defaultValue: "Saindo…" })
+                  : t("userMenu.logout", { defaultValue: "Sair" })}
+              </span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

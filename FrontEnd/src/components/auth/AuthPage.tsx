@@ -31,6 +31,7 @@ import {
 } from "../../lib/account-types";
 import LineWaves from "./LineWaves";
 import { AUTH_LINE_WAVES_PROPS } from "./auth-theme";
+import "./WelcomeSplash.css";
 
 async function encryptPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
@@ -116,7 +117,13 @@ function AuthFieldLabel({
   );
 }
 
-export function AuthPage() {
+export function AuthPage({
+  entering = false,
+  onEnterAnimationEnd,
+}: {
+  entering?: boolean;
+  onEnterAnimationEnd?: () => void;
+}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loginEmail, setLoginEmail] = useState("");
@@ -132,6 +139,13 @@ export function AuthPage() {
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [showGlow, setShowGlow] = useState(false);
+
+  React.useEffect(() => {
+    if (!entering) return;
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      onEnterAnimationEnd?.();
+    }
+  }, [entering, onEnterAnimationEnd]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -332,7 +346,12 @@ export function AuthPage() {
     <div
       className={`auth-page-container relative min-h-[100dvh] overflow-x-hidden bg-zinc-950 text-zinc-50 ${
         isTransitioning ? "pointer-events-none" : ""
-      }`}
+      } ${entering ? "auth-page-enter" : ""}`}
+      onAnimationEnd={(event) => {
+        if (entering && event.animationName === "authPageEnter") {
+          onEnterAnimationEnd?.();
+        }
+      }}
     >
       <style>{`
         .auth-page-container {
@@ -391,9 +410,9 @@ export function AuthPage() {
       <div
         className="relative z-10 mx-auto flex min-h-[100dvh] w-full max-w-6xl items-center px-3 py-4 sm:px-5 sm:py-5 lg:px-8"
         style={{
-          transition: "all 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
+          transition: "opacity 0.85s cubic-bezier(0.22, 1, 0.36, 1), transform 0.85s cubic-bezier(0.22, 1, 0.36, 1)",
           opacity: isTransitioning ? 0 : 1,
-          transform: isTransitioning ? "scale(0.985) translateY(-12px)" : "scale(1) translateY(0)",
+          transform: isTransitioning ? "scale(0.99) translateY(-10px)" : "scale(1) translateY(0)",
         }}
       >
         <div className="grid w-full items-center gap-5 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-10 xl:grid-cols-[minmax(0,1fr)_420px]">

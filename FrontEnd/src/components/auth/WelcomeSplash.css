@@ -1,19 +1,42 @@
 .welcome-splash {
   background-color: #09090b;
+  animation: welcomeOverlayEnter 0.85s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.welcome-splash--exit {
+  animation: welcomeOverlayExit 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes welcomeOverlayEnter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes welcomeOverlayExit {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 .welcome-splash-glow {
-  animation: welcomeGlowExpand 0.8s ease-out forwards;
+  animation: welcomeGlowExpand 1.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes welcomeGlowExpand {
   0% {
     width: 0;
     height: 0;
-    opacity: 1;
+    opacity: 0.85;
   }
-  50% {
-    opacity: 0.7;
+  45% {
+    opacity: 0.45;
   }
   100% {
     width: 200vw;
@@ -23,32 +46,36 @@
 }
 
 .welcome-splash-text {
-  animation: welcomeTextEnter 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: welcomeTextEnter 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .welcome-splash-text--exit {
-  animation: welcomeTextExit 0.7s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: welcomeTextExit 1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 @keyframes welcomeTextEnter {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(10px);
+    filter: blur(4px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
+    filter: blur(0);
   }
 }
 
 @keyframes welcomeTextExit {
   from {
     opacity: 1;
-    transform: scale(1);
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
   to {
     opacity: 0;
-    transform: scale(1.02);
+    transform: translateY(-8px) scale(0.985);
+    filter: blur(3px);
   }
 }
 
@@ -64,14 +91,89 @@
   color: transparent;
 }
 
+/* --- Logout overlay --- */
+
+.auth-session-overlay {
+  background-color: #09090b;
+  animation: authOverlayEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.auth-session-overlay__content {
+  animation: authOverlayContentEnter 0.55s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
+}
+
+@keyframes authOverlayEnter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes authOverlayContentEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- Auth page após logout --- */
+
+.auth-page-enter {
+  animation: authPageEnter 0.95s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes authPageEnter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* --- App shell pós-welcome --- */
+
+.app-shell-enter {
+  opacity: 0;
+  transform: translateY(14px) scale(0.985);
+  transition:
+    opacity 1.1s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.app-shell-enter--visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .welcome-splash,
+  .welcome-splash--exit,
   .welcome-splash-text,
   .welcome-splash-text--exit,
-  .welcome-splash-glow {
+  .welcome-splash-glow,
+  .auth-session-overlay,
+  .auth-session-overlay__content,
+  .auth-page-enter {
     animation: none !important;
   }
 
-  .welcome-splash-text {
+  .welcome-splash-text,
+  .auth-session-overlay__content {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+
+  .app-shell-enter {
+    transition: none;
     opacity: 1;
     transform: none;
   }

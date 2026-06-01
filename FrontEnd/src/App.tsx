@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react"
 import i18n from "./i18n/config"
 import "./styles/globals.css"
+import "./components/auth/WelcomeSplash.css"
 import { AppSidebar } from "./components/layout/AppSidebar"
 import {
   Breadcrumb,
@@ -22,11 +23,8 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext"
 import { AuthPage } from "./components/auth/AuthPage"
 import { AccountSetupGate } from "./components/auth/AccountSetupGate"
 import { WelcomeSplash } from "./components/auth/WelcomeSplash"
-import {
-  WELCOME_ENTER_MS,
-  WELCOME_EXIT_MS,
-  WELCOME_HOLD_MS,
-} from "./components/auth/auth-theme"
+import { LogoutOverlay } from "./components/auth/LogoutOverlay"
+import { getWelcomeTimings } from "./components/auth/auth-theme"
 import { Loader2 } from "lucide-react"
 import { useUserLanguage } from "./hooks/useUserLanguage"
 import { NotificationCenter } from "./components/notifications/NotificationCenter"
@@ -34,6 +32,7 @@ import { LanguageSelector } from "./components/ui/language-selector"
 import { ErrorBoundary } from "./components/ErrorBoundary"
 import { SoniaCopilotProvider } from "./components/copilot/SoniaCopilotProvider"
 import { Toaster } from "./components/ui/sonner"
+import { cn } from "./components/ui/utils"
 
 const HomePage = lazy(() => import("./pages/Home").then((module) => ({ default: module.Home })))
 const CockpitPage = lazy(() => import("./pages/Cockpit").then((module) => ({ default: module.Cockpit })))
@@ -68,20 +67,6 @@ const routeComponents: Record<RoutePath, React.ComponentType> = {
 }
 
 type PostLoginPhase = "idle" | "welcome" | "entering" | "done"
-
-function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined") return false
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
-}
-
-function getWelcomeTimings() {
-  const reduced = prefersReducedMotion()
-  return {
-    enterMs: reduced ? 0 : WELCOME_ENTER_MS,
-    holdMs: reduced ? 800 : WELCOME_HOLD_MS,
-    exitMs: reduced ? 0 : WELCOME_EXIT_MS,
-  }
-}
 
 function FullscreenLoader() {
   return (
@@ -145,11 +130,13 @@ function AppShell({ currentRoute, getPageTitle }: { currentRoute: RoutePath; get
 
 function AppContent() {
   const { currentRoute, getPageTitle } = useNavigation()
-  const { session, loading } = useAuth()
+  const { session, loading, signingOut } = useAuth()
   const { isChangingLanguage } = useUserLanguage()
   const [postLoginPhase, setPostLoginPhase] = useState<PostLoginPhase>("idle")
   const [contentVisible, setContentVisible] = useState(false)
+  const [authPageEntering, setAuthPageEntering] = useState(false)
   const prevSessionRef = useRef(session)
+  const prevSigningOutRef = useRef(false)
   const wasShowingAuthPageRef = useRef(false)
   const welcomeTimersRef = useRef<number[]>([])
   const [, setForceUpdate] = useState(0)
@@ -161,35 +148,33 @@ function AppContent() {
 
   const scheduleWelcome = useCallback(() => {
     clearWelcomeTimers()
-    const { enterMs, holdMs, exitMs } = getWelcomeTimings()
+    const { enterMs, holdMs, exitMs, appOverlapMs } = getWelcomeTimings()
 
     setPostLoginPhase("welcome")
     setContentVisible(false)
 
-    const t1 = window.setTimeout(() => {
-      setPostLoginPhase("entering")
-    }, enterMs + holdMs)
-    welcomeTimersRef.current.push(t1)
+    const enteringAt = enterMs + holdMs
+    const contentAt = Math.max(0, enteringAt - appOverlapMs)
 
-    const t2 = window.setTimeout(() => {
+    const tContent = window.setTimeout(() => {
       setContentVisible(true)
-    }, enterMs + holdMs + 50)
-    welcomeTimersRef.current.push(t2)
+    }, contentAt)
+    welcomeTimersRef.current.push(tContent)
 
-    const t3 = window.setTimeout(() => {
+    const tEntering = window.setTimeout(() => {
+      setPostLoginPhase("entering")
+    }, enteringAt)
+    welcomeTimersRef.current.push(tEntering)
+
+    const tDone = window.setTimeout(() => {
       setPostLoginPhase("done")
-    }, enterMs + holdMs + exitMs)
-    welcomeTimersRef.current.push(t3)
+    }, enteringAt + exitMs)
+    welcomeTimersRef.current.push(tDone)
   }, [clearWelcomeTimers])
 
   useEffect(() => {
-    const handleAdded = () => {
-      setForceUpdate((prev) => prev + 1)
-    }
-
-    const handleLoaded = () => {
-      setForceUpdate((prev) => prev + 1)
-    }
+    const handleAdded = () => setForceUpdate((prev) => prev + 1)
+    const handleLoaded = () => setForceUpdate((prev) => prev + 1)
 
     i18n.on("added", handleAdded)
     i18n.on("loaded", handleLoaded)
@@ -201,7 +186,14 @@ function AppContent() {
   }, [])
 
   useEffect(() => {
-    if (loading) {
+    if (prevSigningOutRef.current && !signingOut && !session) {
+      setAuthPageEntering(true)
+    }
+    prevSigningOutRef.current = signingOut
+  }, [signingOut, session])
+
+  useEffect(() => {
+    if (loading || signingOut) {
       return
     }
 
@@ -231,36 +223,43 @@ function AppContent() {
     setPostLoginPhase("idle")
     setContentVisible(false)
     prevSessionRef.current = null
-  }, [session, loading, postLoginPhase, scheduleWelcome, clearWelcomeTimers])
+  }, [session, loading, signingOut, postLoginPhase, scheduleWelcome, clearWelcomeTimers])
 
   useEffect(() => {
     return () => clearWelcomeTimers()
   }, [clearWelcomeTimers])
 
-  if (loading) {
+  if (loading && !signingOut) {
     return <FullscreenLoader />
   }
 
+  if (signingOut) {
+    return <LogoutOverlay />
+  }
+
   if (!session) {
-    return <AuthPage />
+    return (
+      <AuthPage
+        entering={authPageEntering}
+        onEnterAnimationEnd={() => setAuthPageEntering(false)}
+      />
+    )
   }
 
   const showWelcome = postLoginPhase === "welcome" || postLoginPhase === "entering"
-  const appEntering = postLoginPhase === "entering" || postLoginPhase === "done"
+  const appShouldShow = postLoginPhase === "entering" || postLoginPhase === "done"
 
   return (
     <AccountSetupGate>
       <>
         <div
+          className={cn(
+            "app-shell-enter",
+            appShouldShow && contentVisible && "app-shell-enter--visible"
+          )}
           style={{
-            opacity: appEntering && contentVisible ? 1 : 0,
-            transform:
-              appEntering && contentVisible
-                ? "translateY(0) scale(1)"
-                : "translateY(30px) scale(0.95)",
-            transition: contentVisible ? "all 0.9s cubic-bezier(0.4, 0, 0.2, 1)" : "none",
-            willChange: "opacity, transform",
-            pointerEvents: appEntering && contentVisible && !isChangingLanguage ? "auto" : "none",
+            pointerEvents:
+              appShouldShow && contentVisible && !isChangingLanguage ? "auto" : "none",
           }}
         >
           <AppShell currentRoute={currentRoute} getPageTitle={getPageTitle} />
@@ -272,7 +271,9 @@ function AppContent() {
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/90 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-4">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
-              <p className="animate-pulse text-sm font-medium text-muted-foreground">Carregando traducoes...</p>
+              <p className="animate-pulse text-sm font-medium text-muted-foreground">
+                Carregando traducoes...
+              </p>
             </div>
           </div>
         )}

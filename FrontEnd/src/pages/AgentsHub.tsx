@@ -346,7 +346,6 @@ export function AgentsHub() {
     const [isSubmittingTemplate, setIsSubmittingTemplate] = useState(false)
     const [isEditTemplateOpen, setIsEditTemplateOpen] = useState(false)
     const [isSubmittingEditTemplate, setIsSubmittingEditTemplate] = useState(false)
-    const [provisioningOnsmart, setProvisioningOnsmart] = useState(false)
     const [editTemplateDraft, setEditTemplateDraft] = useState<{
         id: string
         name: string
@@ -1490,22 +1489,6 @@ export function AgentsHub() {
         }
     }
 
-    const handleProvisionOnsmartDemo = async () => {
-        setProvisioningOnsmart(true)
-        try {
-            const result = await AgentService.provisionOnsmartDemo()
-            toast.success(`Demo Onsmart provisionada: ${result.agentName}`)
-            if (Array.isArray(result.setupSteps)) {
-                result.setupSteps.forEach((step: string) => toast.message(step))
-            }
-            await fetchAgents()
-        } catch (e: any) {
-            toast.error(e?.message || 'Erro ao provisionar demo Onsmart')
-        } finally {
-            setProvisioningOnsmart(false)
-        }
-    }
-
     return (
         <div
             className="min-h-screen -m-4 p-3 sm:p-4 md:p-6 animate-in fade-in duration-500"
@@ -1532,21 +1515,6 @@ export function AgentsHub() {
                             </div>
                         </div>
                         <div className="flex w-full min-w-0 flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-center xl:w-auto xl:max-w-none xl:justify-end">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
-                        style={secondaryHeaderButtonStyle}
-                        disabled={provisioningOnsmart}
-                        onClick={handleProvisionOnsmartDemo}
-                    >
-                        {provisioningOnsmart ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Bot className="h-4 w-4" />
-                        )}
-                        Demo Onsmart
-                    </Button>
                     <Button
                         type="button"
                         className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"

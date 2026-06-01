@@ -19,7 +19,7 @@ export function WelcomeSplash({ visible, exiting = false }: WelcomeSplashProps) 
   return (
     <div
       className={`welcome-splash fixed inset-0 z-[9999] overflow-hidden bg-zinc-950 text-zinc-50 ${
-        exiting ? "pointer-events-none" : ""
+        exiting ? "welcome-splash--exit pointer-events-none" : ""
       }`}
       aria-hidden={exiting}
     >

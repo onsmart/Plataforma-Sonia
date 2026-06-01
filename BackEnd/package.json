@@ -11,7 +11,6 @@
     "build": "tsc",
     "prestart": "node scripts/install-vendor-ip.cjs",
     "start": "node dist/index.js",
-    "seed:onsmart": "npx tsx scripts/seed-onsmart-demo.ts",
     "test": "cross-env RESEND_API_KEY=dummy SUPABASE_URL=http://localhost SUPABASE_SERVICE_ROLE_KEY=dummy vitest run",
     "test:watch": "vitest",
     "go-live:audit": "node scripts/go-live/subscription-audit.mjs",

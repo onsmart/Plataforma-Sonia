@@ -3,6 +3,24 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../utils/supabase/client';
 import { loadTranslationsFromDatabase, I18N_DATABASE_NAMESPACES } from '../i18n/config';
+import { SUPPORTED_AGENT_LANGUAGES, normalizeAgentLanguageCode } from '../lib/agent-language';
+
+const SUPPORTED_UI_LANGUAGE_CODES = SUPPORTED_AGENT_LANGUAGES.map((l) => l.code);
+
+/** Idiomas com seeds completos no app; demais usam fallback i18n (en-US). */
+const FULL_UI_SEED_LANGUAGES = ['pt-BR', 'en-US', 'es-ES'] as const;
+
+function resolveUiLanguage(code: string): string {
+  const normalized = normalizeAgentLanguageCode(code);
+  if (SUPPORTED_UI_LANGUAGE_CODES.includes(normalized)) {
+    return normalized;
+  }
+  return 'pt-BR';
+}
+
+function hasFullUiSeeds(language: string): boolean {
+  return FULL_UI_SEED_LANGUAGES.includes(language as (typeof FULL_UI_SEED_LANGUAGES)[number]);
+}
 
 export function useUserLanguage() {
   const { i18n } = useTranslation();
@@ -91,10 +109,14 @@ export function useUserLanguage() {
           }
         }
 
-        const supportedAppLanguages = ['pt-BR', 'en-US', 'es-ES'] as const
-        if (!supportedAppLanguages.includes(targetLanguage as (typeof supportedAppLanguages)[number])) {
-          console.warn('[useUserLanguage] Idioma salvo não tem seeds completos no app, usando pt-BR:', targetLanguage)
+        const supportedAppLanguages = SUPPORTED_UI_LANGUAGE_CODES
+        if (!supportedAppLanguages.includes(targetLanguage)) {
+          console.warn('[useUserLanguage] Idioma salvo inválido, usando pt-BR:', targetLanguage)
           targetLanguage = 'pt-BR'
+        }
+
+        if (!hasFullUiSeeds(targetLanguage)) {
+          console.log('[useUserLanguage] Idioma sem seeds completos; UI usará fallback en-US onde necessário:', targetLanguage)
         }
 
         // Mudar idioma PRIMEIRO (antes de atualizar localStorage)
@@ -184,26 +206,28 @@ export function useUserLanguage() {
       return;
     }
 
-    const supportedAppLanguages = ['pt-BR', 'en-US', 'es-ES'] as const
-    if (!supportedAppLanguages.includes(language as (typeof supportedAppLanguages)[number])) {
+    const supportedAppLanguages = SUPPORTED_UI_LANGUAGE_CODES
+    if (!supportedAppLanguages.includes(language)) {
       console.warn('[useUserLanguage] Idioma não suportado:', language)
       return
     }
 
+    const normalizedLanguage = resolveUiLanguage(language)
+
     // Se já está no mesmo idioma, não fazer nada
-    if (language === i18n.language) {
+    if (normalizedLanguage === i18n.language) {
       return;
     }
 
     setIsChangingLanguage(true); // INICIAR LOADING
 
     try {
-      console.log('[useUserLanguage] Iniciando mudança de idioma para:', language);
+      console.log('[useUserLanguage] Iniciando mudança de idioma para:', normalizedLanguage);
 
       // 1. Atualizar no banco PRIMEIRO (usando email para garantir que encontre o usuário)
       const { error: updateError } = await supabase
         .from('tb_users')
-        .update({ language })
+        .update({ language: normalizedLanguage })
         .eq('email', user.email.toLowerCase().trim());
 
       if (updateError) {
@@ -211,13 +235,13 @@ export function useUserLanguage() {
         throw updateError;
       }
 
-      console.log('[useUserLanguage] Idioma salvo no banco:', language);
+      console.log('[useUserLanguage] Idioma salvo no banco:', normalizedLanguage);
 
       // 2. Atualizar localStorage
-      localStorage.setItem('i18nextLng', language);
+      localStorage.setItem('i18nextLng', normalizedLanguage);
 
       // 3. Mudar idioma no i18n
-      await i18n.changeLanguage(language);
+      await i18n.changeLanguage(normalizedLanguage);
       
       // 4. Carregar traduções do banco para o novo idioma
       let companiesIdToUse = companiesId;
@@ -226,25 +250,25 @@ export function useUserLanguage() {
         console.log('[useUserLanguage] companiesId obtido do localStorage:', companiesIdToUse);
       }
       
-      console.log('[useUserLanguage] Carregando todas as traduções para:', language);
-      await loadTranslationsFromDatabase(language, companiesIdToUse ?? undefined);
+      console.log('[useUserLanguage] Carregando todas as traduções para:', normalizedLanguage);
+      await loadTranslationsFromDatabase(normalizedLanguage, companiesIdToUse ?? undefined);
       
       // 5. Aguardar um pouco para garantir que as traduções foram processadas
       await new Promise(resolve => setTimeout(resolve, 300));
       
       // 6. Verificar se TODAS as traduções foram carregadas antes de liberar
       console.log('[useUserLanguage] Verificando se todas as traduções foram carregadas...');
-      const allLoaded = await verifyAllTranslationsLoaded(language);
+      const allLoaded = await verifyAllTranslationsLoaded(normalizedLanguage);
       
       if (!allLoaded) {
         console.warn('[useUserLanguage] ⚠️ Algumas traduções podem não ter sido carregadas completamente, mas continuando...');
       }
       
       // Atualizar refs
-      lastLanguageRef.current = language;
+      lastLanguageRef.current = normalizedLanguage;
       hasLoadedRef.current = true;
 
-      console.log('[useUserLanguage] ✅ Mudança de idioma concluída:', language);
+      console.log('[useUserLanguage] ✅ Mudança de idioma concluída:', normalizedLanguage);
     } catch (error) {
       console.error('[useUserLanguage] Erro ao mudar idioma:', error);
       throw error;

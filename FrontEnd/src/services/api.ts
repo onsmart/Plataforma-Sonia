@@ -548,28 +548,6 @@ export const AgentService = {
         }
     },
 
-    async provisionOnsmartDemo(body?: {
-        calendlyIntegrationId?: string;
-        whatsappIntegrationId?: string;
-        specialty?: string;
-        welcomeMessage?: string;
-    }): Promise<any> {
-        try {
-            const res = await fetch(`${BASE_URL}/agents/provision-onsmart-demo`, {
-                method: 'POST',
-                headers: await getAuthHeaders(),
-                body: JSON.stringify(body || {}),
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.details || err.error || 'Falha ao provisionar demo Onsmart');
-            }
-            return res.json();
-        } catch (error: any) {
-            return handleFetchError(error, 'ProvisionOnsmartDemo');
-        }
-    },
-
     async activateAgent(id: string, email?: string): Promise<Agent> {
         try {
             const { data: { user } } = await supabase.auth.getUser();
@@ -858,9 +836,35 @@ export const AgentService = {
     },
 
     // --- COPILOT ---
-    async chatWithCopilot(messages: ChatMessage[], context: any): Promise<ChatMessage> {
-        // We use a special reserved ID for the system copilot
-        return this.chatWithAgent('system-copilot', messages, context);
+    async chatWithCopilot(
+        messages: ChatMessage[],
+        context?: {
+            currentRoute?: string;
+            language?: string;
+            channel?: string;
+            sessionId?: string;
+        }
+    ): Promise<ChatMessage> {
+        try {
+            const res = await fetch(`${BASE_URL}/copilot/chat`, {
+                method: 'POST',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify({ messages, context }),
+            });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.details || err.error || 'Falha ao conversar com a Sonia Copilot');
+            }
+
+            const data = await res.json();
+            return {
+                role: data.role || 'assistant',
+                content: data.content || data.reply || '',
+            };
+        } catch (error: any) {
+            return handleFetchError(error, 'CopilotChat');
+        }
     },
 
     // Updated Chat method with Better Error Handling

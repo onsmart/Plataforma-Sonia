@@ -9,10 +9,17 @@ i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    fallbackLng: 'pt-BR',
-    supportedLngs: ['pt-BR', 'en-US', 'es-ES'],
+    fallbackLng: {
+      'fr-FR': ['en-US', 'pt-BR'],
+      'de-DE': ['en-US', 'pt-BR'],
+      'zh-CN': ['en-US', 'pt-BR'],
+      'ja-JP': ['en-US', 'pt-BR'],
+      'ru-RU': ['en-US', 'pt-BR'],
+      default: ['pt-BR'],
+    },
+    supportedLngs: ['pt-BR', 'en-US', 'es-ES', 'fr-FR', 'de-DE', 'zh-CN', 'ja-JP', 'ru-RU'],
     defaultNS: 'cockpit',
-    ns: ['cockpit', 'inbox', 'playground', 'agentsHub', 'agentConfig', 'flows', 'governance', 'navigation', 'knowledgeBase', 'insights', 'configuration', 'profile', 'sidebar'],
+    ns: ['cockpit', 'inbox', 'playground', 'agentsHub', 'agentConfig', 'flows', 'governance', 'navigation', 'knowledgeBase', 'insights', 'configuration', 'profile', 'sidebar', 'copilot'],
     resources: {
       'pt-BR': {
         cockpit: {},
@@ -89,7 +96,20 @@ i18n
         insights: {},
         configuration: {},
         profile: {},
-        sidebar: {}
+        sidebar: {},
+        copilot: {
+          title: 'Sonia AI Copilot',
+          subtitle: 'Sua assistente para navegar e usar a plataforma Sonia.',
+          welcome: 'Olá! Eu sou a Sonia Copilot. Posso ajudar você a navegar pela plataforma e tirar dúvidas sobre funcionalidades, planos e fluxos de uso.',
+          placeholder: "Digite 'Ir para Inbox'...",
+          listening: 'Ouvindo...',
+          thinking: 'Pensando...',
+          navigatingTo: 'Indo para {{page}}...',
+          connectionError: 'Não consegui conectar ao servidor. Tente novamente.',
+          voiceUnsupported: 'Seu navegador não suporta entrada por voz.',
+          voiceBlocked: 'O microfone está bloqueado neste ambiente. Continue conversando por texto.',
+          voiceError: 'Erro de voz: {{error}}',
+        }
       },
       'en-US': {
         cockpit: {},
@@ -166,7 +186,20 @@ i18n
         insights: {},
         configuration: {},
         profile: {},
-        sidebar: {}
+        sidebar: {},
+        copilot: {
+          title: 'Sonia AI Copilot',
+          subtitle: 'Your AI assistant for navigating and using the SONIA platform.',
+          welcome: 'Hello! I am Sonia Copilot. I can help you navigate the platform and answer questions about features, plans, and workflows.',
+          placeholder: "Type 'Go to Inbox'...",
+          listening: 'Listening...',
+          thinking: 'Thinking...',
+          navigatingTo: 'Navigating to {{page}}...',
+          connectionError: 'Could not connect to the server. Please try again.',
+          voiceUnsupported: 'Your browser does not support voice input.',
+          voiceBlocked: 'Microphone access is blocked in this environment. Please continue via text.',
+          voiceError: 'Voice error: {{error}}',
+        }
       },
       'es-ES': {
         cockpit: {},
@@ -198,7 +231,20 @@ i18n
         insights: {},
         configuration: {},
         profile: {},
-        sidebar: {}
+        sidebar: {},
+        copilot: {
+          title: 'Sonia AI Copilot',
+          subtitle: 'Tu asistente para navegar y usar la plataforma Sonia.',
+          welcome: '¡Hola! Soy Sonia Copilot. Puedo ayudarte a navegar por la plataforma y responder dudas sobre funciones, planes y flujos de uso.',
+          placeholder: "Escribe 'Ir a Inbox'...",
+          listening: 'Escuchando...',
+          thinking: 'Pensando...',
+          navigatingTo: 'Yendo a {{page}}...',
+          connectionError: 'No pude conectar con el servidor. Inténtalo de nuevo.',
+          voiceUnsupported: 'Tu navegador no admite entrada por voz.',
+          voiceBlocked: 'El micrófono está bloqueado en este entorno. Continúa por texto.',
+          voiceError: 'Error de voz: {{error}}',
+        }
       }
     },
     interpolation: {
