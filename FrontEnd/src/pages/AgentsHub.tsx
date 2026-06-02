@@ -24,7 +24,8 @@ import {
     ArrowRight,
     Sparkles,
     Cpu,
-    Pencil
+    Pencil,
+    Info
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "../components/ui/button"
@@ -1531,6 +1532,17 @@ export function AgentsHub() {
                                 })()}
                             </DialogDescription>
                         </DialogHeader>
+                        <div
+                            className="mt-4 flex gap-3 rounded-lg border px-3.5 py-3 text-sm leading-relaxed"
+                            style={{
+                                borderColor: isDark ? 'rgba(37, 99, 235, 0.35)' : 'rgba(37, 99, 235, 0.22)',
+                                background: isDark ? 'rgba(37, 99, 235, 0.1)' : 'rgba(37, 99, 235, 0.06)',
+                                color: isDark ? '#cbd5e1' : '#334155',
+                            }}
+                        >
+                            <Info className="mt-0.5 h-4 w-4 shrink-0" style={{ color: '#2563eb' }} aria-hidden />
+                            <p>{t('dialog.createAgent.postCreateHint')}</p>
+                        </div>
                         </div>
                         <div 
                             className="space-y-6"

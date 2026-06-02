@@ -3,13 +3,33 @@ import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState }
 import { useTranslation } from "react-i18next"
 import {
   Sparkles, Check,
-  Loader2, BrainCircuit, Database, Save, Zap, ChevronDown, X,
+  Loader2, Database, Save, ArrowLeft, ChevronDown, X,
+  Plug, BookOpen, Mic2,
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
 import { Label } from "../components/ui/label"
 import { Textarea } from "../components/ui/textarea"
 import { cn } from "../lib/utils"
+import {
+  agentConfigContentWrap,
+  agentConfigEyebrow,
+  agentConfigFieldHint,
+  agentConfigFieldLabel,
+  agentConfigGlow,
+  agentConfigInnerPanel,
+  agentConfigInput,
+  agentConfigMeshBg,
+  agentConfigMobileBar,
+  agentConfigPageShell,
+  agentConfigSubheading,
+  agentConfigTabTrigger,
+  agentConfigTabsList,
+  agentConfigTextarea,
+  agentConfigTopBar,
+} from "../lib/agent-config-layout"
+import { AgentConfigSection } from "../components/agents/AgentConfigSection"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Badge } from "../components/ui/badge"
 import { toast } from "sonner"
 import { Toaster } from "sonner"
@@ -31,7 +51,7 @@ import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
 import { fetchWhatsappIntegrationsForWorkspace } from "../lib/workspace-integrations"
 import { useTheme } from "next-themes"
-import { SUPPORTED_AGENT_LANGUAGES, getAgentLanguageLabel, normalizeAgentLanguageCode } from "../lib/agent-language"
+import { SUPPORTED_AGENT_LANGUAGES, normalizeAgentLanguageCode } from "../lib/agent-language"
 import { AgentVoiceSettings, type AgentVoiceSettingsHandle } from "../components/agents/AgentVoiceSettings"
 import {
   Popover,
@@ -46,6 +66,18 @@ import {
   CommandItem,
   CommandList,
 } from "../components/ui/command"
+
+function getAgentInitials(value: string): string {
+  const parts = String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+  if (!parts.length) return "AI"
+  return parts
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() || "")
+    .join("")
+}
 
 export function AgentConfig() {
   const { theme } = useTheme()
@@ -313,22 +345,6 @@ export function AgentConfig() {
   }
 
   const isDark = theme === 'dark'
-  const configShellStyle = {
-    borderRadius: '12px',
-    background: 'hsl(var(--card))',
-    border: '1px solid hsl(var(--border) / 0.8)',
-    boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)',
-    transform: 'translateY(0)',
-    marginBottom: '0',
-  } as CSSProperties
-
-  const fieldSurfaceStyle = {
-    borderRadius: '10px',
-    backgroundColor: 'hsl(var(--background))',
-    borderColor: 'hsl(var(--border) / 0.85)',
-    color: 'hsl(var(--foreground))',
-    boxShadow: 'none',
-  } as CSSProperties
 
   const selectContentStyle = {
     backgroundColor: 'hsl(var(--card))',
@@ -336,405 +352,307 @@ export function AgentConfig() {
     boxShadow: isDark ? 'none' : '0 18px 40px -28px rgba(15, 23, 42, 0.12)'
   } as CSSProperties
 
-  const secondaryButtonStyle = {
-    color: 'hsl(var(--foreground))',
-    backgroundColor: 'hsl(var(--background))',
-    border: '1px solid hsl(var(--border) / 0.8)',
-    borderRadius: '10px',
-    boxShadow: 'none'
-  } as CSSProperties
-
-  const primaryButtonStyle = {
-    background: 'hsl(var(--primary))',
-    color: 'hsl(var(--primary-foreground))',
-    borderRadius: '10px',
-    boxShadow: 'none'
-  } as CSSProperties
-
-  const sectionCardClass = "space-y-6 rounded-xl border border-border bg-card p-5 shadow-none sm:p-6 lg:p-7"
-  const sectionHeaderClass = "flex items-start gap-3"
-  const sectionTitleClass = "text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/60 dark:text-muted-foreground"
-  const neuralSettingsCard = (
-    <section className={`${sectionCardClass} border-border/90 bg-card/95`} style={configShellStyle}>
-      <div className={sectionHeaderClass}>
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-          <BrainCircuit size={20} />
-        </div>
-        <div className="space-y-1">
-          <h3 className={sectionTitleClass}>{t('neural.title')}</h3>
-          <p className="text-sm leading-6 text-foreground/72">
-            Ajuste o estilo das respostas do agente sem precisar expor configuracoes tecnicas de IA para quem esta configurando.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <div className="space-y-4 rounded-lg border border-border/80 bg-muted/25 px-4 py-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground/60 dark:text-muted-foreground">{t('neural.creativityLabel')}</Label>
-              <p className="text-sm leading-relaxed text-foreground/72">
-                Define se a Sonia responde de forma mais objetiva e previsivel ou com mais flexibilidade para variar frases e exemplos.
-              </p>
-            </div>
-            <span className="text-2xl font-semibold text-foreground">{Math.round(temperature[0] * 100)}%</span>
-          </div>
-          <div
-            className="relative slider-cyan"
-            style={{
-              ['--slider-track-bg' as any]: isDark ? '#3f3f46' : '#e2e8f0',
-              ['--slider-range-bg' as any]: '#06b6d4'
-            }}
-          >
-            <Slider
-              min={0}
-              max={1}
-              step={0.01}
-              value={temperature}
-              onValueChange={setTemperature}
-              className="cursor-pointer"
-            />
-          </div>
-          <div className="flex justify-between text-[10px] font-medium text-foreground/60 dark:text-muted-foreground">
-            <span>{t('neural.exact')} e direta</span>
-            <span>{t('neural.creative')} e variada</span>
-          </div>
-          <div className="rounded-lg border border-dashed border-border/80 bg-background/80 px-3 py-3 text-xs leading-relaxed text-foreground/68 dark:bg-card dark:text-muted-foreground">
-            Use valores mais baixos para atendimento operacional, confirmacoes e fluxos mais controlados.
-            Use valores mais altos quando voce quiser respostas mais naturais, comerciais ou consultivas.
-          </div>
-        </div>
-
-        <div className="space-y-4 rounded-lg border border-border/80 bg-muted/25 px-4 py-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <Label className="text-[10px] font-semibold uppercase tracking-[0.16em] text-foreground/60 dark:text-muted-foreground">{t('neural.responseSizeLabel')}</Label>
-              <p className="text-sm leading-relaxed text-foreground/72">
-                Controla quanto espaco a resposta pode ocupar. Na pratica, isso influencia se a Sonia responde de forma curta ou mais detalhada.
-              </p>
-            </div>
-            <span className="text-xl font-semibold text-foreground">{maxTokens[0]} {t('neural.tokens')}</span>
-          </div>
-          <div
-            className="relative slider-cyan"
-            style={{
-              ['--slider-track-bg' as any]: isDark ? '#3f3f46' : '#e2e8f0',
-              ['--slider-range-bg' as any]: '#06b6d4'
-            }}
-          >
-            <Slider
-              min={100}
-              max={4000}
-              step={100}
-              value={maxTokens}
-              onValueChange={setMaxTokens}
-              className="cursor-pointer"
-            />
-          </div>
-          <div className="flex justify-between text-[10px] font-medium text-foreground/60 dark:text-muted-foreground">
-            <span>Mais curta</span>
-            <span>Mais detalhada</span>
-          </div>
-          <div className="rounded-lg border border-dashed border-border/80 bg-background/80 px-3 py-3 text-xs leading-relaxed text-foreground/68 dark:bg-card dark:text-muted-foreground">
-            Para WhatsApp e atendimento rapido, prefira limites menores. Para suporte, qualificacao ou respostas mais explicativas, aumente esse valor.
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-dashed border-border/80 bg-muted/20 px-4 py-4">
-        <p className="text-sm leading-relaxed text-foreground/72">
-          Estes ajustes entram no mesmo salvamento da página: use <span className="font-medium text-foreground">Salvar alterações</span> no topo (voz e demais opções também).
-        </p>
-      </div>
-    </section>
+  const saveButton = (
+    <Button
+      onClick={handleSave}
+      disabled={isLoading}
+      className="h-10 rounded-lg px-5 text-sm font-semibold shadow-sm disabled:opacity-50"
+    >
+      {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+      Salvar alterações
+    </Button>
   )
 
-  if (isFetching) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-zinc-50 dark:bg-background">
-      <Loader2 className="h-10 w-10 animate-spin text-primary mb-4" />
-      <p className="text-[10px] font-black uppercase text-muted-foreground">{t('loading.syncing')}</p>
+  const neuralSettingsBlock = (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <div className={cn(agentConfigInnerPanel, "space-y-4")}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <Label className={agentConfigFieldLabel}>{t('neural.creativityLabel')}</Label>
+            <p className={agentConfigFieldHint}>
+              Respostas mais objetivas ou mais variadas na forma de expressar.
+            </p>
+          </div>
+          <span className="text-lg font-semibold tabular-nums text-primary">{Math.round(temperature[0] * 100)}%</span>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary transition-all"
+            style={{ width: `${Math.round(temperature[0] * 100)}%` }}
+          />
+        </div>
+        <div className="slider-cyan" style={{ ['--slider-track-bg' as any]: isDark ? '#3f3f46' : '#e2e8f0', ['--slider-range-bg' as any]: 'hsl(var(--primary))' }}>
+          <Slider min={0} max={1} step={0.01} value={temperature} onValueChange={setTemperature} />
+        </div>
+        <div className="flex justify-between text-[11px] text-muted-foreground">
+          <span>{t('neural.exact')}</span>
+          <span>{t('neural.creative')}</span>
+        </div>
+      </div>
+      <div className={cn(agentConfigInnerPanel, "space-y-4")}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <Label className={agentConfigFieldLabel}>{t('neural.responseSizeLabel')}</Label>
+            <p className={agentConfigFieldHint}>Controle se a Sonia responde de forma curta ou detalhada.</p>
+          </div>
+          <span className="text-lg font-semibold tabular-nums text-primary">{maxTokens[0]}</span>
+        </div>
+        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+          <div
+            className="h-full rounded-full bg-primary transition-all"
+            style={{ width: `${Math.min(100, Math.max(0, ((maxTokens[0] - 100) / 3900) * 100))}%` }}
+          />
+        </div>
+        <div className="slider-cyan" style={{ ['--slider-track-bg' as any]: isDark ? '#3f3f46' : '#e2e8f0', ['--slider-range-bg' as any]: 'hsl(var(--primary))' }}>
+          <Slider min={100} max={4000} step={100} value={maxTokens} onValueChange={setMaxTokens} />
+        </div>
+        <div className="flex justify-between text-[11px] text-muted-foreground">
+          <span>Mais curta</span>
+          <span>Mais detalhada</span>
+        </div>
+      </div>
     </div>
   )
 
+  if (isFetching) return (
+    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3">
+      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <p className={agentConfigEyebrow}>{t('loading.syncing')}</p>
+    </div>
+  )
+
+  const displayName = name || (agentId ? t('header.editBrain') : t('header.newBrain'))
+
   return (
-      <div className="min-h-screen -m-4 overflow-x-hidden bg-background px-4 py-4 font-sans text-foreground sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-        <style>{`
-          .slider-cyan [data-slot="slider-track"] {
-            background: ${isDark ? 'linear-gradient(90deg, #3f3f46, #27272a)' : 'linear-gradient(90deg, rgba(226,232,240,0.96), rgba(203,213,225,0.9))'} !important;
-            height: 0.5rem !important;
-          }
-          .slider-cyan [data-slot="slider-range"] {
-            background: linear-gradient(90deg, #0e7490 0%, #06b6d4 55%, #22d3ee 100%) !important;
-            box-shadow: 0 0 12px rgba(6, 182, 212, 0.12) !important;
-          }
-          .slider-cyan [data-slot="slider-thumb"] {
-            border-color: #22d3ee !important;
-            background-color: ${isDark ? '#27272a' : '#ffffff'} !important;
-            width: 1.1rem !important;
-            height: 1.1rem !important;
-            box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.12), 0 6px 14px -6px rgba(0, 0, 0, 0.35) !important;
-          }
-          .slider-cyan [data-slot="slider-thumb"]:hover {
-            box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.18), 0 8px 16px -6px rgba(0, 0, 0, 0.4) !important;
-          }
-          [data-slot="input"] {
-            border-radius: 1.15rem !important;
-          }
-        `}</style>
-        <Toaster position="top-center" />
+    <div className={cn(agentConfigPageShell, "-m-4 sm:-m-0")}>
+      <div className={agentConfigMeshBg} aria-hidden />
+      <div className={agentConfigGlow} aria-hidden />
+      <style>{`
+        .slider-cyan [data-slot="slider-track"] { height: 0.45rem !important; border-radius: 9999px; }
+        .slider-cyan [data-slot="slider-range"] { background: hsl(var(--primary)) !important; border-radius: 9999px; }
+        .slider-cyan [data-slot="slider-thumb"] {
+          width: 1rem !important; height: 1rem !important;
+          border: 2px solid hsl(var(--primary)) !important;
+          background: hsl(var(--background)) !important;
+          box-shadow: 0 0 0 3px hsl(var(--primary) / 0.15) !important;
+        }
+      `}</style>
+      <Toaster position="top-center" />
 
-        {/* Header Sonia Premium */}
-        <header className="mx-auto flex w-full max-w-5xl flex-col gap-5 rounded-xl p-5 sm:p-6 lg:flex-row lg:items-end lg:justify-between lg:p-8" style={configShellStyle}>
-          <div className="flex min-w-0 items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Zap className="h-6 w-6" strokeWidth={2.5} />
-            </div>
-            <div className="flex min-w-0 items-center gap-4">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground/60 dark:text-muted-foreground">Configuração de agente</p>
-                  <Badge variant="secondary" className="rounded-md px-2 py-0.5 text-[10px]">Em edição</Badge>
-                </div>
-                <h1 className="mt-1 truncate text-2xl font-semibold leading-tight text-foreground sm:text-3xl">{name || (agentId ? t('header.editBrain') : t('header.newBrain'))}</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-foreground/72 sm:text-[15px]">
-                  Ajuste identidade, conexões, parâmetros de resposta e voz. O papel e o fluxo do agente vêm do template vinculado no hub.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap lg:w-auto lg:justify-end">
-            <Button variant="ghost" className="h-11 rounded-lg px-5 font-medium" style={secondaryButtonStyle} onClick={() => window.history.back()}>{t('button.cancel')}</Button>
-            <Button onClick={handleSave} disabled={isLoading} className="h-11 min-w-[12rem] rounded-lg px-6 font-semibold disabled:opacity-50" style={primaryButtonStyle}>
-              {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-              Salvar alterações
+      <div className={agentConfigTopBar}>
+        <div className={cn(agentConfigContentWrap, "flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:py-4")}>
+          <div className="flex min-w-0 items-center gap-3">
+            <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-lg" onClick={() => window.history.back()} aria-label={t('button.cancel')}>
+              <ArrowLeft className="h-4 w-4" />
             </Button>
-          </div>
-        </header>
-
-        <main className="mx-auto mt-8 flex w-full max-w-5xl flex-col gap-10 pb-12 sm:mt-9 lg:mt-10">
-          <div className="grid grid-cols-1 gap-10">
-            <div className="min-w-0 space-y-10">
-              
-              {/* Personalidade */}
-              <section className={cn(sectionCardClass, "mt-1 sm:mt-2")} style={configShellStyle}>
-                <div className={sectionHeaderClass}>
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                    <Sparkles size={20} />
-                  </div>
-                  <div className="space-y-1">
-                    <h2 className={sectionTitleClass}>{t('identity.title')}</h2>
-                    <p className="text-sm text-foreground/72">
-                      Nome exibido e idioma das respostas. Comportamento, tom e roteiro vêm do template de papel do agente.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid gap-6">
-                  <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">{t('identity.nameLabel')}</Label>
-                    <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('identity.namePlaceholder')} className="h-12 border px-4 text-sm font-bold transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-500/25 dark:focus-visible:ring-cyan-400/20 sm:text-base" style={fieldSurfaceStyle} />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">Idioma principal</Label>
-                    <Select value={selectedPrimaryLanguage} onValueChange={(value) => setSelectedPrimaryLanguage(normalizeAgentLanguageCode(value, 'pt-BR'))}>
-                      <SelectTrigger className="h-12 border px-4 font-black shadow-none transition-all duration-300 focus:ring-2 focus:ring-cyan-500/20" style={fieldSurfaceStyle}>
-                        <SelectValue placeholder={getAgentLanguageLabel(selectedPrimaryLanguage, 'Português (Brasil)')} />
-                      </SelectTrigger>
-                      <SelectContent className="rounded-[1.35rem] border p-2" style={selectContentStyle}>
-                        {SUPPORTED_AGENT_LANGUAGES.map((language) => (
-                          <SelectItem key={language.code} value={language.code} className="rounded-2xl font-bold text-zinc-900 dark:text-zinc-50">
-                            {language.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">
-                      Mensagem inicial
-                    </Label>
-                    <Textarea
-                      value={welcomeMessage}
-                      onChange={(e) => {
-                        const msg = e.target.value
-                        setWelcomeMessage(msg)
-                        setExtraFeatures(mergeWelcomeIntoSerialized(extraFeatures, msg))
-                      }}
-                      placeholder="Boas-vindas no primeiro contato da conversa."
-                      className="min-h-[88px] border px-4 py-3 text-sm leading-6 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-cyan-500/25 dark:focus-visible:ring-cyan-400/20"
-                      style={fieldSurfaceStyle}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">
-                      Ferramentas
-                    </Label>
-                    <p className="text-sm text-foreground/72">
-                      Ative a integração primeiro; as ferramentas aparecem em seguida.
-                    </p>
-                    <AgentToolsSection
-                      agentId={agentId || undefined}
-                      extraFeaturesJson={extraFeatures}
-                      onExtraFeaturesChange={setExtraFeatures}
-                    />
-                  </div>
-                </div>
-              </section>
-
-              {/* Conexões */}
-              <section className={cn(sectionCardClass, "mt-1 sm:mt-2")} style={configShellStyle}>
-                <div className={sectionHeaderClass}>
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                    <Database size={20} />
-                  </div>
-                  <div className="space-y-1">
-                    <h2 className={sectionTitleClass}>{t('connections.title')}</h2>
-                    <p className="text-sm text-foreground/72">
-                      Visão somente leitura das conexões atualmente vinculadas a este agente. Para alterar integrações, use o hub de agentes. A lista abaixo atualiza ao voltar a esta aba ou ao focar a janela.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid gap-6">
-                  <div className="space-y-3 rounded-lg border border-border/80 bg-muted/25 px-4 py-4">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">
-                      Conexões vinculadas a este agente
-                    </Label>
-                    {linkedConnectionLines.length === 0 ? (
-                      <p className="text-sm text-foreground/70">
-                        Nenhuma integração externa vinculada no momento
-                        {agentId ? '.' : ' — salve o agente no hub e associe WhatsApp ou CRM lá.'}
-                      </p>
-                    ) : (
-                      <ul className="list-disc space-y-2 pl-5 text-sm font-medium text-foreground">
-                        {linkedConnectionLines.map((line, idx) => (
-                          <li key={`${idx}-${line}`}>{line}</li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <Label className="text-[10px] font-black uppercase tracking-widest text-foreground/60 dark:text-zinc-400">{t('connections.filesLabel')}</Label>
-                        <p className="mt-1 text-sm text-foreground/72">
-                          Escolha os arquivos da base sem expandir a página — busque na lista abaixo.
-                        </p>
-                      </div>
-                      <Badge variant="secondary" className="w-fit shrink-0 rounded-md px-3 py-1">
-                        {selectedFileIds.length} selecionado{selectedFileIds.length === 1 ? "" : "s"}
-                      </Badge>
-                    </div>
-
-                    {availableFiles.length === 0 ? (
-                      <div className="rounded-lg border border-dashed border-border/80 bg-muted/20 px-4 py-5 text-sm text-foreground/70">
-                        Nenhum arquivo disponivel para vincular a este agente.
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              role="combobox"
-                              className="h-auto min-h-12 w-full justify-between px-4 py-3 text-left font-normal"
-                              style={fieldSurfaceStyle}
-                            >
-                              <span className="truncate text-sm font-semibold">
-                                {selectedFileIds.length === 0
-                                  ? "Selecionar arquivos..."
-                                  : selectedFileIds.length === 1
-                                    ? availableFiles.find((f: any) => f.id === selectedFileIds[0])?.original_name || "1 arquivo"
-                                    : `${selectedFileIds.length} arquivos na base`}
-                              </span>
-                              <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-55" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
-                            <Command>
-                              <CommandInput placeholder="Buscar por nome..." className="h-11" />
-                              <CommandList className="max-h-[min(60vh,22rem)]">
-                                <CommandEmpty>Nenhum arquivo encontrado.</CommandEmpty>
-                                <CommandGroup>
-                                  {availableFiles.map((file: any) => {
-                                    const isSelected = selectedFileIds.includes(file.id)
-                                    return (
-                                      <CommandItem
-                                        key={file.id}
-                                        value={`${file.original_name} ${file.id}`}
-                                        onSelect={() => toggleFileSelection(file.id)}
-                                        className="cursor-pointer"
-                                      >
-                                        <div
-                                          className={cn(
-                                            "mr-3 flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border",
-                                            isSelected
-                                              ? "border-primary bg-primary text-primary-foreground"
-                                              : "border-muted-foreground/35"
-                                          )}
-                                        >
-                                          {isSelected ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                          <div className="truncate font-medium">{file.original_name}</div>
-                                          <div className="text-xs text-muted-foreground">
-                                            {file.file_purpose === "skills" ? "Skills" : "RAG"}
-                                          </div>
-                                        </div>
-                                      </CommandItem>
-                                    )
-                                  })}
-                                </CommandGroup>
-                              </CommandList>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
-
-                        {selectedFileIds.length > 0 ? (
-                          <div className="max-h-28 overflow-y-auto rounded-lg border border-border/80 bg-muted/15 p-3">
-                            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-foreground/55">Selecionados</p>
-                            <div className="flex flex-wrap gap-2">
-                              {selectedFileIds.map((fileId) => {
-                                const file = availableFiles.find((f: any) => f.id === fileId)
-                                if (!file) return null
-                                return (
-                                  <Badge key={fileId} variant="secondary" className="flex max-w-full items-center gap-1 truncate pr-0.5">
-                                    <span className="truncate">{file.original_name}</span>
-                                    <button
-                                      type="button"
-                                      className="rounded p-1 text-foreground/60 hover:bg-destructive/15 hover:text-destructive"
-                                      aria-label={`Remover ${file.original_name}`}
-                                      onClick={() => toggleFileSelection(fileId)}
-                                    >
-                                      <X className="h-3 w-3 shrink-0" />
-                                    </button>
-                                  </Badge>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </section>
-
-              <AgentVoiceSettings
-                ref={voiceSettingsRef}
-                agentId={agentId}
-                neuralSettings={neuralSettingsCard}
-              />
-
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 text-sm font-bold text-primary-foreground shadow-sm">
+              {getAgentInitials(displayName)}
             </div>
+            <div className="min-w-0">
+              <p className={agentConfigEyebrow}>Configuração de agente</p>
+              <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">{displayName}</h1>
+            </div>
+            <Badge variant="outline" className="ml-1 hidden shrink-0 rounded-md sm:inline-flex">Em edição</Badge>
           </div>
-
-        </main>
+          <div className="hidden items-center gap-2 lg:flex">
+            <Button variant="outline" className="h-10 rounded-lg px-4" onClick={() => window.history.back()}>{t('button.cancel')}</Button>
+            {saveButton}
+          </div>
+        </div>
       </div>
+
+      <div className={cn(agentConfigContentWrap, "py-6 sm:py-8")}>
+        <p className={cn(agentConfigSubheading, "mb-6 max-w-3xl")}>
+          Organize identidade, integrações, base de conhecimento e voz em abas. O papel conversacional vem do template vinculado no hub.
+        </p>
+
+        <Tabs defaultValue="geral" className="gap-6">
+          <TabsList className={agentConfigTabsList}>
+            <TabsTrigger value="geral" className={agentConfigTabTrigger}>
+              <Sparkles className="mr-1.5 hidden h-3.5 w-3.5 sm:inline" />
+              Geral
+            </TabsTrigger>
+            <TabsTrigger value="integracoes" className={agentConfigTabTrigger}>
+              <Plug className="mr-1.5 hidden h-3.5 w-3.5 sm:inline" />
+              Integrações
+            </TabsTrigger>
+            <TabsTrigger value="conhecimento" className={agentConfigTabTrigger}>
+              <BookOpen className="mr-1.5 hidden h-3.5 w-3.5 sm:inline" />
+              Conhecimento
+            </TabsTrigger>
+            <TabsTrigger value="voz" className={agentConfigTabTrigger}>
+              <Mic2 className="mr-1.5 hidden h-3.5 w-3.5 sm:inline" />
+              Voz & IA
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="geral" className="mt-0 space-y-0 outline-none">
+            <AgentConfigSection
+              icon={Sparkles}
+              title={t('identity.title')}
+              description="Nome, idioma e mensagem de boas-vindas exibidos ao contato."
+            >
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div className="space-y-2 sm:col-span-2">
+                  <Label className={agentConfigFieldLabel}>{t('identity.nameLabel')}</Label>
+                  <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t('identity.namePlaceholder')} className={agentConfigInput} />
+                </div>
+                <div className="space-y-2">
+                  <Label className={agentConfigFieldLabel}>Idioma principal</Label>
+                  <Select value={selectedPrimaryLanguage} onValueChange={(v) => setSelectedPrimaryLanguage(normalizeAgentLanguageCode(v, 'pt-BR'))}>
+                    <SelectTrigger className={agentConfigInput}><SelectValue /></SelectTrigger>
+                    <SelectContent className="rounded-lg border p-1" style={selectContentStyle}>
+                      {SUPPORTED_AGENT_LANGUAGES.map((language) => (
+                        <SelectItem key={language.code} value={language.code} className="rounded-md">{language.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label className={agentConfigFieldLabel}>Mensagem inicial</Label>
+                  <Textarea
+                    value={welcomeMessage}
+                    onChange={(e) => {
+                      const msg = e.target.value
+                      setWelcomeMessage(msg)
+                      setExtraFeatures(mergeWelcomeIntoSerialized(extraFeatures, msg))
+                    }}
+                    placeholder="Boas-vindas no primeiro contato da conversa."
+                    className={agentConfigTextarea}
+                  />
+                  <p className={agentConfigFieldHint}>Enviada automaticamente no primeiro turno da conversa, quando configurada.</p>
+                </div>
+              </div>
+            </AgentConfigSection>
+          </TabsContent>
+
+          <TabsContent value="integracoes" className="mt-0 outline-none">
+            <AgentConfigSection
+              icon={Plug}
+              title="Ferramentas e integrações"
+              description="Ative Calendly, HubSpot ou WhatsApp e escolha o que o agente pode executar."
+            >
+              <AgentToolsSection
+                agentId={agentId || undefined}
+                extraFeaturesJson={extraFeatures}
+                onExtraFeaturesChange={setExtraFeatures}
+              />
+            </AgentConfigSection>
+          </TabsContent>
+
+          <TabsContent value="conhecimento" className="mt-0 outline-none">
+            <AgentConfigSection
+              icon={Database}
+              title={t('connections.title')}
+              description="Conexões vinculadas (somente leitura) e arquivos da base de conhecimento."
+              headerExtra={
+                linkedConnectionLines.length > 0 ? (
+                  <Badge variant="secondary" className="rounded-md">{linkedConnectionLines.length} conexão(ões)</Badge>
+                ) : null
+              }
+            >
+              <div className="grid gap-5">
+                <div className={agentConfigInnerPanel}>
+                  <Label className={agentConfigFieldLabel}>Conexões ativas neste agente</Label>
+                  {linkedConnectionLines.length === 0 ? (
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Nenhuma integração externa vinculada{agentId ? '.' : ' — configure no hub de agentes.'}
+                    </p>
+                  ) : (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {linkedConnectionLines.map((line, idx) => (
+                        <span key={`${idx}-${line}`} className="inline-flex items-center rounded-lg border border-border/50 bg-background/80 px-3 py-1.5 text-xs font-medium">
+                          {line}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <p className={cn(agentConfigFieldHint, "mt-3")}>Para alterar WhatsApp ou CRM, use o hub de agentes ou Configurações → Integrações.</p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <Label className={agentConfigFieldLabel}>{t('connections.filesLabel')}</Label>
+                      <p className={agentConfigFieldHint}>Documentos usados como contexto (RAG) ou skills do agente.</p>
+                    </div>
+                    <Badge variant="outline" className="rounded-md">{selectedFileIds.length} selecionado{selectedFileIds.length === 1 ? '' : 's'}</Badge>
+                  </div>
+                  {availableFiles.length === 0 ? (
+                    <div className={cn(agentConfigInnerPanel, "border-dashed text-sm text-muted-foreground")}>
+                      Nenhum arquivo disponível na base de conhecimento.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button type="button" variant="outline" className={cn(agentConfigInput, "h-auto min-h-11 w-full justify-between py-2.5 font-normal")}>
+                            <span className="truncate text-sm">
+                              {selectedFileIds.length === 0 ? 'Selecionar arquivos...' : `${selectedFileIds.length} arquivo(s)`}
+                            </span>
+                            <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] rounded-xl p-0" align="start">
+                          <Command>
+                            <CommandInput placeholder="Buscar arquivo..." className="h-10" />
+                            <CommandList className="max-h-64">
+                              <CommandEmpty>Nenhum arquivo encontrado.</CommandEmpty>
+                              <CommandGroup>
+                                {availableFiles.map((file: any) => {
+                                  const isSelected = selectedFileIds.includes(file.id)
+                                  return (
+                                    <CommandItem key={file.id} value={`${file.original_name} ${file.id}`} onSelect={() => toggleFileSelection(file.id)} className="rounded-lg">
+                                      <div className={cn("mr-2 flex h-4 w-4 items-center justify-center rounded border", isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40")}>
+                                        {isSelected ? <Check className="h-3 w-3" /> : null}
+                                      </div>
+                                      <div className="min-w-0">
+                                        <div className="truncate text-sm">{file.original_name}</div>
+                                        <div className="text-xs text-muted-foreground">{file.file_purpose === 'skills' ? 'Skills' : 'RAG'}</div>
+                                      </div>
+                                    </CommandItem>
+                                  )
+                                })}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      {selectedFileIds.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {selectedFileIds.map((fileId) => {
+                            const file = availableFiles.find((f: any) => f.id === fileId)
+                            if (!file) return null
+                            return (
+                              <Badge key={fileId} variant="secondary" className="gap-1 rounded-md pr-1">
+                                <span className="max-w-[180px] truncate">{file.original_name}</span>
+                                <button type="button" className="rounded p-0.5 hover:bg-destructive/15 hover:text-destructive" onClick={() => toggleFileSelection(fileId)} aria-label="Remover">
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            )
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </AgentConfigSection>
+          </TabsContent>
+
+          <TabsContent value="voz" className="mt-0 space-y-5 outline-none">
+            <AgentVoiceSettings ref={voiceSettingsRef} agentId={agentId} neuralSettings={neuralSettingsBlock} />
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      <div className={agentConfigMobileBar}>
+        <div className="mx-auto flex max-w-5xl gap-2 px-1">
+          <Button variant="outline" className="h-10 flex-1 rounded-lg" onClick={() => window.history.back()}>{t('button.cancel')}</Button>
+          <div className="flex-[1.35]">{saveButton}</div>
+        </div>
+      </div>
+    </div>
   )
 }
