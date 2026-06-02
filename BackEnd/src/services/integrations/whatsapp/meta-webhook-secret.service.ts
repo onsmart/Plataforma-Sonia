@@ -123,6 +123,29 @@ export async function resolveMetaWebhookVerificationSecrets(rawBody: Buffer | st
   }
 
   const candidates = dedupeSecrets([envSecret, ...integrationSecrets])
+
+  if (candidates.length === 0) {
+    const { count: whatsappRows, error: countError } = await supabase
+      .from('tb_integrations')
+      .select('id', { count: 'exact', head: true })
+      .eq('provider', 'whatsapp')
+
+    const { count: withSecret, error: secretCountError } = await supabase
+      .from('tb_integrations')
+      .select('id', { count: 'exact', head: true })
+      .eq('provider', 'whatsapp')
+      .not('meta_app_secret', 'is', null)
+      .neq('meta_app_secret', '')
+
+    logger.error('[meta-webhook-secret] Nenhum candidato a App Secret para validar webhook', {
+      phoneNumberIds,
+      envConfigured: Boolean(envSecret),
+      whatsappIntegrations: countError ? null : whatsappRows ?? 0,
+      integrationsWithMetaAppSecret: secretCountError ? null : withSecret ?? 0,
+      columnError: isMissingMetaAppSecretColumn(countError || secretCountError) ? 'meta_app_secret' : undefined,
+    })
+  }
+
   return candidates.slice(0, MAX_WEBHOOK_SECRET_CANDIDATES + 1)
 }
 

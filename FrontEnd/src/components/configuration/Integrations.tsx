@@ -5,7 +5,8 @@ import { Label } from "../ui/label"
 import { Button } from "../ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { toast } from "sonner"
-import { ChevronDown, Loader2, Phone, Save, Server, Plus, Trash2, Clock, Bot, FlaskConical } from "lucide-react"
+import { ChevronDown, Loader2, Phone, Save, Server, Plus, Trash2, Clock, Bot, FlaskConical, AlertTriangle, GitBranch } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "../ui/alert"
 import { IntegrationBrandIcon } from "../integrations/IntegrationBrandIcon"
 import { Badge } from "../ui/badge"
 import { supabase } from "../../utils/supabase/client"
@@ -25,6 +26,17 @@ const WHATSAPP_PHONE_PLACEHOLDER = "+55 11 91234-5678"
 const isMaskedSecretValue = (value: string) => value === MASKED_SECRET_VALUE
 const normalizeSecretInput = (nextValue: string, currentValue: string) =>
     isMaskedSecretValue(currentValue) ? nextValue.replace(MASKED_SECRET_VALUE, '') : nextValue
+
+function formatWhatsappRoutingLabel(
+    mode: 'agent' | 'flow',
+    agentName?: string | null,
+    flowName?: string | null
+): string {
+    if (mode === 'flow') {
+        return flowName ? `Flow: ${flowName}` : 'Flow (nao selecionado)'
+    }
+    return agentName ? `Agente: ${agentName}` : 'Agente (nao selecionado)'
+}
 
 type WhatsAppStatus = 'connected' | 'pending' | 'error' | 'unknown'
 
@@ -407,6 +419,7 @@ export function Integrations() {
     const [emailStatus, setEmailStatus] = useState<EmailUiStatus>('unknown')
     const [whatsappConfig, setWhatsappConfig] = useState({ phoneNumberId: "", accessToken: "", verifyToken: "", appSecret: "", phoneNumber: "" })
     const [whatsappIntegrationId, setWhatsappIntegrationId] = useState<string | null>(null)
+    const [whatsappHasMetaAppSecret, setWhatsappHasMetaAppSecret] = useState(false)
     const [assignableAgents, setAssignableAgents] = useState<AssignableAgent[]>([])
     const [assignableFlows, setAssignableFlows] = useState<AssignableFlow[]>([])
     const [selectedLinkedAgentId, setSelectedLinkedAgentId] = useState("none")
@@ -805,8 +818,30 @@ export function Integrations() {
             (config.phoneNumberId.trim() || isMaskedSecretValue(config.phoneNumberId)) &&
             (config.accessToken.trim() || isMaskedSecretValue(config.accessToken)) &&
             (config.verifyToken.trim() || isMaskedSecretValue(config.verifyToken)) &&
+            (config.appSecret.trim() || isMaskedSecretValue(config.appSecret) || whatsappHasMetaAppSecret) &&
             (normalizePhoneNumber(config.phoneNumber) || isMaskedSecretValue(config.phoneNumber))
         )
+
+    const resolveWhatsappAppSecretForSave = () =>
+        isMaskedSecretValue(whatsappConfig.appSecret) ? '' : whatsappConfig.appSecret.trim()
+
+    const buildWhatsappLockedSavePayload = () => {
+        const trimmedAppSecret = resolveWhatsappAppSecretForSave()
+        const normalizedAutomationMode: 'agent' | 'flow' = automationMode === 'flow' ? 'flow' : 'agent'
+
+        return {
+            meta_app_secret: trimmedAppSecret || null,
+            linked_agent_id:
+                normalizedAutomationMode === 'agent' && selectedLinkedAgentId !== 'none'
+                    ? selectedLinkedAgentId
+                    : null,
+            linked_flow_id:
+                normalizedAutomationMode === 'flow' && selectedLinkedFlowId !== 'none'
+                    ? selectedLinkedFlowId
+                    : null,
+            automation_mode: normalizedAutomationMode,
+        } as const
+    }
 
     const fetchCurrentWhatsappIntegration = async (): Promise<{
         integration: WhatsAppIntegrationRow | null
@@ -1393,6 +1428,7 @@ export function Integrations() {
                 }
 
                 setWhatsappIntegrationId(whatsappIntegration?.id || null)
+                setWhatsappHasMetaAppSecret(Boolean(whatsappIntegration?.has_meta_app_secret))
                 setWhatsappConfig(nextWhatsappConfig)
                 setWhatsappIsLocked(isLocked)
                 setWhatsappLockedSummary(
@@ -1447,15 +1483,39 @@ export function Integrations() {
             return
         }
 
-        if (whatsappIsLocked) {
-            toast.info('Integracao conectada nao pode ser alterada. Remova e adicione uma nova.')
+        if (automationMode === 'flow' && selectedLinkedFlowId === 'none') {
+            toast.error('Selecione um flow para este numero oficial antes de salvar.')
             return
         }
 
-        const { payload, normalizedAutomationMode, hasCredentialInput } = buildWhatsappSavePayload()
+        if (whatsappIsLocked) {
+            if (!whatsappHasMetaAppSecret && !resolveWhatsappAppSecretForSave()) {
+                toast.error('Informe o App Secret da Meta para o webhook aceitar mensagens.')
+                return
+            }
 
-        if (normalizedAutomationMode === 'flow' && selectedLinkedFlowId === 'none') {
-            toast.error('Selecione um flow para este numero oficial antes de salvar.')
+            setSaving(true)
+            try {
+                const savedWhatsapp = await saveCurrentWhatsappIntegration(buildWhatsappLockedSavePayload())
+                setWhatsappIntegrationId(savedWhatsapp?.id || null)
+                if (resolveWhatsappAppSecretForSave()) {
+                    setWhatsappHasMetaAppSecret(true)
+                }
+                await loadConfig()
+                toast.success('Roteamento e App Secret atualizados.')
+            } catch (error: any) {
+                console.error('Erro ao salvar WhatsApp (bloqueado):', error)
+                toast.error(error.message || 'Erro ao salvar integracao WhatsApp.')
+            } finally {
+                setSaving(false)
+            }
+            return
+        }
+
+        const { payload, hasCredentialInput } = buildWhatsappSavePayload()
+
+        if (!whatsappHasMetaAppSecret && !resolveWhatsappAppSecretForSave()) {
+            toast.error('Informe o App Secret da Meta (obrigatorio para receber mensagens).')
             return
         }
 
@@ -1468,6 +1528,9 @@ export function Integrations() {
         try {
             const savedWhatsapp = await saveCurrentWhatsappIntegration(payload)
             setWhatsappIntegrationId(savedWhatsapp?.id || null)
+            if (resolveWhatsappAppSecretForSave() || savedWhatsapp?.has_meta_app_secret) {
+                setWhatsappHasMetaAppSecret(true)
+            }
 
             const validationResult = await loadConfig()
             if (validationResult.uiStatus === 'connected') {
@@ -1844,6 +1907,118 @@ export function Integrations() {
 
     if (loading || !translationsReady) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
+    const selectedAgentName =
+        assignableAgents.find((agent) => agent.id === selectedLinkedAgentId)?.nome ||
+        whatsappLockedSummary?.agentName ||
+        null
+    const selectedFlowName =
+        assignableFlows.find((flow) => flow.id === selectedLinkedFlowId)?.name ||
+        whatsappLockedSummary?.flowName ||
+        null
+    const whatsappRoutingCaption = formatWhatsappRoutingLabel(automationMode, selectedAgentName, selectedFlowName)
+
+    const whatsappWebhookAlert = !whatsappHasMetaAppSecret ? (
+        <Alert
+            className="rounded-2xl border"
+            style={{
+                borderColor: isDark ? 'rgba(245, 158, 11, 0.45)' : 'rgba(245, 158, 11, 0.35)',
+                backgroundColor: isDark ? 'rgba(120, 53, 15, 0.35)' : '#fffbeb',
+            }}
+        >
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            <AlertTitle className="text-sm font-bold" style={{ color: isDark ? '#fde68a' : '#92400e' }}>
+                App Secret ausente — mensagens da Meta serao rejeitadas
+            </AlertTitle>
+            <AlertDescription className="text-xs leading-relaxed" style={{ color: isDark ? '#fcd34d' : '#b45309' }}>
+                Informe o App Secret do app em Meta for Developers e salve. Ele fica na integracao (nao precisa ir no .env do servidor).
+            </AlertDescription>
+        </Alert>
+    ) : null
+
+    const whatsappRoutingPanel = (
+        <div
+            className="space-y-4 rounded-2xl border p-5"
+            style={{
+                backgroundColor: isDark ? 'rgba(6, 78, 59, 0.12)' : 'rgba(236, 253, 245, 0.9)',
+                borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.28)',
+            }}
+        >
+            <div className="flex items-start gap-3">
+                <GitBranch className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
+                        Quem atende este numero no WhatsApp
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                        Quando a Meta envia uma mensagem para o webhook, a plataforma encaminha para o agente ou flow escolhido abaixo.
+                    </p>
+                    <p className="mt-2 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        Atual: {whatsappRoutingCaption}
+                    </p>
+                </div>
+            </div>
+
+            <div className="space-y-2">
+                <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
+                    Modo de automacao
+                </Label>
+                <Select value={automationMode} onValueChange={(value: 'agent' | 'flow') => setAutomationMode(value)}>
+                    <SelectTrigger className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20" style={inputSurface}>
+                        <SelectValue placeholder="Escolha agente ou flow" />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-xl">
+                        <SelectItem value="agent">Agente de IA (resposta direta)</SelectItem>
+                        <SelectItem value="flow">Flow visual (motor de fluxo)</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+
+            {automationMode === 'agent' ? (
+                <div className="space-y-2">
+                    <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
+                        Agente alocado
+                    </Label>
+                    <Select value={selectedLinkedAgentId} onValueChange={setSelectedLinkedAgentId}>
+                        <SelectTrigger className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20" style={inputSurface}>
+                            <div className="flex items-center gap-3">
+                                <Bot className="h-4 w-4 shrink-0 text-emerald-500" />
+                                <SelectValue placeholder="Selecione o agente" />
+                            </div>
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                            <SelectItem value="none">Nenhum agente (somente recebe, sem resposta automatica)</SelectItem>
+                            {assignableAgents.map((agent) => (
+                                <SelectItem key={agent.id} value={agent.id}>
+                                    {agent.nome}
+                                    {agent.status_id === 1 ? ' • ativo' : ''}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
+                        Flow alocado
+                    </Label>
+                    <Select value={selectedLinkedFlowId} onValueChange={setSelectedLinkedFlowId}>
+                        <SelectTrigger className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20" style={inputSurface}>
+                            <SelectValue placeholder="Selecione o flow" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-xl">
+                            <SelectItem value="none">Nenhum flow</SelectItem>
+                            {assignableFlows.map((flow) => (
+                                <SelectItem key={flow.id} value={flow.id}>
+                                    {flow.name}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+            )}
+        </div>
+    )
+
     return (
         <div className="space-y-10 pb-24 animate-in fade-in duration-500 bg-[#F8FAFC] dark:bg-background min-h-screen -m-4 p-8">
             
@@ -2219,11 +2394,9 @@ export function Integrations() {
                                     {getStatusBadge(whatsappStatus)}
                                 </div>
                                 <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                    {whatsappIsLocked
-                                        ? 'Integracao validada. Credenciais ocultas — remova para reconfigurar.'
-                                        : whatsappIntegrationId
-                                          ? 'Clique para revisar ou concluir a configuracao.'
-                                          : 'Clique para configurar credenciais, webhook e automacao principal.'}
+                                    {whatsappIntegrationId
+                                        ? `${whatsappRoutingCaption}${!whatsappHasMetaAppSecret ? ' • App Secret pendente' : ''}`
+                                        : 'Configure credenciais Meta, App Secret e quem atende (agente ou flow).'}
                                 </p>
                                 </div>
                             </div>
@@ -2238,23 +2411,50 @@ export function Integrations() {
                                 }}
                             >
                                 <p className="text-sm leading-relaxed" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
-                                    Esta integracao foi validada pela Meta. Por seguranca, tokens e credenciais nao sao exibidos nem
-                                    podem ser editados. Para trocar qualquer valor, remova a integracao e configure uma nova.
+                                    Credenciais da Meta estao bloqueadas apos validacao. Voce ainda pode definir{' '}
+                                    <strong>quem atende</strong> (agente ou flow) e o <strong>App Secret</strong> do webhook.
                                 </p>
+                                {whatsappWebhookAlert}
+                                {whatsappRoutingPanel}
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
+                                        App Secret (Meta) — obrigatorio para receber mensagens
+                                    </Label>
+                                    <Input
+                                        type="password"
+                                        value={whatsappConfig.appSecret}
+                                        onFocus={(event) => event.currentTarget.select()}
+                                        onChange={(e) =>
+                                            setWhatsappConfig((current) => ({
+                                                ...current,
+                                                appSecret: normalizeSecretInput(e.target.value, current.appSecret),
+                                            }))
+                                        }
+                                        onBlur={() =>
+                                            setWhatsappConfig((current) => ({
+                                                ...current,
+                                                appSecret:
+                                                    whatsappIntegrationId && !current.appSecret.trim()
+                                                        ? MASKED_SECRET_VALUE
+                                                        : current.appSecret,
+                                            }))
+                                        }
+                                        placeholder={
+                                            whatsappHasMetaAppSecret
+                                                ? 'App Secret salvo — digite para rotacionar'
+                                                : 'Cole o App Secret do app Meta'
+                                        }
+                                        className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                                        style={inputSurface}
+                                    />
+                                </div>
                                 <div className="grid gap-3 sm:grid-cols-2">
                                     {[
                                         { label: 'Numero oficial', value: whatsappLockedSummary?.phoneMasked || 'Configurado' },
                                         { label: 'Phone Number ID', value: whatsappLockedSummary?.appKeyMasked || 'Configurado' },
                                         { label: 'Access Token', value: 'Configurado (oculto)' },
                                         { label: 'Verify Token', value: 'Configurado (oculto)' },
-                                        { label: 'App Secret', value: whatsappConfig.appSecret ? 'Configurado (oculto)' : 'Nao informado' },
-                                        {
-                                            label: 'Automacao',
-                                            value:
-                                                whatsappLockedSummary?.automationMode === 'flow'
-                                                    ? `Flow${whatsappLockedSummary?.flowName ? `: ${whatsappLockedSummary.flowName}` : ''}`
-                                                    : `Agente${whatsappLockedSummary?.agentName ? `: ${whatsappLockedSummary.agentName}` : ''}`,
-                                        },
+                                        { label: 'App Secret', value: whatsappHasMetaAppSecret ? 'Configurado (oculto)' : 'Nao informado' },
                                     ].map((row) => (
                                         <div
                                             key={row.label}
@@ -2276,7 +2476,20 @@ export function Integrations() {
                                 <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
                                     Configure na Meta o callback GET/POST /whatsapp/webhook apontando para a URL publica do backend.
                                 </p>
-                                <div className="flex justify-end">
+                                <div className="flex flex-wrap justify-end gap-3">
+                                    <Button
+                                        type="button"
+                                        onClick={() => void handleSaveWhatsappIntegration()}
+                                        disabled={saving}
+                                        className="rounded-xl"
+                                        style={{
+                                            background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+                                            color: 'white',
+                                        }}
+                                    >
+                                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                        Salvar roteamento e App Secret
+                                    </Button>
                                     <Button
                                         type="button"
                                         variant="destructive"
@@ -2296,6 +2509,8 @@ export function Integrations() {
                         )}
                         {isWhatsAppExpanded && !whatsappIsLocked && (
                             <>
+                        {whatsappWebhookAlert}
+                        {whatsappRoutingPanel}
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Phone Number ID</Label>
@@ -2342,84 +2557,6 @@ export function Integrations() {
                                 <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
                                     Configure na Meta o callback GET/POST /whatsapp/webhook para este numero oficial.
                                 </p>
-                            </div>
-                            <div
-                                className="space-y-4 md:col-span-2 rounded-2xl border p-5"
-                                style={{
-                                    backgroundColor: isDark ? '#27272a' : 'rgba(248, 250, 252, 0.85)',
-                                    borderColor: isDark ? '#3f3f46' : '#e2e8f0'
-                                }}
-                            >
-                                <div className="space-y-2">
-                                    <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Como este numero deve responder</Label>
-                                    <Select value={automationMode} onValueChange={(value: 'agent' | 'flow') => setAutomationMode(value)}>
-                                        <SelectTrigger
-                                            className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20"
-                                            style={inputSurface}
-                                        >
-                                            <SelectValue placeholder="Escolha a automacao principal" />
-                                        </SelectTrigger>
-                                        <SelectContent className="rounded-xl">
-                                            <SelectItem value="agent">Agente existente</SelectItem>
-                                            <SelectItem value="flow">Flow</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                    <p className="text-xs leading-relaxed" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
-                                        A Meta envia tudo para um unico webhook. Aqui voce escolhe qual automacao principal esse numero oficial vai usar quando chegar uma nova mensagem.
-                                    </p>
-                                </div>
-
-                                {automationMode === 'agent' ? (
-                                    <div className="space-y-2">
-                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Agente alocado a este numero</Label>
-                                        <Select value={selectedLinkedAgentId} onValueChange={setSelectedLinkedAgentId}>
-                                            <SelectTrigger
-                                                className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20"
-                                                style={inputSurface}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <Bot className="h-4 w-4 shrink-0 text-emerald-500" />
-                                                    <SelectValue placeholder="Selecione o agente que atendera este numero" />
-                                                </div>
-                                            </SelectTrigger>
-                                            <SelectContent className="rounded-xl">
-                                                <SelectItem value="none">Nenhum agente alocado</SelectItem>
-                                                {assignableAgents.map((agent) => (
-                                                    <SelectItem key={agent.id} value={agent.id}>
-                                                        {agent.nome}
-                                                        {agent.status_id === 1 ? ' • ativo' : agent.status_id === 3 || agent.status_id === 4 ? ' • pausado' : agent.status_id === 2 ? ' • cancelado' : ''}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <p className="text-xs leading-relaxed" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
-                                            Use este modo quando quiser manter o comportamento atual: WhatsApp entra no webhook e o agente responde diretamente.
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">
-                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Flow alocado a este numero</Label>
-                                        <Select value={selectedLinkedFlowId} onValueChange={setSelectedLinkedFlowId}>
-                                            <SelectTrigger
-                                                className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20"
-                                                style={inputSurface}
-                                            >
-                                                <SelectValue placeholder="Selecione o flow que atendera este numero" />
-                                            </SelectTrigger>
-                                            <SelectContent className="rounded-xl">
-                                                <SelectItem value="none">Nenhum flow alocado</SelectItem>
-                                                {assignableFlows.map((flow) => (
-                                                    <SelectItem key={flow.id} value={flow.id}>
-                                                        {flow.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        <p className="text-xs leading-relaxed" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
-                                            Use este modo quando quiser que o WhatsApp entre primeiro no motor de flows. O mesmo flow pode ser testado no laboratorio e reutilizado em producao.
-                                        </p>
-                                    </div>
-                                )}
                             </div>
                             {false && (
                             <div className="space-y-2 md:col-span-2">

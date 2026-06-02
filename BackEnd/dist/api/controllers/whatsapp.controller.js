@@ -127,6 +127,14 @@ function hasAutomationColumnError(error) {
     const message = String(error?.message || error?.details || '').toLowerCase();
     return message.includes('column') && (message.includes('automation_mode') || message.includes('linked_flow_id'));
 }
+function hasMetaAppSecretColumnError(error) {
+    const message = String(error?.message || error?.details || '').toLowerCase();
+    return message.includes('column') && message.includes('meta_app_secret');
+}
+function stripMetaAppSecretFromPayload(payload) {
+    const { meta_app_secret: _removed, ...rest } = payload;
+    return rest;
+}
 function getIntegrationUserEmail(integrationWithUser) {
     const integrationUserRaw = integrationWithUser?.tb_users;
     if (Array.isArray(integrationUserRaw)) {
@@ -241,6 +249,7 @@ function buildWhatsAppIntegrationResponse(integration, linkedAgent, linkedFlow, 
         has_access_token: !!String(integration.access_token || '').trim(),
         has_auth_token: !!String(integration.auth_token || '').trim(),
         has_meta_app_secret: !!String(integration.meta_app_secret || '').trim(),
+        webhook_signature_ready: !!String(integration.meta_app_secret || '').trim(),
         provider: integration.provider,
         automation_mode: normalizeAutomationMode(integration.automation_mode, integration.linked_flow_id),
         linked_flow_id: integration.linked_flow_id || null,
@@ -463,6 +472,24 @@ function hasAnyWhatsAppConfig(payload) {
         payload.access_token ||
         payload.auth_token ||
         payload.meta_app_secret);
+}
+function hasIncomingCredentialOverrides(payload, primary) {
+    if (payload.phone_number && payload.phone_number !== String(primary?.phone_number || '').trim()) {
+        return true;
+    }
+    if (payload.app_key && payload.app_key !== String(primary?.app_key || '').trim()) {
+        return true;
+    }
+    if (payload.access_token && payload.access_token !== String(primary?.access_token || '').trim()) {
+        return true;
+    }
+    if (payload.auth_token && payload.auth_token !== String(primary?.auth_token || '').trim()) {
+        return true;
+    }
+    return false;
+}
+function resolveStoredMetaAppSecret(payload, primary) {
+    return String(payload.meta_app_secret || primary?.meta_app_secret || '').trim();
 }
 function integrationStoresMetaCredentials(row) {
     if (!row)
@@ -1105,14 +1132,22 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
                 integration: null
             });
         }
+        let lockState = null;
         if (primaryOwned?.id && !deleteIntegration) {
-            const lockState = await resolveWhatsAppIntegrationLock(primaryOwned.id, primaryOwned);
-            if (lockState.isLocked) {
+            lockState = await resolveWhatsAppIntegrationLock(primaryOwned.id, primaryOwned);
+            if (lockState.isLocked && hasIncomingCredentialOverrides(normalizedPayload, primaryOwned)) {
                 return res.status(403).json({
-                    error: 'Integracao WhatsApp conectada nao pode ser alterada. Remova a integracao atual e adicione uma nova.',
+                    error: 'Credenciais da Meta nao podem ser alteradas com a integracao conectada. Remova e recrie, ou atualize apenas App Secret, agente e flow.',
                     code: 'WHATSAPP_INTEGRATION_LOCKED',
                 });
             }
+        }
+        const resolvedMetaAppSecret = resolveStoredMetaAppSecret(normalizedPayload, primaryOwned);
+        if (hasConfig && !deleteIntegration && !resolvedMetaAppSecret) {
+            return res.status(400).json({
+                error: 'App Secret da Meta e obrigatorio para validar webhooks e receber mensagens. Informe em Integracoes > WhatsApp.',
+                code: 'WHATSAPP_APP_SECRET_REQUIRED',
+            });
         }
         const integrationPayload = {
             user_id: platformUser.id,
@@ -1122,7 +1157,7 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
             app_key: normalizedPayload.app_key || primaryOwned?.app_key || null,
             access_token: normalizedPayload.access_token || primaryOwned?.access_token || null,
             auth_token: normalizedPayload.auth_token || primaryOwned?.auth_token || null,
-            meta_app_secret: normalizedPayload.meta_app_secret || primaryOwned?.meta_app_secret || null,
+            meta_app_secret: resolvedMetaAppSecret || null,
         };
         const integrationPayloadWithAutomation = {
             ...integrationPayload,
@@ -1139,6 +1174,13 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
                 updateResult = await supabase_1.supabase
                     .from('tb_integrations')
                     .update(integrationPayload)
+                    .eq('id', primaryOwned.id);
+            }
+            if (updateResult.error && hasMetaAppSecretColumnError(updateResult.error)) {
+                console.error('[saveWhatsAppIntegration] Coluna meta_app_secret ausente — aplique MIGRATION_WHATSAPP_META_APP_SECRET.sql');
+                updateResult = await supabase_1.supabase
+                    .from('tb_integrations')
+                    .update(stripMetaAppSecretFromPayload(integrationPayloadWithAutomation))
                     .eq('id', primaryOwned.id);
             }
             if (updateResult.error) {
@@ -1168,6 +1210,14 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
                 insertResult = await supabase_1.supabase
                     .from('tb_integrations')
                     .insert(integrationPayload)
+                    .select('id')
+                    .single();
+            }
+            if (insertResult.error && hasMetaAppSecretColumnError(insertResult.error)) {
+                console.error('[saveWhatsAppIntegration] Coluna meta_app_secret ausente — aplique MIGRATION_WHATSAPP_META_APP_SECRET.sql');
+                insertResult = await supabase_1.supabase
+                    .from('tb_integrations')
+                    .insert(stripMetaAppSecretFromPayload(integrationPayloadWithAutomation))
                     .select('id')
                     .single();
             }

@@ -326,6 +326,7 @@ function buildWhatsAppIntegrationResponse(
     has_access_token: !!String(integration.access_token || '').trim(),
     has_auth_token: !!String(integration.auth_token || '').trim(),
     has_meta_app_secret: !!String(integration.meta_app_secret || '').trim(),
+    webhook_signature_ready: !!String(integration.meta_app_secret || '').trim(),
     provider: integration.provider,
     automation_mode: normalizeAutomationMode(integration.automation_mode, integration.linked_flow_id),
     linked_flow_id: integration.linked_flow_id || null,
@@ -611,6 +612,32 @@ function hasAnyWhatsAppConfig(payload: ReturnType<typeof normalizeWhatsappPayloa
     payload.auth_token ||
     payload.meta_app_secret
   )
+}
+
+function hasIncomingCredentialOverrides(
+  payload: ReturnType<typeof normalizeWhatsappPayload>,
+  primary?: StoredWhatsAppIntegration | null
+): boolean {
+  if (payload.phone_number && payload.phone_number !== String(primary?.phone_number || '').trim()) {
+    return true
+  }
+  if (payload.app_key && payload.app_key !== String(primary?.app_key || '').trim()) {
+    return true
+  }
+  if (payload.access_token && payload.access_token !== String(primary?.access_token || '').trim()) {
+    return true
+  }
+  if (payload.auth_token && payload.auth_token !== String(primary?.auth_token || '').trim()) {
+    return true
+  }
+  return false
+}
+
+function resolveStoredMetaAppSecret(
+  payload: ReturnType<typeof normalizeWhatsappPayload>,
+  primary?: StoredWhatsAppIntegration | null
+): string {
+  return String(payload.meta_app_secret || primary?.meta_app_secret || '').trim()
 }
 
 function integrationStoresMetaCredentials(row: StoredWhatsAppIntegration | null | undefined): boolean {
@@ -1418,15 +1445,25 @@ export async function upsertCurrentWhatsAppIntegration(req: Request, res: Respon
       })
     }
 
+    let lockState: Awaited<ReturnType<typeof resolveWhatsAppIntegrationLock>> | null = null
     if (primaryOwned?.id && !deleteIntegration) {
-      const lockState = await resolveWhatsAppIntegrationLock(primaryOwned.id, primaryOwned)
-      if (lockState.isLocked) {
+      lockState = await resolveWhatsAppIntegrationLock(primaryOwned.id, primaryOwned)
+      if (lockState.isLocked && hasIncomingCredentialOverrides(normalizedPayload, primaryOwned)) {
         return res.status(403).json({
           error:
-            'Integracao WhatsApp conectada nao pode ser alterada. Remova a integracao atual e adicione uma nova.',
+            'Credenciais da Meta nao podem ser alteradas com a integracao conectada. Remova e recrie, ou atualize apenas App Secret, agente e flow.',
           code: 'WHATSAPP_INTEGRATION_LOCKED',
         })
       }
+    }
+
+    const resolvedMetaAppSecret = resolveStoredMetaAppSecret(normalizedPayload, primaryOwned)
+    if (hasConfig && !deleteIntegration && !resolvedMetaAppSecret) {
+      return res.status(400).json({
+        error:
+          'App Secret da Meta e obrigatorio para validar webhooks e receber mensagens. Informe em Integracoes > WhatsApp.',
+        code: 'WHATSAPP_APP_SECRET_REQUIRED',
+      })
     }
 
     const integrationPayload = {
@@ -1437,7 +1474,7 @@ export async function upsertCurrentWhatsAppIntegration(req: Request, res: Respon
       app_key: normalizedPayload.app_key || primaryOwned?.app_key || null,
       access_token: normalizedPayload.access_token || primaryOwned?.access_token || null,
       auth_token: normalizedPayload.auth_token || primaryOwned?.auth_token || null,
-      meta_app_secret: normalizedPayload.meta_app_secret || primaryOwned?.meta_app_secret || null,
+      meta_app_secret: resolvedMetaAppSecret || null,
     }
 
     const integrationPayloadWithAutomation = {
