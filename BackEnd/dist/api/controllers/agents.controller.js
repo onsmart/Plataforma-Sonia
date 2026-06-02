@@ -920,7 +920,10 @@ async function getAgentGenerateAiStatus(req, res) {
         if (!email) {
             return res.status(401).json({ error: 'Usuario nao autenticado' });
         }
-        const catalog = await (0, toolkit_catalog_for_setup_service_1.buildIntegrationToolsCatalogForSetup)(email);
+        const catalog = await (0, toolkit_catalog_for_setup_service_1.buildIntegrationToolsCatalogForSetup)(email, {
+            userId: (0, request_auth_1.getAuthenticatedUserId)(req) || null,
+            companyId: (0, request_auth_1.getAuthenticatedCompaniesId)(req) || null,
+        });
         return res.json({
             success: true,
             claudeAvailable: (0, agent_ai_generation_shared_1.isAnthropicConfiguredForFlowRefine)(),
@@ -1006,6 +1009,7 @@ async function postAgentGenerateAi(req, res) {
         });
         return res.status(result.validationReport.ok ? 200 : 207).json({
             success: result.success,
+            validationOk: result.validationOk,
             agent: result.agent,
             validationReport: result.validationReport,
             refinedBrief: result.refinedBrief,
@@ -1021,6 +1025,15 @@ async function postAgentGenerateAi(req, res) {
         }
         if (message.includes('plano') || message.includes('limite') || message.includes('agente(s)')) {
             return res.status(403).json({ error: message, code: 'PLAN_LIMIT' });
+        }
+        if (message.includes('modelo Claude') ||
+            message.includes('ANTHROPIC_MODEL') ||
+            /^model:/i.test(message)) {
+            return res.status(502).json({
+                error: 'Claude indisponível ou modelo inválido no servidor',
+                details: message,
+                code: 'CLAUDE_MODEL_FAILED',
+            });
         }
         return res.status(500).json({
             error: 'Erro ao gerar agente com IA',

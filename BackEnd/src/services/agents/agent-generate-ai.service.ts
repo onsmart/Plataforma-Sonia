@@ -52,6 +52,8 @@ export type GenerationStep = {
 
 export type GenerateAgentAiResult = {
   success: boolean
+  /** Smoke test pós-criação; `success` indica que o agente foi persistido. */
+  validationOk: boolean
   agent: {
     id: string
     nome: string
