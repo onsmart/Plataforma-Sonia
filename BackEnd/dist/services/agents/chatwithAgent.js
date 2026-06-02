@@ -1278,9 +1278,9 @@ CONTINUIDADE (WHATSAPP):
         cleanedResponseLength: cleanedResponse.length,
     });
     if (parsed.action === 'integration_tool') {
+        const contactId = String(context?.phone_number || context?.from || context?.to || context?.sessionId || '').trim();
         try {
             const { runAgentIntegrationToolFromLlm } = await Promise.resolve().then(() => __importStar(require('./agent-integration-tool-runner')));
-            const contactId = String(context?.phone_number || context?.from || context?.to || context?.sessionId || '').trim();
             const channelUserMessage = String(context?.originalMessage ||
                 context?.userMessage ||
                 context?.input ||
@@ -1295,6 +1295,8 @@ CONTINUIDADE (WHATSAPP):
                 channelUserMessage,
                 agentId,
                 contactId,
+                channel: context?.channel,
+                userEmail: email,
             });
             console.log('[chatWithAgent] integration_tool executada', {
                 toolKey: parsed.tool_key,
@@ -1302,11 +1304,27 @@ CONTINUIDADE (WHATSAPP):
                 replyLength: toolResult.reply?.length || 0,
                 channelUserMessageLength: channelUserMessage.length,
             });
-            const { sanitizeSchedulingOutboundReply } = await Promise.resolve().then(() => __importStar(require('./agent-integration-tool-runner')));
-            return sanitizeSchedulingOutboundReply(toolResult.reply);
+            return toolResult.reply;
         }
         catch (toolErr) {
             console.error('[chatWithAgent] Falha integration_tool:', toolErr?.message || toolErr);
+            if (hasWhatsAppContext && disableChannelDelivery) {
+                const { logIntegrationToolFailureToPlatform } = await Promise.resolve().then(() => __importStar(require('./agent-integration-tool-runner')));
+                void logIntegrationToolFailureToPlatform({
+                    userEmail: email,
+                    agentId,
+                    contactId,
+                    toolKey: parsed.tool_key,
+                    internalMessage: String(toolErr?.message || toolErr),
+                });
+                const { filterWhatsAppOutboundForEndUser } = await Promise.resolve().then(() => __importStar(require('./agent-integration-tool-runner')));
+                return filterWhatsAppOutboundForEndUser('', {
+                    userEmail: email,
+                    agentId,
+                    contactId,
+                    toolKey: parsed.tool_key,
+                });
+            }
             return 'Não consegui executar a ferramenta agora. Pode tentar de novo em instantes?';
         }
     }

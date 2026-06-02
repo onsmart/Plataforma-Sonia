@@ -1452,11 +1452,11 @@ CONTINUIDADE (WHATSAPP):
   })
 
   if (parsed.action === 'integration_tool') {
+    const contactId = String(
+      context?.phone_number || context?.from || context?.to || context?.sessionId || ''
+    ).trim()
     try {
       const { runAgentIntegrationToolFromLlm } = await import('./agent-integration-tool-runner')
-      const contactId = String(
-        context?.phone_number || context?.from || context?.to || context?.sessionId || ''
-      ).trim()
       const channelUserMessage = String(
         context?.originalMessage ||
           context?.userMessage ||
