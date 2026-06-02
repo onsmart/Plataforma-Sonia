@@ -317,6 +317,39 @@ export function buildIaAgentName(prefix: string, displayName: string, runTag: st
   return `${prefix} ${clean} · ${tag}`.slice(0, 200)
 }
 
+export type AgentAiArchetypeKind = 'faq' | 'receptive' | 'sdr'
+
+export function agentAiArchetypeLabel(archetype: AgentAiArchetypeKind): 'FAQ' | 'Receptivo' | 'SDR' {
+  if (archetype === 'receptive') return 'Receptivo'
+  if (archetype === 'sdr') return 'SDR'
+  return 'FAQ'
+}
+
+/** Nome exibido do agente: prioriza o nome informado pelo usuário no wizard. */
+export function buildAgentAiDisplayName(
+  userAgentName: string | undefined,
+  planFallback?: string
+): string {
+  const fromUser = String(userAgentName || '').replace(/\s+/g, ' ').trim()
+  if (fromUser) return fromUser.slice(0, 120)
+  const fb = String(planFallback || '').replace(/\s+/g, ' ').trim()
+  return (fb || 'Agente').slice(0, 120)
+}
+
+/** Padrão hub: Agente - {nome} - {FAQ|Receptivo|SDR} */
+export function buildAgentAiTemplateName(
+  agentDisplayName: string,
+  archetype: AgentAiArchetypeKind
+): string {
+  const name =
+    String(agentDisplayName || 'Agente')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 100) || 'Agente'
+  const kind = agentAiArchetypeLabel(archetype)
+  return `Agente - ${name} - ${kind}`.slice(0, 200)
+}
+
 export function buildIaTemplateName(prefix: string, flowDisplayName: string, consumerName: string): string {
   const sanitize = (s: string, max: number) => {
     const t = String(s || '')
@@ -383,12 +416,18 @@ export async function patchAgentRecord(
   companiesId: string,
   patch: Record<string, unknown>
 ): Promise<void> {
-  const { error } = await supabase
+  const payload: Record<string, unknown> = { ...patch }
+  if (companiesId) payload.companies_id = companiesId
+
+  const { data, error } = await supabase
     .from('tb_agents')
-    .update(patch)
+    .update(payload)
     .eq('id', agentId)
-    .eq('companies_id', companiesId)
+    .select('id')
+    .maybeSingle()
+
   if (error) throw new Error(`Atualizar agente: ${error.message}`)
+  if (!data?.id) throw new Error('Atualizar agente: registro não encontrado após criação.')
 }
 
 export function extractHttpsUrlsFromText(text: string): string[] {

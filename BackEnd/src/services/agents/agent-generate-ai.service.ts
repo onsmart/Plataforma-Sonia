@@ -18,10 +18,9 @@ import {
   appendSingleAgentTemplateFooter,
   appendUserProvidedUrlsBlock,
   buildAgentDesignBriefWithClaude,
-  buildIaAgentName,
-  buildIaTemplateName,
+  buildAgentAiDisplayName,
+  buildAgentAiTemplateName,
   generateSingleAgentConversationPlanWithOpenAI,
-  makeIaRunTag,
   MIN_CONVERSATION_TEMPLATE_CHARS,
   patchAgentRecord,
   rpcCreateAgent,
@@ -65,7 +64,6 @@ export type GenerateAgentAiResult = {
   generationSteps: GenerationStep[]
 }
 
-const AGENT_IA_PREFIX = '[AGENTE IA]'
 
 function buildToolsSummary(selectedTools: AgentToolSelectionInput[]): string {
   const enabled = (selectedTools || []).filter((t) => t.enabled !== false)
@@ -261,11 +259,12 @@ export async function generateAgentWithAi(
   setStep('template', 'done')
 
   setStep('persist', 'running')
-  const runTag = makeIaRunTag()
-  const templateName = buildIaTemplateName(AGENT_IA_PREFIX, displayTitle, params.archetype === 'receptive' ? 'Receptivo' : 'FAQ')
+  const agentNome = buildAgentAiDisplayName(
+    params.agentName,
+    plan.agentDisplayName?.trim() || displayTitle
+  )
+  const templateName = buildAgentAiTemplateName(agentNome, params.archetype)
   const templateId = await rpcCreateAgentTemplate(userEmail, templateName, roleFull, templateDescription)
-
-  const agentNome = buildIaAgentName(AGENT_IA_PREFIX, displayTitle, runTag)
   const agentBio = `Agente ${params.archetype} criado com IA. ${templateDescription}`.slice(0, 800)
   const agentId = await rpcCreateAgent(userEmail, agentNome, templateId, lang, agentBio)
 
@@ -301,7 +300,8 @@ export async function generateAgentWithAi(
   setStep('validate', validationReport.ok ? 'done' : 'failed', validationReport.ok ? undefined : 'Alguns testes falharam')
 
   return {
-    success: validationReport.ok,
+    success: true,
+    validationOk: validationReport.ok,
     agent: {
       id: agentId,
       nome: agentNome,

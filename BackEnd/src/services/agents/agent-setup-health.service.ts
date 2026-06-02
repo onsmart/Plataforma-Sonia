@@ -73,21 +73,25 @@ async function userCanAccessAgentCompany(
 }
 
 async function userCanAccessAgent(agentId: string, userEmail: string): Promise<boolean> {
-  const listed = await getAgentsByEmail(userEmail).catch(() => [])
-  if (listed.some((row) => String(row?.id || '') === agentId)) {
-    return true
-  }
-
   const { data: agent } = await supabase
     .from('tb_agents')
     .select('companies_id')
     .eq('id', agentId)
     .maybeSingle()
 
-  const agentCompanyId = String(agent?.companies_id || '').trim()
-  if (!agentCompanyId) return false
+  if (!agent) return false
 
-  return userCanAccessAgentCompany(userEmail, agentCompanyId)
+  let agentCompanyId = String(agent.companies_id || '').trim()
+  if (!agentCompanyId) {
+    agentCompanyId = (await getCompanyIdByEmail(userEmail)) || ''
+  }
+
+  if (agentCompanyId && (await userCanAccessAgentCompany(userEmail, agentCompanyId))) {
+    return true
+  }
+
+  const listed = await getAgentsByEmail(userEmail).catch(() => [])
+  return listed.some((row) => String(row?.id || '') === agentId)
 }
 
 export async function getAgentSetupHealth(

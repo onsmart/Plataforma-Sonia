@@ -1101,6 +1101,7 @@ export async function postAgentGenerateAi(req: Request, res: Response) {
 
     return res.status(result.validationReport.ok ? 200 : 207).json({
       success: result.success,
+      validationOk: result.validationOk,
       agent: result.agent,
       validationReport: result.validationReport,
       refinedBrief: result.refinedBrief,

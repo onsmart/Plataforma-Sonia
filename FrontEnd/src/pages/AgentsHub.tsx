@@ -1216,71 +1216,6 @@ export function AgentsHub() {
         }
     }
 
-    const getChannelStatusMeta = (status: string) => {
-        if (status === 'connected') {
-            return {
-                label: t('channels.status.connected'),
-                badgeStyle: {
-                    background: isDark ? 'rgba(16, 185, 129, 0.14)' : 'rgba(16, 185, 129, 0.12)',
-                    color: '#6ee7b7',
-                    border: '1px solid rgba(16, 185, 129, 0.22)'
-                } as React.CSSProperties
-            }
-        }
-        if (status === 'partial') {
-            return {
-                label: t('channels.status.partial'),
-                badgeStyle: {
-                    background: isDark ? 'rgba(245, 158, 11, 0.14)' : 'rgba(245, 158, 11, 0.12)',
-                    color: '#fbbf24',
-                    border: '1px solid rgba(245, 158, 11, 0.22)'
-                } as React.CSSProperties
-            }
-        }
-        return {
-            label: t('channels.status.disconnected'),
-            badgeStyle: {
-                background: isDark ? 'rgba(239, 68, 68, 0.14)' : 'rgba(239, 68, 68, 0.1)',
-                color: '#f87171',
-                border: '1px solid rgba(239, 68, 68, 0.22)'
-            } as React.CSSProperties
-        }
-    }
-
-    const getChannelCardTone = (name: string, status: string) => {
-        const base = isDark
-            ? {
-                background: 'rgba(24, 24, 27, 0.98)',
-                iconWrap: 'rgba(39, 39, 42, 0.92)',
-                borderGlow: 'rgba(63, 63, 70, 0.9)',
-                text: '#f8fafc',
-                muted: '#a1a1aa'
-            }
-            : {
-                background: 'rgba(255, 255, 255, 0.98)',
-                iconWrap: 'rgba(244, 244, 245, 0.95)',
-                borderGlow: 'rgba(228, 228, 231, 1)',
-                text: '#0f172a',
-                muted: '#64748b'
-            }
-
-        const channelColorMap: Record<string, string> = {
-            'WhatsApp Business': '#10b981',
-            'Web Widget': '#38bdf8',
-            'Corporate Email': '#f59e0b',
-            'LinkedIn Sales Nav': '#3b82f6',
-            'VoIP Telephony': '#ef4444'
-        }
-
-        const accent = status === 'partial'
-            ? '#f59e0b'
-            : status === 'disconnected'
-                ? '#ef4444'
-                : (channelColorMap[name] || '#38bdf8')
-
-        return { ...base, accent }
-    }
-
     const getAgentStatusMeta = (statusId?: number | null) => {
         if (statusId === 1) {
             return {
@@ -2578,115 +2513,7 @@ export function AgentsHub() {
                 ))}
             </div>
 
-            <div className="flex flex-col gap-5">
-            <SectionBlock
-                eyebrow={t('channelsSection.eyebrow', { defaultValue: 'Canais & Integrações' })}
-                title={t('channelsSection.title', { defaultValue: 'Status centralizado dos pontos de contato' })}
-                description="Veja cobertura por canal e integrações conectadas sem navegar para outra área."
-                tone={panelTone}
-                shellStyle={sectionShellStyle}
-                className="order-2 space-y-7 p-6 md:p-7"
-                action={
-                    <>
-                        <SectionMetricPill
-                            label={t('channelsSection.channelsLabel', { defaultValue: 'Canais' })}
-                            value={connectedChannelsCount}
-                            tone={panelTone}
-                        />
-                        <SectionMetricPill
-                            label={t('channelsSection.integrationsLabel', { defaultValue: 'Integrações' })}
-                            value={connectedIntegrationsCount}
-                            tone={panelTone}
-                        />
-                    </>
-                }
-            >
-                <div
-                    className="hidden"
-                    style={sectionShellStyle}
-                >
-                    <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.18em]" style={{ color: panelTone.muted }}>
-                            Canais e integrações
-                        </p>
-                        <h3 className="mt-1 text-lg font-semibold" style={{ color: panelTone.title }}>
-                            Status centralizado dos pontos de contato
-                        </h3>
-                        <p className="mt-1 text-sm leading-6" style={{ color: panelTone.muted }}>
-                            Visualize rapidamente o que já está conectado e o que ainda precisa ser configurado.
-                        </p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3 sm:w-auto">
-                        <div className="rounded-lg px-4 py-3" style={{ background: panelTone.elevated, border: `1px solid ${panelTone.border}` }}>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: panelTone.muted }}>Canais</p>
-                            <p className="mt-1 text-xl font-semibold" style={{ color: panelTone.title }}>{connectedChannelsCount}</p>
-                        </div>
-                        <div className="rounded-lg px-4 py-3" style={{ background: panelTone.elevated, border: `1px solid ${panelTone.border}` }}>
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: panelTone.muted }}>Integrações</p>
-                            <p className="mt-1 text-xl font-semibold" style={{ color: panelTone.title }}>{connectedIntegrationsCount}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="space-y-4">
-                {channelsData.map((channel, i) => {
-                    const statusMeta = getChannelStatusMeta(channel.status)
-                    const channelTone = getChannelCardTone(channel.name, channel.status)
-                    return (
-                        <div
-                            key={i}
-                            className="min-h-[104px] transition-colors"
-                            style={{
-                                background: channelTone.background,
-                                border: `1px solid ${panelTone.border}`,
-                                borderRadius: radius.card,
-                                opacity: 0.92,
-                                boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)'
-                            }}
-                        >
-                            <div
-                                className="flex h-full items-center justify-between gap-4 px-4 py-4"
-                                style={{
-                                    background: 'transparent',
-                                    borderRadius: radius.card
-                                }}
-                            >
-                                <div className="flex min-w-0 flex-1 items-center gap-3">
-                                    <div
-                                        className="flex h-11 w-11 shrink-0 items-center justify-center"
-                                        style={{
-                                            background: channelTone.iconWrap,
-                                            border: `1px solid ${panelTone.border}`,
-                                            borderRadius: radius.inner,
-                                            boxShadow: isDark ? 'inset 0 1px 0 rgba(255,255,255,0.04)' : 'inset 0 1px 0 rgba(255,255,255,0.72)'
-                                        }}
-                                    >
-                                        <channel.icon className="h-5 w-5" style={{ color: channelTone.accent }} />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                    <h3 className="truncate text-sm font-semibold leading-snug" style={{ color: channelTone.text }}>
-                                        {channel.name}
-                                    </h3>
-                                    <p className="mt-1 line-clamp-2 text-sm leading-6" style={{ color: channelTone.muted, opacity: 0.78 }}>
-                                        {channel.status === 'connected'
-                                            ? 'Canal ativo e pronto para operação.'
-                                            : channel.status === 'partial'
-                                                ? 'Integração ativa com pontos pendentes.'
-                                                : 'Canal disponível, aguardando conexão.'}
-                                    </p>
-                                    </div>
-                                </div>
-                                <Badge className="shrink-0 rounded-md px-2.5 py-0.5 text-[10px] font-semibold shadow-none" style={{ ...statusMeta.badgeStyle, borderRadius: radius.pill }}>
-                                    {statusMeta.label}
-                                </Badge>
-                            </div>
-                        </div>
-                    )
-                })}
-                </div>
-            </SectionBlock>
-
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)} className="order-1 space-y-6">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value)} className="space-y-6">
                 <SectionBlock
                     eyebrow={t('librarySection.eyebrow', { defaultValue: 'Agentes & Templates' })}
                     title={activeTab === 'active'
@@ -3429,7 +3256,6 @@ export function AgentsHub() {
                 </TabsContent>
                 </SectionBlock>
             </Tabs>
-            </div>
 
             <BulkDeleteResourcesDialog
                 open={bulkAgentsOpen}

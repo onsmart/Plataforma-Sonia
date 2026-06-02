@@ -58,9 +58,10 @@ vi.mock('../services/agents/agent-ai-generation.shared', () => ({
   patchAgentRecord: vi.fn().mockResolvedValue(undefined),
   appendUserProvidedUrlsBlock: (body: string) => body,
   appendSingleAgentTemplateFooter: (body: string) => body,
-  makeIaRunTag: () => 'test',
-  buildIaAgentName: (_p: string, n: string) => `[AGENTE IA] ${n}`,
-  buildIaTemplateName: (_p: string, a: string) => `[AGENTE IA] ${a}`,
+  buildAgentAiDisplayName: (name: string | undefined, fb?: string) =>
+    String(name || fb || 'Agente').trim(),
+  buildAgentAiTemplateName: (name: string, archetype: string) =>
+    `Agente - ${name} - ${archetype === 'receptive' ? 'Receptivo' : 'FAQ'}`,
   MIN_CONVERSATION_TEMPLATE_CHARS: 400,
 }))
 
