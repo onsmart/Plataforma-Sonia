@@ -1119,6 +1119,18 @@ export async function postAgentGenerateAi(req: Request, res: Response) {
       return res.status(403).json({ error: message, code: 'PLAN_LIMIT' })
     }
 
+    if (
+      message.includes('modelo Claude') ||
+      message.includes('ANTHROPIC_MODEL') ||
+      /^model:/i.test(message)
+    ) {
+      return res.status(502).json({
+        error: 'Claude indisponível ou modelo inválido no servidor',
+        details: message,
+        code: 'CLAUDE_MODEL_FAILED',
+      })
+    }
+
     return res.status(500).json({
       error: 'Erro ao gerar agente com IA',
       details: message,

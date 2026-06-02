@@ -84,15 +84,39 @@ export function getAnthropicApiKey(): string | null {
   )
 }
 
+/** Modelos Haiku suportados pela API Anthropic (ordem de tentativa após o primário do .env). */
+const ANTHROPIC_HAIKU_FALLBACK_MODELS = [
+  'claude-haiku-4-5',
+  'claude-haiku-4-5-20251001',
+  'claude-3-5-haiku-20241022',
+] as const
+
 export function getAnthropicModel(): string {
   return (
     process.env.ANTHROPIC_MODEL?.trim() ||
     process.env.CLAUDE_MODEL?.trim() ||
-    'claude-3-5-haiku-latest'
+    'claude-haiku-4-5'
   )
 }
 
-const ANTHROPIC_FALLBACK_MODEL = 'claude-3-haiku-20240307'
+function buildAnthropicModelAttemptList(): string[] {
+  const primary = getAnthropicModel()
+  const seen = new Set<string>()
+  const ordered: string[] = []
+  for (const candidate of [primary, ...ANTHROPIC_HAIKU_FALLBACK_MODELS]) {
+    const id = String(candidate || '').trim()
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    ordered.push(id)
+  }
+  return ordered
+}
+
+function formatAnthropicModelsFailedMessage(lastError: string, tried: string[]): string {
+  const hint =
+    'Defina ANTHROPIC_MODEL no .env do backend (ex.: claude-haiku-4-5). Modelos antigos como claude-3-haiku-20240307 foram descontinuados.'
+  return `Nenhum modelo Claude respondeu (${tried.join(' → ')}). Último erro: ${lastError}. ${hint}`
+}
 
 function parseAnthropicErrorBody(raw: string): string {
   const trimmed = raw.trim()
@@ -191,17 +215,31 @@ export async function claudeRefineWithSystem(
   system: string,
   logLabel: string
 ): Promise<ClaudeRefineResult> {
-  const primary = getAnthropicModel()
-  const first = await claudeRefineWithModel(userText, system, logLabel, primary)
-  if (first.ok) return first
-  if (
-    primary !== ANTHROPIC_FALLBACK_MODEL &&
-    shouldRetryClaudeWithFallbackModel(first.status, first.message)
-  ) {
-    logger.warn(`[${logLabel}] Tentando modelo fallback: ${ANTHROPIC_FALLBACK_MODEL}`)
-    return claudeRefineWithModel(userText, system, logLabel, ANTHROPIC_FALLBACK_MODEL)
+  const models = buildAnthropicModelAttemptList()
+  let last: ClaudeRefineResult = {
+    ok: false,
+    message: 'Nenhum modelo Claude configurado.',
   }
-  return first
+
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i]
+    const result = await claudeRefineWithModel(userText, system, logLabel, model)
+    if (result.ok) return result
+
+    last = result
+    const next = models[i + 1]
+    if (next && shouldRetryClaudeWithFallbackModel(result.status, result.message)) {
+      logger.warn(`[${logLabel}] Tentando modelo fallback: ${next}`)
+      continue
+    }
+    break
+  }
+
+  return {
+    ok: false,
+    status: last.status,
+    message: formatAnthropicModelsFailedMessage(last.message, models),
+  }
 }
 
 export async function refineFlowDescriptionWithClaudeForGeneration(
