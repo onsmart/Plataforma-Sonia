@@ -64,10 +64,13 @@ export async function validateMetaWhatsAppWebhook(
   }
 
   if (candidateSecrets.length === 0) {
-    logger.error('[validateMetaWhatsAppWebhook] Nenhum App Secret configurado (env ou integração)', {
-      path: req.path,
-      ip: req.ip || req.socket?.remoteAddress,
-    })
+    logger.error(
+      '[validateMetaWhatsAppWebhook] Nenhum App Secret configurado (env WHATSAPP_META_APP_SECRET ou meta_app_secret em tb_integrations). Verifique a coluna meta_app_secret no Supabase e se o App Secret foi salvo na integração WhatsApp.',
+      {
+        path: req.path,
+        ip: req.ip || req.socket?.remoteAddress,
+      }
+    )
     return res.status(403).json({
       error: 'Assinatura do webhook inválida',
       code: 'WEBHOOK_SIGNATURE_INVALID',

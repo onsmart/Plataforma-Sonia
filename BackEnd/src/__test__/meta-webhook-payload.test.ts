@@ -30,6 +30,13 @@ describe('extractMetaWebhookPhoneNumberIds', () => {
     expect(extractMetaWebhookPhoneNumberIds(Buffer.from('{"object":"whatsapp_business_account"}'))).toEqual([])
   })
 
+  it('encontra phone_number_id em estruturas aninhadas fora de metadata', () => {
+    const payload = JSON.stringify({
+      entry: [{ changes: [{ value: { phone_number_id: '555001' } }] }],
+    })
+    expect(extractMetaWebhookPhoneNumberIds(payload)).toEqual(['555001'])
+  })
+
   it('deduplica múltiplos changes com o mesmo phone_number_id', () => {
     const payload = JSON.stringify({
       entry: [

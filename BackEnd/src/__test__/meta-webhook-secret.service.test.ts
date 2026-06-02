@@ -72,4 +72,31 @@ describe('resolveMetaWebhookVerificationSecrets', () => {
 
     expect(secrets).toEqual(['only-integration'])
   })
+
+  it('sem phone_number_id no payload usa secrets de todas integrações WhatsApp', async () => {
+    delete process.env.WHATSAPP_META_APP_SECRET
+
+    const inMock = vi.fn()
+    fromMock.mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          not: vi.fn().mockReturnValue({
+            neq: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue({
+                data: [{ meta_app_secret: 'tenant-secret' }],
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      }),
+    })
+
+    const secrets = await resolveMetaWebhookVerificationSecrets(
+      Buffer.from('{"object":"whatsapp_business_account"}')
+    )
+
+    expect(secrets).toEqual(['tenant-secret'])
+    expect(inMock).not.toHaveBeenCalled()
+  })
 })

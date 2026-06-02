@@ -171,6 +171,16 @@ function hasAutomationColumnError(error: any): boolean {
   return message.includes('column') && (message.includes('automation_mode') || message.includes('linked_flow_id'))
 }
 
+function hasMetaAppSecretColumnError(error: any): boolean {
+  const message = String(error?.message || error?.details || '').toLowerCase()
+  return message.includes('column') && message.includes('meta_app_secret')
+}
+
+function stripMetaAppSecretFromPayload<T extends Record<string, unknown>>(payload: T): T {
+  const { meta_app_secret: _removed, ...rest } = payload
+  return rest as T
+}
+
 function getIntegrationUserEmail(integrationWithUser: any): string {
   const integrationUserRaw = integrationWithUser?.tb_users
 
@@ -1451,6 +1461,16 @@ export async function upsertCurrentWhatsAppIntegration(req: Request, res: Respon
           .eq('id', primaryOwned.id)
       }
 
+      if (updateResult.error && hasMetaAppSecretColumnError(updateResult.error)) {
+        console.error(
+          '[saveWhatsAppIntegration] Coluna meta_app_secret ausente — aplique MIGRATION_WHATSAPP_META_APP_SECRET.sql'
+        )
+        updateResult = await supabase
+          .from('tb_integrations')
+          .update(stripMetaAppSecretFromPayload(integrationPayloadWithAutomation))
+          .eq('id', primaryOwned.id)
+      }
+
       if (updateResult.error) {
         throw updateResult.error
       }
@@ -1482,6 +1502,17 @@ export async function upsertCurrentWhatsAppIntegration(req: Request, res: Respon
         insertResult = await supabase
           .from('tb_integrations')
           .insert(integrationPayload)
+          .select('id')
+          .single()
+      }
+
+      if (insertResult.error && hasMetaAppSecretColumnError(insertResult.error)) {
+        console.error(
+          '[saveWhatsAppIntegration] Coluna meta_app_secret ausente — aplique MIGRATION_WHATSAPP_META_APP_SECRET.sql'
+        )
+        insertResult = await supabase
+          .from('tb_integrations')
+          .insert(stripMetaAppSecretFromPayload(integrationPayloadWithAutomation))
           .select('id')
           .single()
       }
