@@ -9,6 +9,10 @@ import logger from '../../lib/logger'
 import { normalizeAgentLanguageCode } from '../../utils/agent-language'
 import { sendAgentWhatsAppResponseWithVoiceFallback } from '../../modules/voice/services/voiceRuntime.service'
 import { getAgentSetupHealth } from '../../services/agents/agent-setup-health.service'
+import { generateAgentWithAi } from '../../services/agents/agent-generate-ai.service'
+import { isAnthropicConfiguredForFlowRefine } from '../../services/agents/agent-ai-generation.shared'
+import { buildIntegrationToolsCatalogForSetup } from '../../services/integrations/toolkit/toolkit-catalog-for-setup.service'
+import type { AgentToolSelectionInput } from '../../services/agents/agent-extra-features'
 import {
   assertAgentDecisionOwnedByCompany,
   assertWhatsAppMessageOwnedByCompany,
@@ -983,6 +987,138 @@ export async function deleteAgent(req: Request, res: Response) {
     return res.status(500).json({
       error: 'Erro ao excluir agente',
       details: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+export async function getAgentGenerateAiStatus(req: Request, res: Response) {
+  try {
+    const email = getAuthenticatedEmail(req)
+    if (!email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado' })
+    }
+
+    const catalog = await buildIntegrationToolsCatalogForSetup(email)
+
+    return res.json({
+      success: true,
+      claudeAvailable: isAnthropicConfiguredForFlowRefine(),
+      catalog,
+    })
+  } catch (error: unknown) {
+    logger.error('[getAgentGenerateAiStatus] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao carregar status de geracao com IA',
+      details: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+function normalizeSelectedTools(body: Record<string, unknown>): AgentToolSelectionInput[] {
+  const raw = body.selectedTools ?? body.selected_tools
+  if (!Array.isArray(raw)) return []
+
+  const out: AgentToolSelectionInput[] = []
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue
+    const t = row as Record<string, unknown>
+    const provider = String(t.provider || '').trim().toLowerCase()
+    const toolName = String(t.toolName || t.tool_name || '').trim().toLowerCase()
+    if (!provider || !toolName) continue
+
+    const integrationId = String(t.integrationId || t.integration_id || '').trim()
+    const crmIntegrationId = String(t.crmIntegrationId || t.crm_integration_id || '').trim()
+
+    out.push({
+      toolKey: String(t.toolKey || t.tool_key || `${provider}.${toolName}`).trim(),
+      provider,
+      toolName,
+      enabled: t.enabled !== false,
+      integrationId: integrationId || undefined,
+      crmIntegrationId: crmIntegrationId || undefined,
+      config:
+        t.config && typeof t.config === 'object'
+          ? (t.config as AgentToolSelectionInput['config'])
+          : undefined,
+    })
+  }
+  return out
+}
+
+export async function postAgentGenerateAi(req: Request, res: Response) {
+  try {
+    const email = getAuthenticatedEmail(req)
+    if (!email) {
+      return res.status(401).json({ error: 'Usuario nao autenticado' })
+    }
+
+    const body = (req.body || {}) as Record<string, unknown>
+    const description = String(body.description || '').trim()
+    const language = String(body.language || 'pt-BR').trim() || 'pt-BR'
+    const archetype = String(body.archetype || 'receptive').trim().toLowerCase()
+    const agentName = String(body.agentName || body.agent_name || '').trim() || undefined
+
+    if (!description) {
+      return res.status(400).json({ error: 'Informe a descricao do agente.' })
+    }
+
+    if (!['faq', 'receptive', 'sdr'].includes(archetype)) {
+      return res.status(400).json({ error: 'Arquetipo invalido. Use faq, receptive ou sdr.' })
+    }
+
+    if (archetype === 'sdr') {
+      return res.status(501).json({
+        error: 'IA SDR em desenvolvimento. Escolha FAQ ou Receptivo.',
+        code: 'AGENT_AI_SDR_LOCKED',
+      })
+    }
+
+    const integrationsRaw = (body.integrations || {}) as Record<string, unknown>
+    const integrations = {
+      whatsappIntegrationId:
+        String(integrationsRaw.whatsappIntegrationId || integrationsRaw.whatsapp_integration_id || '').trim() ||
+        null,
+      calendlyIntegrationId:
+        String(integrationsRaw.calendlyIntegrationId || integrationsRaw.calendly_integration_id || '').trim() ||
+        null,
+      crmIntegrationId:
+        String(integrationsRaw.crmIntegrationId || integrationsRaw.crm_integration_id || '').trim() || null,
+    }
+
+    const selectedTools = normalizeSelectedTools(body)
+
+    const result = await generateAgentWithAi(email, {
+      description,
+      language,
+      archetype: archetype as 'faq' | 'receptive' | 'sdr',
+      agentName,
+      selectedTools,
+      integrations,
+    })
+
+    return res.status(result.validationReport.ok ? 200 : 207).json({
+      success: result.success,
+      agent: result.agent,
+      validationReport: result.validationReport,
+      refinedBrief: result.refinedBrief,
+      refinementProvider: result.refinementProvider,
+      generationSteps: result.generationSteps,
+    })
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error)
+    logger.error('[postAgentGenerateAi] Erro:', error)
+
+    if (message.includes('SDR em desenvolvimento')) {
+      return res.status(501).json({ error: message, code: 'AGENT_AI_SDR_LOCKED' })
+    }
+
+    if (message.includes('plano') || message.includes('limite') || message.includes('agente(s)')) {
+      return res.status(403).json({ error: message, code: 'PLAN_LIMIT' })
+    }
+
+    return res.status(500).json({
+      error: 'Erro ao gerar agente com IA',
+      details: message,
     })
   }
 }

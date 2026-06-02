@@ -60,6 +60,7 @@ import { fetchWhatsappIntegrationsForWorkspace } from "../lib/workspace-integrat
 import { useNavigation } from "../contexts/NavigationContext"
 import { toast } from "sonner"
 import { SUPPORTED_AGENT_LANGUAGES, getAgentLanguageLabel, normalizeAgentLanguageCode } from "../lib/agent-language"
+import { GenerateAgentAiDialog } from "../components/agents/GenerateAgentAiDialog"
 
 const channelsData = [
     { name: "WhatsApp Business", status: "connected", icon: MessageCircle, color: "text-emerald-500" },
@@ -341,6 +342,7 @@ export function AgentsHub() {
     const [crmIntegrationsLoading, setCrmIntegrationsLoading] = useState(false)
 
     const [isCreateOpen, setIsCreateOpen] = useState(false)
+    const [isGenerateAgentAiOpen, setIsGenerateAgentAiOpen] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false)
     const [isSubmittingTemplate, setIsSubmittingTemplate] = useState(false)
@@ -1524,6 +1526,25 @@ export function AgentsHub() {
                         <Sparkles className="h-4 w-4" />
                         {t('button.createTemplate')}
                     </Button>
+                    <Button
+                        type="button"
+                        className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
+                        style={secondaryHeaderButtonStyle}
+                        onClick={() => setIsGenerateAgentAiOpen(true)}
+                    >
+                        <Sparkles className="h-4 w-4" />
+                        {t('button.createAgentAi')}
+                    </Button>
+                    <GenerateAgentAiDialog
+                        open={isGenerateAgentAiOpen}
+                        onOpenChange={setIsGenerateAgentAiOpen}
+                        onCreated={(agentId, options) => {
+                            void fetchAgents()
+                            if (options?.navigateToConfig !== false) {
+                                navigate(`agent-config?id=${agentId}`)
+                            }
+                        }}
+                    />
                     <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
                     <DialogTrigger asChild>
                         <Button className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"

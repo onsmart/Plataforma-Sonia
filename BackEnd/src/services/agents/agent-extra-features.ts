@@ -239,3 +239,111 @@ export function parseOnsmartExtraFeatures(raw: unknown): AgentExtraFeaturesV2 | 
 export function resolveOnsmartWelcomeMessage(extra: AgentExtraFeaturesV2 | null): string {
   return resolveWelcomeMessage(extra)
 }
+
+export type AgentToolSelectionInput = {
+  toolKey: string
+  provider: string
+  toolName: string
+  enabled?: boolean
+  integrationId?: string | null
+  crmIntegrationId?: string | null
+  config?: AgentToolConfig
+}
+
+const RECEPTIVE_CALENDLY_TOOL_NAMES = [
+  'check_availability',
+  'book_appointment',
+  'list_upcoming_appointments',
+  'cancel_appointment',
+] as const
+
+const RECEPTIVE_HUBSPOT_TOOL_NAMES = ['lookup_contact', 'create_contact', 'update_contact'] as const
+
+/** Presets de toolKeys por arquétipo (wizard Criar agente com IA). */
+export function getDefaultToolKeysForAgentArchetype(
+  archetype: 'faq' | 'receptive' | 'sdr',
+  connectedProviders: string[]
+): string[] {
+  if (archetype === 'sdr') return []
+  const has = (p: string) => connectedProviders.includes(p)
+  const keys: string[] = []
+
+  if (archetype === 'receptive') {
+    if (has('calendly')) {
+      for (const name of RECEPTIVE_CALENDLY_TOOL_NAMES) {
+        keys.push(buildToolKey('calendly', name))
+      }
+    }
+    if (has('hubspot')) {
+      for (const name of RECEPTIVE_HUBSPOT_TOOL_NAMES) {
+        keys.push(buildToolKey('hubspot', name))
+      }
+    }
+    if (has('whatsapp')) {
+      keys.push(buildToolKey('whatsapp', 'send_session_message'))
+    }
+    return keys
+  }
+
+  if (archetype === 'faq' && has('hubspot')) {
+    keys.push(buildToolKey('hubspot', 'lookup_contact'))
+  }
+
+  return keys
+}
+
+export function buildExtraFeaturesFromSelection(params: {
+  selectedTools: AgentToolSelectionInput[]
+  welcomeMessage?: string
+  schedulingEngine?: SchedulingEngineMode
+  defaultCalendlySpecialty?: string
+  defaultMeetingLabel?: string
+}): string {
+  const specialty =
+    String(params.defaultCalendlySpecialty || 'reuniao_atendimento').trim() || 'reuniao_atendimento'
+  const meetingLabel = String(params.defaultMeetingLabel || 'reunião').trim() || 'reunião'
+
+  const tools: AgentToolEntry[] = []
+  for (const row of params.selectedTools || []) {
+    if (row.enabled === false) continue
+    const provider = String(row.provider || '').trim().toLowerCase()
+    const toolName = String(row.toolName || '').trim().toLowerCase()
+    if (!provider || !toolName) continue
+
+    const toolKey = String(row.toolKey || buildToolKey(provider, toolName)).trim()
+    const integrationId = String(row.integrationId || '').trim() || undefined
+    const crmIntegrationId = String(row.crmIntegrationId || '').trim() || undefined
+
+    const config: AgentToolConfig =
+      provider === 'calendly'
+        ? { specialty, meeting_label: meetingLabel }
+        : {}
+
+    tools.push({
+      toolKey,
+      provider,
+      toolName,
+      enabled: true,
+      ...(integrationId ? { integrationId } : {}),
+      ...(crmIntegrationId ? { crmIntegrationId } : {}),
+      ...(Object.keys(config).length ? { config } : {}),
+    })
+  }
+
+  const hasCalendlyScheduling = tools.some(
+    (t) =>
+      t.provider === 'calendly' &&
+      (t.toolName === 'check_availability' || t.toolName === 'book_appointment')
+  )
+
+  const features: AgentExtraFeaturesV2 = {
+    version: AGENT_EXTRA_FEATURES_VERSION,
+    welcome_message: params.welcomeMessage?.trim() || undefined,
+    scheduling_engine: hasCalendlyScheduling
+      ? params.schedulingEngine || 'template'
+      : params.schedulingEngine,
+    tools,
+  }
+
+  return serializeAgentExtraFeatures(features)
+}

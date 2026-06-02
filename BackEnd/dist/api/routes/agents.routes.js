@@ -8,6 +8,8 @@ const voice_controller_1 = require("../../modules/voice/controllers/voice.contro
 const router = (0, express_1.Router)();
 router.post('/chat', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, rate_limit_middleware_1.agentChatRateLimiter, (0, auth_middleware_1.requirePermission)('basic.read'), agents_controller_1.agentChat);
 router.get('/', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, (0, auth_middleware_1.requirePermission)('basic.read'), agents_controller_1.listAgents);
+router.get('/generate-ai/status', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, (0, auth_middleware_1.requirePermission)('basic.read'), agents_controller_1.getAgentGenerateAiStatus);
+router.post('/generate-ai', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, (0, auth_middleware_1.requirePermission)('basic.write'), agents_controller_1.postAgentGenerateAi);
 router.get('/:id/skills', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, (0, auth_middleware_1.requirePermission)('basic.read'), agents_controller_1.getAgentSkillsForRequest);
 router.get('/:id/setup-health', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, (0, auth_middleware_1.requirePermission)('basic.read'), agents_controller_1.getAgentSetupHealthController);
 router.post('/create', auth_middleware_1.requireAuth, auth_middleware_1.requireWorkspace, (0, auth_middleware_1.requirePermission)('basic.write'), agents_controller_1.createAgent);

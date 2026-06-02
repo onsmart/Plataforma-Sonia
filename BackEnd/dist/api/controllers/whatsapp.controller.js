@@ -464,6 +464,22 @@ function hasAnyWhatsAppConfig(payload) {
         payload.auth_token ||
         payload.meta_app_secret);
 }
+function integrationStoresMetaCredentials(row) {
+    if (!row)
+        return false;
+    return !!(String(row.access_token || '').trim() &&
+        String(row.app_key || '').trim());
+}
+async function resolveWhatsAppIntegrationLock(integrationId, row) {
+    if (!integrationStoresMetaCredentials(row)) {
+        return { isLocked: false, connectionStatus: 'disconnected' };
+    }
+    const connectionStatus = await (0, whatsapp_1.checkConnectionStatus)(integrationId);
+    return {
+        isLocked: connectionStatus === 'connected',
+        connectionStatus,
+    };
+}
 async function loadCandidateWhatsAppIntegrations() {
     let response = await supabase_1.supabase
         .from('tb_integrations')
@@ -1012,10 +1028,12 @@ async function getCurrentWhatsAppIntegration(req, res) {
             ? await loadLinkedFlow(integration.linked_flow_id, platformUser.companies_id)
             : null;
         let connectionStatus = 'disconnected';
+        let isLocked = false;
         if (integration?.id) {
-            connectionStatus = await (0, whatsapp_1.checkConnectionStatus)(integration.id);
+            const lockState = await resolveWhatsAppIntegrationLock(integration.id, integration);
+            connectionStatus = lockState.connectionStatus;
+            isLocked = lockState.isLocked;
         }
-        const isLocked = connectionStatus === 'connected';
         return res.json({
             success: true,
             connection_status: connectionStatus,
@@ -1046,10 +1064,13 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
         const linkedAgentId = normalizeLinkedAgentId(req.body?.linked_agent_id ?? req.body?.linkedAgentId);
         const linkedFlowId = normalizeLinkedFlowId(req.body?.linked_flow_id ?? req.body?.linkedFlowId);
         const automationMode = normalizeAutomationMode(req.body?.automation_mode ?? req.body?.automationMode, linkedFlowId);
-        const hasConfig = hasAnyWhatsAppConfig(normalizedPayload);
+        const deleteIntegration = Boolean(req.body?.delete_integration ?? req.body?.deleteIntegration);
+        const hasIncomingConfig = hasAnyWhatsAppConfig(normalizedPayload);
         const rows = await loadCandidateWhatsAppIntegrations();
         const ownedRows = rows.filter((row) => isOwnedWhatsAppIntegration(row, platformUser.id, platformUser.companies_id));
         const primaryOwned = pickPrimaryOwnedIntegration(rows, platformUser.id, platformUser.companies_id);
+        const hasExistingStoredConfig = integrationStoresMetaCredentials(primaryOwned);
+        const hasConfig = deleteIntegration ? false : hasIncomingConfig || hasExistingStoredConfig;
         const conflictingRow = rows.find((row) => {
             const samePhone = !!normalizedPayload.phone_number && row.phone_number === normalizedPayload.phone_number;
             const sameAppKey = !!normalizedPayload.app_key && row.app_key === normalizedPayload.app_key;
@@ -1084,9 +1105,9 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
                 integration: null
             });
         }
-        if (primaryOwned?.id) {
-            const currentStatus = await (0, whatsapp_1.checkConnectionStatus)(primaryOwned.id);
-            if (currentStatus === 'connected') {
+        if (primaryOwned?.id && !deleteIntegration) {
+            const lockState = await resolveWhatsAppIntegrationLock(primaryOwned.id, primaryOwned);
+            if (lockState.isLocked) {
                 return res.status(403).json({
                     error: 'Integracao WhatsApp conectada nao pode ser alterada. Remova a integracao atual e adicione uma nova.',
                     code: 'WHATSAPP_INTEGRATION_LOCKED',

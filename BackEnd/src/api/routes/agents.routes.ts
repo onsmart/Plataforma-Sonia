@@ -11,6 +11,8 @@ import {
   assignAgent,
   deleteAgent,
   getAgentSetupHealthController,
+  getAgentGenerateAiStatus,
+  postAgentGenerateAi,
 } from '../controllers/agents.controller'
 import { requireAuth, requireWorkspace, requirePermission } from '../../middleware/auth.middleware'
 import { agentChatRateLimiter } from '../../middleware/rate-limit.middleware'
@@ -26,6 +28,8 @@ const router = Router()
 router.post('/chat', requireAuth, requireWorkspace, agentChatRateLimiter, requirePermission('basic.read'), agentChat)
 
 router.get('/', requireAuth, requireWorkspace, requirePermission('basic.read'), listAgents)
+router.get('/generate-ai/status', requireAuth, requireWorkspace, requirePermission('basic.read'), getAgentGenerateAiStatus)
+router.post('/generate-ai', requireAuth, requireWorkspace, requirePermission('basic.write'), postAgentGenerateAi)
 router.get('/:id/skills', requireAuth, requireWorkspace, requirePermission('basic.read'), getAgentSkillsForRequest)
 router.get('/:id/setup-health', requireAuth, requireWorkspace, requirePermission('basic.read'), getAgentSetupHealthController)
 
