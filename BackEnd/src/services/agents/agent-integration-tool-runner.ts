@@ -64,6 +64,28 @@ export function messageLooksLikeIdentitySubmission(text: string): boolean {
   return resolveCalendlyIdentityFromChannel(text) !== null
 }
 
+/** Evita vazar mensagens técnicas da API Calendly no WhatsApp. */
+export function sanitizeCalendlyUserReply(reply: string): string {
+  const text = String(reply || '').trim()
+  if (!text) return text
+  const lower = text.toLowerCase()
+
+  if (lower.includes('start_time must be before end_time')) {
+    return 'Não consegui consultar essa data no Calendly. Informe uma data futura assim: *03/06/2026 às 15:00* (dia/mês/ano).'
+  }
+  if (lower.includes('start_time must be in the future')) {
+    return 'Esse horário já passou ou não é mais válido. Informe outro *dia e horário* futuros.'
+  }
+  if (lower.includes('calendly api') && (lower.includes('must be') || lower.includes('invalid'))) {
+    return 'Não consegui concluir o agendamento no Calendly. Tente informar a data como *03/06/2026 às 15:00*.'
+  }
+  if (text.startsWith('Erro ao executar calendly.')) {
+    return 'Não consegui consultar a agenda agora. Informe o dia e horário no formato *03/06/2026 às 15:00*.'
+  }
+
+  return text
+}
+
 async function buildCalendlyBookPayloadIfReady(input: {
   agentId: string
   contactId: string
@@ -617,7 +639,14 @@ export async function runAgentIntegrationToolFromLlm(input: {
       return {
         ok: false,
         reply:
-          'Qual *dia e horário* você prefere para a reunião? (ex.: 25/05/2026 às 15:00)',
+          'Qual *dia e horário* você prefere para a reunião? (ex.: 03/06/2026 às 15:00)',
+      }
+    }
+    if (preferredDate < today) {
+      return {
+        ok: false,
+        reply:
+          'Essa data já passou. Informe um *dia futuro* (ex.: 03/06/2026 às 15:00).',
       }
     }
   }
@@ -812,11 +841,13 @@ export async function runAgentIntegrationToolFromLlm(input: {
       }
     }
 
-    return { ok: result.success, reply }
+    return { ok: result.success, reply: sanitizeCalendlyUserReply(reply) }
   } catch (error: any) {
     return {
       ok: false,
-      reply: `Erro ao executar ${toolKey}: ${String(error?.message || error).slice(0, 200)}`,
+      reply: sanitizeCalendlyUserReply(
+        `Erro ao executar ${toolKey}: ${String(error?.message || error).slice(0, 200)}`
+      ),
     }
   }
 }

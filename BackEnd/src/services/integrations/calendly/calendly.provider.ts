@@ -1,5 +1,5 @@
 import logger from '../../../lib/logger'
-import { brazilDayBoundsUtc } from '../../agents/agent-scheduling-datetime'
+import { resolveCalendlyAvailabilityRange } from '../../agents/agent-scheduling-datetime'
 import {
   AppointmentAvailabilityQuery,
   AppointmentBookingInput,
@@ -36,17 +36,11 @@ function parseSlotId(slotId: string): { eventTypeUri: string; startsAt: string }
 }
 
 function toRange(preferredDate?: string | null): { startTime: string; endTime: string } {
-  if (preferredDate) {
-    const bounds = brazilDayBoundsUtc(preferredDate)
-    const nowIso = new Date().toISOString()
-    return {
-      startTime: bounds.startTime > nowIso ? bounds.startTime : nowIso,
-      endTime: bounds.endTime,
-    }
+  const resolved = resolveCalendlyAvailabilityRange(preferredDate)
+  if (resolved.dateInPast) {
+    throw new Error('preferred_date_in_past')
   }
-  const start = new Date(Date.now() + 60 * 60 * 1000)
-  const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
-  return { startTime: start.toISOString(), endTime: end.toISOString() }
+  return { startTime: resolved.startTime, endTime: resolved.endTime }
 }
 
 function normalizeText(value?: string | null): string {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   brazilDayBoundsUtc,
+  resolveCalendlyAvailabilityRange,
   trySwapMonthDayIfPast,
 } from '../services/agents/agent-scheduling-datetime'
 
@@ -11,6 +12,19 @@ describe('trySwapMonthDayIfPast', () => {
 
   it('mantém data já futura', () => {
     expect(trySwapMonthDayIfPast('2026-06-10', '2026-06-02')).toBe('2026-06-10')
+  })
+})
+
+describe('resolveCalendlyAvailabilityRange', () => {
+  it('marca dia civil já encerrado como dateInPast', () => {
+    const past = resolveCalendlyAvailabilityRange('2020-01-15')
+    expect(past.dateInPast).toBe(true)
+  })
+
+  it('garante startTime < endTime para dia futuro', () => {
+    const far = resolveCalendlyAvailabilityRange('2099-06-03')
+    expect(far.dateInPast).toBe(false)
+    expect(Date.parse(far.startTime)).toBeLessThan(Date.parse(far.endTime))
   })
 })
 

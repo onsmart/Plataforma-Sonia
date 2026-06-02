@@ -135,23 +135,51 @@ export async function executeIntegrationTool(input: {
   if (provider === 'calendly' && toolName === 'check_availability') {
     const integrationId = ensureField(payload.integrationId)
     const appointmentProvider = resolveAppointmentProvider('calendly', { integrationId })
-    const slots = await appointmentProvider.getAvailability({
-      specialty: ensureField(payload.specialty),
-      doctor: ensureField(payload.doctor) || null,
-      consultationType: ensureField(payload.consultationType) || null,
-      unit: ensureField(payload.unit) || null,
-      period: ensureField(payload.period) || null,
-      preferredDate: ensureField(payload.preferredDate) || null,
-      timezone: ensureField(payload.timezone) || null,
-      patientName: ensureField(payload.patientName) || null,
-    })
-    return {
-      success: true,
-      provider,
-      toolName,
-      status: 'success',
-      userSafeMessage: slots.length > 0 ? 'Horários encontrados no Calendly.' : 'Nenhum horário encontrado no Calendly.',
-      data: { slots },
+    try {
+      const slots = await appointmentProvider.getAvailability({
+        specialty: ensureField(payload.specialty),
+        doctor: ensureField(payload.doctor) || null,
+        consultationType: ensureField(payload.consultationType) || null,
+        unit: ensureField(payload.unit) || null,
+        period: ensureField(payload.period) || null,
+        preferredDate: ensureField(payload.preferredDate) || null,
+        timezone: ensureField(payload.timezone) || null,
+        patientName: ensureField(payload.patientName) || null,
+      })
+      return {
+        success: true,
+        provider,
+        toolName,
+        status: 'success',
+        userSafeMessage: slots.length > 0 ? 'Horários encontrados no Calendly.' : 'Nenhum horário encontrado no Calendly.',
+        data: { slots },
+      }
+    } catch (error: unknown) {
+      const raw = error instanceof Error ? error.message : String(error)
+      const calendlyDetail = formatCalendlyApiErrorDetail(error) || raw
+      const lower = `${raw} ${calendlyDetail}`.toLowerCase()
+
+      let userSafeMessage =
+        'Não foi possível consultar horários no Calendly. Informe outro dia ou horário.'
+
+      if (raw === 'preferred_date_in_past' || lower.includes('preferred_date_in_past')) {
+        userSafeMessage =
+          'Esse dia já passou. Informe uma *data futura* (ex.: 03/06/2026 às 15:00).'
+      } else if (lower.includes('must be before end_time')) {
+        userSafeMessage =
+          'Não consegui consultar essa data no Calendly. Use o formato *03/06/2026 às 15:00* (dia/mês/ano).'
+      } else if (lower.includes('must be in the future')) {
+        userSafeMessage = 'Esse horário já não é válido. Informe um dia e horário *futuros*.'
+      }
+
+      return {
+        success: false,
+        provider,
+        toolName,
+        status: 'failed',
+        userSafeMessage,
+        error: raw.slice(0, 240),
+      }
     }
   }
 

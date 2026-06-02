@@ -132,6 +132,36 @@ export function trySwapMonthDayIfPast(dateIso: string, todayIso: string): string
 }
 
 /** Limites do dia civil em America/Sao_Paulo (UTC−3 fixo) para consulta Calendly. */
+export function resolveCalendlyAvailabilityRange(preferredDate?: string | null): {
+  startTime: string
+  endTime: string
+  dateInPast: boolean
+} {
+  const trimmed = String(preferredDate || '').trim()
+  if (!trimmed) {
+    const start = new Date(Date.now() + 60 * 60 * 1000)
+    const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
+    return { startTime: start.toISOString(), endTime: end.toISOString(), dateInPast: false }
+  }
+
+  const bounds = brazilDayBoundsUtc(trimmed)
+  const nowMs = Date.now()
+  const endMs = Date.parse(bounds.endTime)
+  if (!Number.isFinite(endMs) || endMs <= nowMs + 60_000) {
+    return { startTime: '', endTime: '', dateInPast: true }
+  }
+
+  const nowIso = new Date(nowMs).toISOString()
+  let startTime = bounds.startTime > nowIso ? bounds.startTime : nowIso
+  let endTime = bounds.endTime
+
+  if (Date.parse(startTime) >= Date.parse(endTime)) {
+    endTime = new Date(Date.parse(startTime) + 24 * 60 * 60 * 1000).toISOString()
+  }
+
+  return { startTime, endTime, dateInPast: false }
+}
+
 export function brazilDayBoundsUtc(dateIso: string): { startTime: string; endTime: string } {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateIso || '').trim())
   if (!match) {
