@@ -34,7 +34,7 @@ type CatalogTool = {
 
 type IntegrationOption = { id: string; label: string; isActive?: boolean }
 
-const SETUP_PROVIDER_ORDER = ['calendly', 'hubspot', 'whatsapp', 'email'] as const
+const SETUP_PROVIDER_ORDER = ['calendly', 'hubspot', 'whatsapp'] as const
 
 type CatalogResponse = {
   tools: CatalogTool[]
@@ -63,9 +63,6 @@ const PROVIDER_META: Record<string, { description: string }> = {
   },
   whatsapp: {
     description: 'Mensagens e templates WhatsApp',
-  },
-  email: {
-    description: 'Envio de e-mails',
   },
 }
 

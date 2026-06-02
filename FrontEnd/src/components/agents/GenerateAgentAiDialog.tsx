@@ -97,7 +97,7 @@ type Props = {
 
 type WizardPhase = "archetype" | "integrations" | "brief" | "generating" | "validation" | "done"
 
-const SETUP_PROVIDER_ORDER = ["calendly", "hubspot", "whatsapp", "email"] as const
+const SETUP_PROVIDER_ORDER = ["calendly", "hubspot", "whatsapp"] as const
 
 const WIZARD_STEPS: { id: WizardPhase; label: string }[] = [
   { id: "archetype", label: "Tipo" },
@@ -343,9 +343,15 @@ export function GenerateAgentAiDialog({
     return () => window.clearInterval(timer)
   }, [phase])
 
+  const setupProviderOrder = useMemo(() => {
+    const fromApi = (catalog?.setupProviders || []).filter((p) => p !== "email")
+    return fromApi.length > 0 ? fromApi : [...SETUP_PROVIDER_ORDER]
+  }, [catalog?.setupProviders])
+
   const toolsByProvider = useMemo(() => {
     const map = new Map<string, CatalogTool[]>()
     for (const t of catalog?.tools || []) {
+      if (t.provider === "email") continue
       const list = map.get(t.provider) || []
       list.push(t)
       map.set(t.provider, list)
@@ -511,7 +517,7 @@ export function GenerateAgentAiDialog({
         toast.error("Selecione a conta HubSpot para as ferramentas marcadas.")
         return
       }
-      if (["calendly", "whatsapp", "email"].includes(t.provider) && !t.integrationId) {
+      if (["calendly", "whatsapp"].includes(t.provider) && !t.integrationId) {
         toast.error(`Selecione a conta de ${t.provider} para as ferramentas marcadas.`)
         return
       }
@@ -656,7 +662,7 @@ export function GenerateAgentAiDialog({
           </DialogHeader>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+        <div className="ga-ai-dialog-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
           {phase === "archetype" && (
             <div className="space-y-4">
               <Label className="text-sm font-semibold">Tipo de agente</Label>
@@ -722,7 +728,7 @@ export function GenerateAgentAiDialog({
 
           {phase === "integrations" && (
             <div className="space-y-4">
-              {SETUP_PROVIDER_ORDER.map((provider) => {
+              {setupProviderOrder.map((provider) => {
                 const tools = toolsByProvider.get(provider) || []
                 const accounts = catalog?.integrationsByProvider?.[provider] || []
                 const hasAccounts = accounts.length > 0
@@ -995,7 +1001,7 @@ export function GenerateAgentAiDialog({
               </div>
               <ul
                 className={cn(
-                  "max-h-[min(220px,35vh)] space-y-2.5 overflow-y-auto rounded-xl border p-3 sm:p-4",
+                  "ga-ai-dialog-scroll max-h-[min(220px,35vh)] space-y-2.5 overflow-y-auto rounded-xl border p-3 sm:p-4",
                   cardSurface
                 )}
               >
