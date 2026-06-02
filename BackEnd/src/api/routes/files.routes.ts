@@ -1,32 +1,34 @@
 
 import { Router } from 'express'
 import { FilesController } from '../controllers/files.controller'
-import { requireAuth, requireWorkspace } from '../../middleware/auth.middleware'
+import { requireAuth, requireWorkspace, requirePermission } from '../../middleware/auth.middleware'
 
 const filesRoutes = Router()
 const filesController = new FilesController()
 
-// Upload KB via service role (contorna RLS do Storage no browser)
-// POST /files/upload
-filesRoutes.post('/upload', requireAuth, requireWorkspace, (req, res) => filesController.upload(req, res))
+/** @deprecated Prefer POST /files/create-text — upload legado (.txt/.pdf) */
+filesRoutes.post('/upload', requireAuth, requireWorkspace, requirePermission('basic.write'), (req, res) =>
+  filesController.upload(req, res)
+)
 
-// Rota para processar vetorização de arquivo
-// POST /files/:fileId/process
-filesRoutes.post('/:fileId/process', requireAuth, requireWorkspace, (req, res) =>
+filesRoutes.post('/create-text', requireAuth, requireWorkspace, requirePermission('basic.write'), (req, res) =>
+  filesController.createText(req, res)
+)
+
+filesRoutes.post('/:fileId/process', requireAuth, requireWorkspace, requirePermission('basic.write'), (req, res) =>
   filesController.process(req, res)
 )
 
-// Rota para listar skills de um arquivo
-// GET /files/:fileId/skills
-filesRoutes.get('/:fileId/skills', requireAuth, requireWorkspace, (req, res) =>
+filesRoutes.get('/:fileId/skills', requireAuth, requireWorkspace, requirePermission('basic.read'), (req, res) =>
   filesController.getSkills(req, res)
 )
 
-// GET /files/:fileId/readiness — arquivo processado e pronto para o agente
-filesRoutes.get('/:fileId/readiness', requireAuth, requireWorkspace, (req, res) => filesController.readiness(req, res))
+filesRoutes.get('/:fileId/readiness', requireAuth, requireWorkspace, requirePermission('basic.read'), (req, res) =>
+  filesController.readiness(req, res)
+)
 
-// Rota para deletar arquivo definitivamente (Storage + metadados + chunks + vínculos)
-// DELETE /files/:fileId
-filesRoutes.delete('/:fileId', requireAuth, requireWorkspace, (req, res) => filesController.delete(req, res))
+filesRoutes.delete('/:fileId', requireAuth, requireWorkspace, requirePermission('basic.write'), (req, res) =>
+  filesController.delete(req, res)
+)
 
 export default filesRoutes

@@ -354,9 +354,9 @@ Funções de trigger: `fn_log_agent_updated`, `fn_log_flow_updated`, `fn_log_int
 | Função | Security | Retorno (resumo) |
 |--------|----------|------------------|
 | `sp_create_file` | DEFINER | `uuid` — inclui `p_file_purpose` |
-| `sp_list_files_by_email` | DEFINER | inclui **`file_purpose`** |
+| `sp_list_files_by_email` | DEFINER | inclui **`file_purpose`** e **`is_ready`** |
 | `sp_get_file_usage_stats_by_email` | DEFINER | `json` (cota) |
-| `sp_get_agent_files` | DEFINER | `file_id, original_name, …` — **sem** `file_purpose` no retorno |
+| `sp_get_agent_files` | DEFINER | `file_id, original_name, file_purpose, is_ready` |
 | `sp_link_agent_files` / `sp_unlink_agent_files` / `sp_replace_agent_files` | DEFINER | `jsonb` |
 | `sp_delete_file` / `sp_update_file_config` | DEFINER | ciclo de vida |
 | `sp_list_deleted_files_for_cleanup` / `sp_permanently_delete_files` | DEFINER | limpeza Storage |
@@ -423,6 +423,7 @@ Script repo: `BackEnd/database/procedures/SP_ANALYTICS_INSIGHTS.sql` (cuidado co
 | Arquivo | Escopo principal |
 |---------|------------------|
 | `BackEnd/database/migrations/MIGRATION_KB_FILES_QUOTA_AND_CREATE_FILE.sql` | `tb_files` (colunas), `sp_get_file_usage_stats_by_email`, `sp_create_file`, `sp_list_files_by_email`, `GRANTs`, `UPDATE` em `tb_i18n_translations` (`knowledgeBase.quota.info`). |
+| `BackEnd/database/migrations/MIGRATION_KB_RPC_READINESS_AND_AGENT_FILES.sql` | `sp_get_agent_files` (+ `file_purpose`, `is_ready`); `sp_list_files_by_email` (+ `is_ready`). |
 | `BackEnd/database/migrations/MIGRATION_TB_FILES_UPLOADER_FILE_PURPOSE_AND_LIST.sql` | Correção incremental `file_purpose` + `sp_create_file` + `sp_list_files_by_email` (útil se o KB completo já tiver sido rodado sem listagem). |
 
 **Regra:** novas migrations de KB devem ser **compatíveis** com as colunas e RPCs descritas nas seções 3–4, ou este documento deve ser atualizado no mesmo PR.
@@ -490,7 +491,7 @@ Operações sensíveis (upload KB, webhooks) continuam preferindo RPCs **`SECURI
 - **`tb_whatsapp_contacts` / templates / pricing:** também `deny_all` para JWT cliente — alinhado a não expor inbox direto no browser.
 - **`kv_store_eeb342a4`:** política `kv_store_eeb342a4_auth_deny_all`; índice `key` + `key_idx` (`text_pattern_ops`).
 - **`tb_company_users`:** `ordinal_position` sem coluna `2` no inventário — coluna removida no passado.
-- **`sp_get_agent_files`:** considerar evolução futura para retornar `file_purpose` alinhado à UI de configuração do agente.
+- **`sp_get_agent_files`:** retorna `file_purpose` e `is_ready` (migration `MIGRATION_KB_RPC_READINESS_AND_AGENT_FILES.sql`).
 - **Snapshot 2026-05-06 vs 2026-05-27:** RLS passou de “muitas tabelas off” para **todas on**; políticas `tb_*_auth_*_company` cobrem KB e integrações.
 
 ---

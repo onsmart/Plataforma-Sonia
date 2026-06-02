@@ -42,6 +42,7 @@ const process_file_skills_service_1 = require("../../services/files/process-file
 const extract_file_text_1 = require("../../services/files/extract-file-text");
 const knowledge_file_formats_1 = require("../../services/files/knowledge-file-formats");
 const validate_knowledge_file_service_1 = require("../../services/files/validate-knowledge-file.service");
+const knowledge_text_entry_1 = require("../../services/files/knowledge-text-entry");
 const company_helper_1 = require("../../utils/company-helper");
 const plan_helper_1 = require("../../utils/plan-helper");
 const supabase_1 = require("../../lib/supabase");
@@ -197,6 +198,92 @@ class FilesController {
             return res.status(500).json({ error: error.message });
         }
     }
+    /** Cria entrada de conhecimento a partir de texto digitado (RAG ou Skills). */
+    async createText(req, res) {
+        const email = req.user?.email;
+        if (!email) {
+            return res.status(401).json({ error: 'User email is required' });
+        }
+        const { title, content, purpose = 'rag' } = req.body;
+        const titleValidation = (0, knowledge_text_entry_1.validateKnowledgeTitle)(title);
+        if (!titleValidation.valid || !titleValidation.title) {
+            return res.status(400).json({ error: titleValidation.error || 'Título inválido' });
+        }
+        const textContent = String(content ?? '').trim();
+        if (!textContent) {
+            return res.status(400).json({ error: 'O conteúdo não pode estar vazio' });
+        }
+        const filePurpose = String(purpose).toLowerCase() === 'skills' ? 'skills' : 'rag';
+        const buffer = Buffer.from(textContent, 'utf-8');
+        if (buffer.length > KB_MAX_BYTES) {
+            return res.status(413).json({
+                error: `Conteúdo excede o limite de ${KB_MAX_BYTES / (1024 * 1024)} MB`,
+            });
+        }
+        try {
+            const validation = (0, validate_knowledge_file_service_1.validateKnowledgeFileContent)(textContent, filePurpose);
+            if (!validation.valid) {
+                return res.status(422).json((0, validate_knowledge_file_service_1.formatValidationErrorResponse)(validation));
+            }
+            const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+            if (!companiesId) {
+                return res.status(403).json({ error: 'Empresa não encontrada para o usuário' });
+            }
+            const ragCheck = await (0, plan_helper_1.canUseRAG)(companiesId);
+            if (!ragCheck.allowed) {
+                return res.status(403).json({
+                    error: ragCheck.reason || 'Base de conhecimento não disponível no seu plano',
+                    code: 'PLAN_RAG_REQUIRED',
+                    upgradePlan: ragCheck.upgradePlan,
+                });
+            }
+            const displayTitle = titleValidation.title;
+            const timestamp = Date.now();
+            const sanitizedName = `${(0, knowledge_text_entry_1.sanitizeKnowledgeStorageName)(displayTitle)}.txt`;
+            const filePath = `${companiesId}/${timestamp}_${sanitizedName}`;
+            const resolvedMime = 'text/plain';
+            const { error: uploadError } = await supabase_1.supabase.storage
+                .from(KB_BUCKET)
+                .upload(filePath, buffer, { upsert: false, contentType: resolvedMime });
+            if (uploadError) {
+                logger_1.default.error(`[FilesController.createText] Storage: ${uploadError.message}`);
+                return res.status(500).json({
+                    error: 'Erro ao salvar conteúdo no storage',
+                    details: uploadError.message,
+                });
+            }
+            const { data: fileId, error: dbError } = await supabase_1.supabase.rpc('sp_create_file', {
+                p_email: email.trim(),
+                p_bucket: KB_BUCKET,
+                p_path: filePath,
+                p_original_name: displayTitle,
+                p_mime_type: resolvedMime,
+                p_size_bytes: buffer.length,
+                p_file_purpose: filePurpose,
+            });
+            if (dbError) {
+                await supabase_1.supabase.storage.from(KB_BUCKET).remove([filePath]);
+                logger_1.default.error(`[FilesController.createText] sp_create_file: ${dbError.message}`);
+                return res.status(500).json({
+                    error: 'Erro ao salvar registro do conhecimento',
+                    details: dbError.message,
+                });
+            }
+            return res.status(201).json({
+                success: true,
+                valid: true,
+                fileId,
+                title: displayTitle,
+                purpose: filePurpose,
+                status: 'indexing',
+                sizeBytes: buffer.length,
+            });
+        }
+        catch (error) {
+            logger_1.default.error(`[FilesController.createText] Erro: ${error.message}`);
+            return res.status(500).json({ error: error.message });
+        }
+    }
     async process(req, res) {
         const { fileId } = req.params;
         const email = req.user?.email;
@@ -219,6 +306,14 @@ class FilesController {
             if (fileRowError || !fileRow) {
                 return res.status(404).json({ error: 'Arquivo não encontrado' });
             }
+            const ragCheck = await (0, plan_helper_1.canUseRAG)(companiesId);
+            if (!ragCheck.allowed) {
+                return res.status(403).json({
+                    error: ragCheck.reason || 'Base de conhecimento não disponível no seu plano',
+                    code: 'PLAN_RAG_REQUIRED',
+                    upgradePlan: ragCheck.upgradePlan,
+                });
+            }
             const filePurpose = fileRow.file_purpose === 'skills' || fileRow.file_purpose === 'rag'
                 ? fileRow.file_purpose
                 : bodyPurpose;
@@ -229,23 +324,31 @@ class FilesController {
                 return res.status(500).json({ error: 'Erro ao baixar arquivo para validação' });
             }
             const buffer = Buffer.from(await blob.arrayBuffer());
-            try {
-                (0, knowledge_file_formats_1.assertAllowedKnowledgeUploadFile)(fileRow.original_name, fileRow.mime_type);
-            }
-            catch (formatErr) {
-                return res.status(422).json({
-                    error: knowledge_file_formats_1.KNOWLEDGE_FORMAT_ERROR,
-                    valid: false,
-                    errors: [formatErr.message],
-                });
+            const isPlainText = fileRow.mime_type === 'text/plain';
+            if (!isPlainText) {
+                try {
+                    (0, knowledge_file_formats_1.assertAllowedKnowledgeUploadFile)(fileRow.original_name, fileRow.mime_type);
+                }
+                catch (formatErr) {
+                    return res.status(422).json({
+                        error: knowledge_file_formats_1.KNOWLEDGE_FORMAT_ERROR,
+                        valid: false,
+                        errors: [formatErr.message],
+                    });
+                }
             }
             let extractedText = '';
             try {
-                extractedText = await (0, extract_file_text_1.extractTextFromBuffer)({
-                    buffer,
-                    originalName: fileRow.original_name,
-                    mimeType: fileRow.mime_type,
-                });
+                if (isPlainText) {
+                    extractedText = buffer.toString('utf-8');
+                }
+                else {
+                    extractedText = await (0, extract_file_text_1.extractTextFromBuffer)({
+                        buffer,
+                        originalName: fileRow.original_name,
+                        mimeType: fileRow.mime_type,
+                    });
+                }
             }
             catch (extractErr) {
                 return res.status(422).json({

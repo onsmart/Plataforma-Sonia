@@ -217,33 +217,49 @@ export async function getAgentSetupHealth(
   }
 
   const ragCompanyFilter = companiesId || null
-  let ragQuery = supabase
+  let linkedQuery = supabase
     .from('tb_agent_files')
-    .select('id', { count: 'exact', head: true })
+    .select('file_id, tb_files(file_purpose)')
     .eq('agent_id', agentId)
   if (ragCompanyFilter) {
-    ragQuery = ragQuery.eq('companies_id', ragCompanyFilter)
+    linkedQuery = linkedQuery.eq('companies_id', ragCompanyFilter)
   }
-  const { count: ragCount, error: ragError } = await ragQuery
+  const { data: linkedFiles, error: linkedError } = await linkedQuery
 
-  if (ragError) {
-    push(checks, 'rag', 'Base de conhecimento (RAG)', 'warn', ragError.message)
-  } else if ((ragCount || 0) === 0) {
-    push(
-      checks,
-      'rag',
-      'Base de conhecimento (RAG)',
-      'warn',
-      'Nenhum arquivo vinculado ao agente. Envie o FAQ na Knowledge Base e associe aqui.'
-    )
+  if (linkedError) {
+    push(checks, 'rag', 'Base RAG', 'warn', linkedError.message)
+    push(checks, 'skills', 'Skills', 'warn', linkedError.message)
   } else {
-    push(
-      checks,
-      'rag',
-      'Base de conhecimento (RAG)',
-      'ok',
-      `${ragCount} arquivo(s) vinculado(s).`
-    )
+    const rows = linkedFiles || []
+    const ragCount = rows.filter((row: any) => {
+      const purpose = row?.tb_files?.file_purpose
+      return purpose !== 'skills'
+    }).length
+    const skillsCount = rows.filter((row: any) => row?.tb_files?.file_purpose === 'skills').length
+
+    if (ragCount === 0) {
+      push(
+        checks,
+        'rag',
+        'Base RAG',
+        'warn',
+        'Nenhum RAG vinculado. Crie conteúdo na Base de Conhecimento (modo RAG) e associe ao agente.'
+      )
+    } else {
+      push(checks, 'rag', 'Base RAG', 'ok', `${ragCount} RAG(s) vinculado(s).`)
+    }
+
+    if (skillsCount === 0) {
+      push(
+        checks,
+        'skills',
+        'Skills',
+        'warn',
+        'Nenhuma Skill vinculada. Crie regras de comportamento na Base de Conhecimento (modo Skills) e associe ao agente.'
+      )
+    } else {
+      push(checks, 'skills', 'Skills', 'ok', `${skillsCount} Skill(s) vinculada(s).`)
+    }
   }
 
   if (agent.integrations_id) {

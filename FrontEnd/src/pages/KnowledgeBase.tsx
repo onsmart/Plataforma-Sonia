@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react"
 import { 
-    UploadCloud, 
     FileText, 
     Trash2, 
     Loader2, 
@@ -12,12 +11,23 @@ import {
     FileSpreadsheet,
     FileJson,
     Circle,
+    Save,
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card"
-import { Progress } from "../components/ui/progress"
 import { Badge } from "../components/ui/badge"
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group"
+import { Textarea } from "../components/ui/textarea"
+import { Input } from "../components/ui/input"
+import { Label } from "../components/ui/label"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "../components/ui/dialog"
 import { AgentService, KnowledgeFile } from "../services/api"
 import { usePlanCapabilities } from "../hooks/usePlanCapabilities"
 import { useNavigation } from "../contexts/NavigationContext"
@@ -26,11 +36,6 @@ import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import i18n from "../i18n/config"
 import { cn } from "../components/ui/utils"
-import {
-    isAllowedKnowledgeUploadFile,
-    KNOWLEDGE_ACCEPT_ATTR,
-    KNOWLEDGE_FORMAT_ERROR,
-} from "../lib/knowledge-file-formats"
 
 const getFileVisuals = (fileName: string, mimeType?: string) => {
     const ext = fileName.split('.').pop()?.toLowerCase()
@@ -148,9 +153,10 @@ export function KnowledgeBase() {
         }
     }, [])
     const [files, setFiles] = useState<KnowledgeFile[]>([])
-    const [isDragging, setIsDragging] = useState(false)
-    const [isUploading, setIsUploading] = useState(false)
-    const [uploadProgress, setUploadProgress] = useState(0)
+    const [isSaving, setIsSaving] = useState(false)
+    const [contentText, setContentText] = useState("")
+    const [titleDialogOpen, setTitleDialogOpen] = useState(false)
+    const [saveTitle, setSaveTitle] = useState("")
     const [usageStats, setUsageStats] = useState<any>(null)
     const [isAdmin, setIsAdmin] = useState(false)
     const [deletedFiles, setDeletedFiles] = useState<any[]>([])
@@ -275,61 +281,47 @@ export function KnowledgeBase() {
         }
     }, [isAdmin])
 
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault()
-        setIsDragging(true)
-    }
-
-    const handleDragLeave = () => {
-        setIsDragging(false)
-    }
-
-    const handleDrop = async (e: React.DragEvent) => {
-        e.preventDefault()
-        setIsDragging(false)
-        
-        const droppedFiles = Array.from(e.dataTransfer.files)
-        if (droppedFiles.length > 0) {
-            await processUpload(droppedFiles[0])
-        }
-    }
-
-    const processUpload = async (file: File) => {
+    const handleOpenSaveDialog = () => {
         if (ragLocked) {
             toast.error('Base de conhecimento (RAG) disponível no plano Growth ou superior.')
             return
         }
+        if (!contentText.trim()) {
+            toast.error(t('create.contentRequired', { defaultValue: 'Escreva o conteúdo antes de salvar.' }))
+            return
+        }
+        setSaveTitle("")
+        setTitleDialogOpen(true)
+    }
 
-        if (!isAllowedKnowledgeUploadFile(file)) {
-            toast.error(KNOWLEDGE_FORMAT_ERROR)
+    const handleConfirmSave = async () => {
+        const title = saveTitle.trim()
+        if (title.length < 3) {
+            toast.error(t('create.titleMin', { defaultValue: 'O título deve ter pelo menos 3 caracteres.' }))
             return
         }
 
-        setIsUploading(true)
-        setUploadProgress(10)
-
+        setIsSaving(true)
         try {
-            // Real upload call - passar filePurpose
-            await AgentService.uploadFile(file, 'global', filePurpose)
-            
-            setUploadProgress(100)
-            setTimeout(async () => {
-                setIsUploading(false)
-                setUploadProgress(0)
-                await loadFiles()
-                await loadUsageStats()
-            }, 500)
-            
+            await AgentService.createKnowledgeText({
+                title,
+                content: contentText.trim(),
+                purpose: filePurpose,
+            })
+            toast.success(t('create.success', { defaultValue: 'Conteúdo salvo. Processamento em andamento…' }))
+            setContentText("")
+            setSaveTitle("")
+            setTitleDialogOpen(false)
+            await loadFiles()
+            await loadUsageStats()
         } catch (error: any) {
-            if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
-                console.error("Upload failed", error)
-            }
-            setIsUploading(false)
             if (error?.code === 'PLAN_RAG_REQUIRED' || String(error?.message || '').includes('RAG')) {
-                toast.error(error.message || 'Faça upgrade para o plano Growth para enviar documentos.')
+                toast.error(error.message || 'Faça upgrade para o plano Growth para usar a base de conhecimento.')
             } else {
-                toast.error(t('upload.error', { message: error.message }))
+                toast.error(t('create.error', { message: error.message, defaultValue: `Falha ao salvar: ${error.message}` }))
             }
+        } finally {
+            setIsSaving(false)
         }
     }
 
@@ -535,8 +527,8 @@ export function KnowledgeBase() {
                     <CardHeader className="pb-2">
                         <CardTitle className="text-base">Base de conhecimento — plano Growth</CardTitle>
                         <CardDescription>
-                            Seu plano atual não inclui upload de documentos (RAG). Faça upgrade para consultar
-                            arquivos nos atendimentos.
+                            Seu plano atual não inclui Base de Conhecimento (RAG e Skills). Faça upgrade para consultar
+                            conteúdos nos atendimentos.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -703,66 +695,81 @@ export function KnowledgeBase() {
                             </div>
                         </div>
 
-                        {/* 3) Área de upload */}
-                        <div className="border-t border-border/70 pt-6 sm:pt-8">
-                        <div
-                            className={cn(
-                                "flex min-h-[14rem] flex-col items-center justify-center rounded-xl border p-6 text-center transition-all duration-300 sm:min-h-[18rem] sm:p-10 lg:p-12",
-                                isDragging
-                                    ? "scale-[1.01] border-teal-500 bg-teal-700 text-white shadow-lg shadow-teal-700/25 dark:bg-teal-500 dark:text-zinc-950"
-                                    : "border-dashed border-border bg-muted/40 hover:border-teal-500/60 hover:bg-muted/65 dark:hover:border-teal-400/60"
-                            )}
-                            onDragOver={handleDragOver}
-                            onDragLeave={handleDragLeave}
-                            onDrop={handleDrop}
-                        >
-                            <div className={cn("mb-6 transition-transform duration-300", isDragging && "scale-105 animate-bounce")}>
-                                <div className={cn(
-                                    "flex h-20 w-20 items-center justify-center rounded-[8px]",
-                                    isDragging
-                                        ? "bg-white/20 text-white dark:text-zinc-950"
-                                        : "bg-teal-500/10 text-teal-700 dark:bg-teal-400/10 dark:text-teal-300"
-                                )}>
-                                    <UploadCloud className="h-12 w-12" strokeWidth={2} />
-                                </div>
+                        {/* 3) Editor de texto */}
+                        <div className="border-t border-border/70 pt-6 sm:pt-8 space-y-4">
+                            <div>
+                                <Label htmlFor="kb-content" className="text-sm font-semibold text-foreground">
+                                    {t('create.contentLabel', { defaultValue: 'Conteúdo' })}
+                                </Label>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                    {filePurpose === 'rag'
+                                        ? t('create.contentHintRag', { defaultValue: 'Descreva fatos, políticas, FAQ e informações que o agente deve consultar nas respostas.' })
+                                        : t('create.contentHintSkills', { defaultValue: 'Descreva regras de comportamento: o que pode, o que não pode e como agir em situações específicas.' })}
+                                </p>
                             </div>
-                            <h3 className={cn("mb-2 text-xl font-bold transition-colors", isDragging ? "text-current" : "text-foreground")}>
-                                {isUploading ? t('upload.uploading') : t('upload.dragDrop')}
-                            </h3>
-                            <p className={cn("mb-6 text-sm transition-colors", isDragging ? "text-current opacity-90" : "text-muted-foreground")}>
-                                {t('upload.clickToSelect')}
-                            </p>
-                            
-                            {isUploading ? (
-                                <div className="w-full max-w-xs space-y-2">
-                                    <Progress
-                                        value={uploadProgress}
-                                        className="h-3 rounded-[8px] bg-background/50"
-                                        indicatorClassName="bg-teal-600 dark:bg-teal-400"
-                                    />
-                                    <p className="text-xs font-medium text-muted-foreground">{t('upload.progress', { percent: uploadProgress })}</p>
-                                </div>
-                            ) : (
-                                <Button 
-                                    variant="outline" 
-                                    onClick={() => document.getElementById('file-upload')?.click()}
-                                    className={cn(
-                                        "rounded-[8px]",
-                                        isDragging && "border-white bg-white text-teal-700 hover:bg-white/90 dark:border-zinc-950 dark:bg-zinc-950 dark:text-teal-300"
-                                    )}
+                            <Textarea
+                                id="kb-content"
+                                value={contentText}
+                                onChange={(e) => setContentText(e.target.value)}
+                                placeholder={
+                                    filePurpose === 'rag'
+                                        ? t('create.placeholderRag', { defaultValue: 'Ex.: Horário de atendimento, política de trocas, valores dos planos…' })
+                                        : t('create.placeholderSkills', { defaultValue: 'Ex.: Nunca prometer desconto. Sempre pedir CPF antes de consultar pedido…' })
+                                }
+                                className="min-h-[220px] resize-y rounded-xl border-border/80 text-sm leading-relaxed"
+                                disabled={ragLocked || isSaving}
+                            />
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <p className="text-xs text-muted-foreground">
+                                    {t('create.minLengthHint', { defaultValue: 'Mínimo recomendado: 200 caracteres (RAG) ou 120 (Skills).' })}
+                                </p>
+                                <Button
+                                    type="button"
+                                    onClick={handleOpenSaveDialog}
+                                    disabled={ragLocked || isSaving || !contentText.trim()}
+                                    className="gap-2 rounded-lg"
                                 >
-                                    {t('upload.selectFiles')}
-                                    <input 
-                                        id="file-upload" 
-                                        type="file" 
-                                        accept={KNOWLEDGE_ACCEPT_ATTR}
-                                        className="hidden" 
-                                        onChange={(e) => e.target.files && processUpload(e.target.files[0])}
-                                    />
+                                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                    {t('create.saveButton', { defaultValue: 'Salvar na minha conta' })}
                                 </Button>
-                            )}
+                            </div>
                         </div>
-                        </div>
+
+                        <Dialog open={titleDialogOpen} onOpenChange={setTitleDialogOpen}>
+                            <DialogContent className="sm:max-w-md rounded-xl">
+                                <DialogHeader>
+                                    <DialogTitle>{t('create.titleDialog', { defaultValue: 'Título do conteúdo' })}</DialogTitle>
+                                    <DialogDescription>
+                                        {t('create.titleDialogHint', {
+                                            defaultValue: 'Este título aparece na sua conta e nas configurações dos agentes.',
+                                        })}
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="space-y-2 py-2">
+                                    <Label htmlFor="kb-title">{t('create.titleLabel', { defaultValue: 'Título' })}</Label>
+                                    <Input
+                                        id="kb-title"
+                                        value={saveTitle}
+                                        onChange={(e) => setSaveTitle(e.target.value)}
+                                        placeholder={t('create.titlePlaceholder', { defaultValue: 'Ex.: FAQ Atendimento ou Regras de vendas' })}
+                                        maxLength={120}
+                                        autoFocus
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        {filePurpose === 'rag' ? 'RAG' : 'Skills'} · {contentText.trim().length} caracteres
+                                    </p>
+                                </div>
+                                <DialogFooter className="gap-2 sm:gap-0">
+                                    <Button type="button" variant="outline" onClick={() => setTitleDialogOpen(false)} disabled={isSaving}>
+                                        {t('create.cancel', { defaultValue: 'Cancelar' })}
+                                    </Button>
+                                    <Button type="button" onClick={handleConfirmSave} disabled={isSaving || saveTitle.trim().length < 3}>
+                                        {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                        {t('create.confirm', { defaultValue: 'Salvar' })}
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
                     </CardContent>
                 </Card>
 

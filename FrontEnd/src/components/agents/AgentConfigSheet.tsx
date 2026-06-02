@@ -1,3 +1,4 @@
+/** @deprecated Legado — use FrontEnd/src/pages/AgentConfig.tsx (rota agent-config). Mantido apenas como referência. */
 
 import React, { useEffect, useState } from "react"
 import { Agent, AgentModelConfig } from "../../services/api"

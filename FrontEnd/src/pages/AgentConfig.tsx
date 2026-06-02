@@ -49,6 +49,7 @@ import {
 } from "../lib/agent-extra-features"
 import { supabase } from "../utils/supabase/client"
 import { useAuth } from "../contexts/AuthContext"
+import { useNavigation } from "../contexts/NavigationContext"
 import { fetchWhatsappIntegrationsForWorkspace } from "../lib/workspace-integrations"
 import { useTheme } from "next-themes"
 import { SUPPORTED_AGENT_LANGUAGES, normalizeAgentLanguageCode } from "../lib/agent-language"
@@ -79,9 +80,130 @@ function getAgentInitials(value: string): string {
     .join("")
 }
 
+type KnowledgeEntryRow = {
+  id: string
+  original_name: string
+  file_purpose?: string
+  is_ready?: boolean
+}
+
+function KnowledgeEntryPicker({
+  label,
+  hint,
+  emptyText,
+  createLabel,
+  files,
+  selectedIds,
+  onToggle,
+  onCreate,
+  badgeLabel,
+}: {
+  label: string
+  hint: string
+  emptyText: string
+  createLabel: string
+  files: KnowledgeEntryRow[]
+  selectedIds: string[]
+  onToggle: (fileId: string) => void
+  onCreate: () => void
+  badgeLabel: string
+}) {
+  const sectionSelected = selectedIds.filter((id) => files.some((f) => f.id === id))
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <Label className={agentConfigFieldLabel}>{label}</Label>
+          <p className={agentConfigFieldHint}>{hint}</p>
+        </div>
+        <Badge variant="outline" className="rounded-md">
+          {sectionSelected.length} selecionado{sectionSelected.length === 1 ? '' : 's'}
+        </Badge>
+      </div>
+      {files.length === 0 ? (
+        <div className={cn(agentConfigInnerPanel, "border-dashed space-y-3 text-sm text-muted-foreground")}>
+          <p>{emptyText}</p>
+          <Button type="button" variant="outline" size="sm" className="rounded-lg" onClick={onCreate}>
+            {createLabel}
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="outline" className={cn(agentConfigInput, "h-auto min-h-11 w-full justify-between py-2.5 font-normal")}>
+                <span className="truncate text-sm">
+                  {sectionSelected.length === 0 ? `Selecionar ${badgeLabel}…` : `${sectionSelected.length} ${badgeLabel}(s)`}
+                </span>
+                <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[var(--radix-popover-trigger-width)] rounded-xl p-0" align="start">
+              <Command>
+                <CommandInput placeholder={`Buscar ${badgeLabel.toLowerCase()}…`} className="h-10" />
+                <CommandList className="max-h-64">
+                  <CommandEmpty>Nenhum item encontrado.</CommandEmpty>
+                  <CommandGroup>
+                    {files.map((file) => {
+                      const isSelected = selectedIds.includes(file.id)
+                      const isReady = Boolean(file.is_ready)
+                      return (
+                        <CommandItem
+                          key={file.id}
+                          value={`${file.original_name} ${file.id}`}
+                          onSelect={() => onToggle(file.id)}
+                          className="rounded-lg"
+                        >
+                          <div className={cn("mr-2 flex h-4 w-4 items-center justify-center rounded border", isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40")}>
+                            {isSelected ? <Check className="h-3 w-3" /> : null}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm">{file.original_name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {isReady ? 'Pronto' : 'Processando…'}
+                            </div>
+                          </div>
+                        </CommandItem>
+                      )
+                    })}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+          {sectionSelected.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {sectionSelected.map((fileId) => {
+                const file = files.find((f) => f.id === fileId)
+                if (!file) return null
+                return (
+                  <Badge key={fileId} variant="secondary" className="gap-1 rounded-md pr-1">
+                    <span className="max-w-[180px] truncate">{file.original_name}</span>
+                    {!file.is_ready ? (
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400">· processando</span>
+                    ) : null}
+                    <button type="button" className="rounded p-0.5 hover:bg-destructive/15 hover:text-destructive" onClick={() => onToggle(fileId)} aria-label="Remover">
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                )
+              })}
+            </div>
+          ) : null}
+          <Button type="button" variant="ghost" size="sm" className="h-8 rounded-lg px-2 text-xs" onClick={onCreate}>
+            + {createLabel}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function AgentConfig() {
   const { theme } = useTheme()
   const { user, userId, companiesId } = useAuth()
+  const { navigate } = useNavigation()
   const { t } = useTranslation('agentConfig')
   const [isLoading, setIsLoading] = useState(false)
   const [isFetching, setIsFetching] = useState(false)
@@ -111,7 +233,7 @@ export function AgentConfig() {
     if (!user?.email || !userId) return
     try {
       const { data: filesData } = await supabase.rpc('sp_list_files_by_email', { p_email: user.email })
-      setAvailableFiles(filesData || [])
+      setAvailableFiles((filesData || []).filter((f: any) => !f.is_deleted))
 
       const { data: companyUser } = await supabase.from('tb_company_users').select('companies_id').eq('user_id', userId).maybeSingle()
       if (companyUser?.companies_id) {
@@ -251,6 +373,15 @@ export function AgentConfig() {
       prev.includes(fileId) ? prev.filter((x) => x !== fileId) : [...prev, fileId]
     )
   }, [])
+
+  const ragAvailableFiles = useMemo(
+    () => availableFiles.filter((f: KnowledgeEntryRow) => f.file_purpose !== 'skills'),
+    [availableFiles]
+  )
+  const skillsAvailableFiles = useMemo(
+    () => availableFiles.filter((f: KnowledgeEntryRow) => f.file_purpose === 'skills'),
+    [availableFiles]
+  )
 
   const linkedConnectionLines = useMemo(() => {
     const lines: string[] = []
@@ -544,14 +675,14 @@ export function AgentConfig() {
             <AgentConfigSection
               icon={Database}
               title={t('connections.title')}
-              description="Conexões vinculadas (somente leitura) e arquivos da base de conhecimento."
+              description="Vincule bases RAG e Skills criadas na sua conta. Apenas conteúdos prontos entram nas respostas."
               headerExtra={
-                linkedConnectionLines.length > 0 ? (
-                  <Badge variant="secondary" className="rounded-md">{linkedConnectionLines.length} conexão(ões)</Badge>
+                selectedFileIds.length > 0 ? (
+                  <Badge variant="secondary" className="rounded-md">{selectedFileIds.length} vinculado(s)</Badge>
                 ) : null
               }
             >
-              <div className="grid gap-5">
+              <div className="grid gap-6">
                 <div className={agentConfigInnerPanel}>
                   <Label className={agentConfigFieldLabel}>Conexões ativas neste agente</Label>
                   {linkedConnectionLines.length === 0 ? (
@@ -570,73 +701,29 @@ export function AgentConfig() {
                   <p className={cn(agentConfigFieldHint, "mt-3")}>Para alterar WhatsApp ou CRM, use o hub de agentes ou Configurações → Integrações.</p>
                 </div>
 
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <Label className={agentConfigFieldLabel}>{t('connections.filesLabel')}</Label>
-                      <p className={agentConfigFieldHint}>Documentos usados como contexto (RAG) ou skills do agente.</p>
-                    </div>
-                    <Badge variant="outline" className="rounded-md">{selectedFileIds.length} selecionado{selectedFileIds.length === 1 ? '' : 's'}</Badge>
-                  </div>
-                  {availableFiles.length === 0 ? (
-                    <div className={cn(agentConfigInnerPanel, "border-dashed text-sm text-muted-foreground")}>
-                      Nenhum arquivo disponível na base de conhecimento.
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button type="button" variant="outline" className={cn(agentConfigInput, "h-auto min-h-11 w-full justify-between py-2.5 font-normal")}>
-                            <span className="truncate text-sm">
-                              {selectedFileIds.length === 0 ? 'Selecionar arquivos...' : `${selectedFileIds.length} arquivo(s)`}
-                            </span>
-                            <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-[var(--radix-popover-trigger-width)] rounded-xl p-0" align="start">
-                          <Command>
-                            <CommandInput placeholder="Buscar arquivo..." className="h-10" />
-                            <CommandList className="max-h-64">
-                              <CommandEmpty>Nenhum arquivo encontrado.</CommandEmpty>
-                              <CommandGroup>
-                                {availableFiles.map((file: any) => {
-                                  const isSelected = selectedFileIds.includes(file.id)
-                                  return (
-                                    <CommandItem key={file.id} value={`${file.original_name} ${file.id}`} onSelect={() => toggleFileSelection(file.id)} className="rounded-lg">
-                                      <div className={cn("mr-2 flex h-4 w-4 items-center justify-center rounded border", isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40")}>
-                                        {isSelected ? <Check className="h-3 w-3" /> : null}
-                                      </div>
-                                      <div className="min-w-0">
-                                        <div className="truncate text-sm">{file.original_name}</div>
-                                        <div className="text-xs text-muted-foreground">{file.file_purpose === 'skills' ? 'Skills' : 'RAG'}</div>
-                                      </div>
-                                    </CommandItem>
-                                  )
-                                })}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                      {selectedFileIds.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {selectedFileIds.map((fileId) => {
-                            const file = availableFiles.find((f: any) => f.id === fileId)
-                            if (!file) return null
-                            return (
-                              <Badge key={fileId} variant="secondary" className="gap-1 rounded-md pr-1">
-                                <span className="max-w-[180px] truncate">{file.original_name}</span>
-                                <button type="button" className="rounded p-0.5 hover:bg-destructive/15 hover:text-destructive" onClick={() => toggleFileSelection(fileId)} aria-label="Remover">
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </Badge>
-                            )
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
+                <KnowledgeEntryPicker
+                  label="Bases RAG"
+                  hint="Contexto factual consultado nas respostas (FAQ, políticas, produtos)."
+                  emptyText="Nenhum RAG na sua conta. Crie conteúdo na Base de Conhecimento (modo RAG)."
+                  createLabel="Criar RAG na Base de Conhecimento"
+                  files={ragAvailableFiles}
+                  selectedIds={selectedFileIds}
+                  onToggle={toggleFileSelection}
+                  onCreate={() => navigate('knowledge')}
+                  badgeLabel="RAG"
+                />
+
+                <KnowledgeEntryPicker
+                  label="Skills"
+                  hint="Regras de comportamento e capacidades do agente (permitido, proibido, fallback)."
+                  emptyText="Nenhuma Skill na sua conta. Crie conteúdo na Base de Conhecimento (modo Skills)."
+                  createLabel="Criar Skill na Base de Conhecimento"
+                  files={skillsAvailableFiles}
+                  selectedIds={selectedFileIds}
+                  onToggle={toggleFileSelection}
+                  onCreate={() => navigate('knowledge')}
+                  badgeLabel="Skill"
+                />
               </div>
             </AgentConfigSection>
           </TabsContent>

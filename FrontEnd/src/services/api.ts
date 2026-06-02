@@ -342,6 +342,7 @@ export interface KnowledgeFile {
     status: 'indexing' | 'active' | 'deleted' | 'error';
     uploadedAt: string;
     vectorsIndexed?: number;
+    isReady?: boolean;
 }
 
 export interface Conversation {
@@ -921,16 +922,18 @@ export const AgentService = {
             return (data || []).map((file: any) => {
                 const p = String(file.file_purpose || 'rag').toLowerCase()
                 const purpose: 'rag' | 'skills' = p === 'skills' ? 'skills' : 'rag'
+                const isReady = Boolean(file.is_ready)
                 return {
                 id: file.id,
                 name: file.original_name,
                 size: file.size_bytes ? `${(file.size_bytes / 1024).toFixed(1)} KB` : '0 KB',
                 type: file.mime_type || 'text/plain',
                 purpose,
-                status: file.is_deleted ? 'deleted' : 'active',
-                namespace: 'global', // TODO: implementar namespace se necessário
+                status: file.is_deleted ? 'deleted' : isReady ? 'active' : 'indexing',
+                namespace: 'global',
                 uploadedAt: file.created_at,
-                vectorsIndexed: 0 // TODO: implementar contagem de vetores
+                vectorsIndexed: 0,
+                isReady,
             }
             })
         } catch (error) {
@@ -943,6 +946,123 @@ export const AgentService = {
         }
     },
 
+    async createKnowledgeText(params: {
+        title: string;
+        content: string;
+        purpose: 'rag' | 'skills';
+    }): Promise<KnowledgeFile> {
+        const { title, content, purpose } = params;
+
+        try {
+            const { supabase } = await import('../utils/supabase/client');
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (!user?.email) {
+                throw new Error('Usuário não autenticado');
+            }
+
+            const companiesId = await resolveCompaniesIdByEmail(user.email);
+            if (!companiesId) {
+                throw new Error(
+                    'Não foi possível identificar sua empresa. Confirme o cadastro em Configurações ou faça logout e login novamente.'
+                );
+            }
+
+            try {
+                const planRes = await fetch(`${BASE_URL}/billing/subscription`, {
+                    headers: await getAuthHeaders()
+                });
+                if (planRes.ok) {
+                    const planData = await planRes.json();
+                    const { planHasRag } = await import('../lib/plan-catalog');
+                    const plan = planData.plan || 'rec_start';
+                    if (!planHasRag(plan)) {
+                        throw new Error('A Base de Conhecimento (RAG e Skills) não está incluída no seu plano atual. Faça upgrade para Growth ou Enterprise.');
+                    }
+                }
+            } catch (planError: any) {
+                if (planError.message?.includes('RAG') || planError.message?.includes('Skills') || planError.message?.includes('Knowledge Base') || planError.message?.includes('Base de Conhecimento')) {
+                    throw planError;
+                }
+                console.warn('[createKnowledgeText] Erro ao verificar plano, continuando:', planError);
+            }
+
+            const createRes = await fetch(`${BASE_URL}/files/create-text`, {
+                method: 'POST',
+                headers: await getAuthHeaders(),
+                body: JSON.stringify({ title: title.trim(), content, purpose }),
+            });
+
+            if (!createRes.ok) {
+                let errMsg = `Erro ao salvar (${createRes.status})`;
+                try {
+                    const errBody = await createRes.json();
+                    if (createRes.status === 422 && Array.isArray(errBody.errors)) {
+                        const criteriaLines = Array.isArray(errBody.criteria)
+                            ? errBody.criteria
+                                .filter((c: { passed?: boolean }) => c.passed === false)
+                                .map((c: { label?: string; message?: string }) =>
+                                    `• ${c.label}${c.message ? `: ${c.message}` : ''}`
+                                )
+                            : [];
+                        const suggestionLines = Array.isArray(errBody.suggestions)
+                            ? errBody.suggestions.map((s: string) => `→ ${s}`)
+                            : [];
+                        errMsg = [
+                            errBody.error || 'Conteúdo inválido',
+                            ...errBody.errors,
+                            ...criteriaLines,
+                            ...suggestionLines,
+                        ].join('\n');
+                    } else {
+                        errMsg = errBody.details || errBody.error || errMsg;
+                    }
+                    const err = new Error(errMsg) as Error & { code?: string };
+                    if (errBody?.code) err.code = String(errBody.code);
+                    throw err;
+                } catch (parseErr) {
+                    if (parseErr instanceof Error && 'code' in parseErr) throw parseErr;
+                }
+                throw new Error(errMsg);
+            }
+
+            const payload = await createRes.json();
+            const fileId = payload.fileId;
+            if (!fileId) {
+                throw new Error('Resposta inválida do servidor ao salvar conteúdo');
+            }
+
+            try {
+                const headers = await getAuthHeaders();
+                headers['x-user-email'] = user.email;
+                fetch(`${BASE_URL}/files/${fileId}/process`, {
+                    method: 'POST',
+                    headers: { ...headers, 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ purpose }),
+                }).catch((err) => console.error('[createKnowledgeText] Erro ao processar:', err));
+            } catch (processError) {
+                console.error('[createKnowledgeText] Erro ao iniciar processamento:', processError);
+            }
+
+            const sizeBytes = payload.sizeBytes || new Blob([content]).size;
+            return {
+                id: fileId,
+                name: payload.title || title.trim(),
+                size: `${(sizeBytes / 1024).toFixed(1)} KB`,
+                type: 'text/plain',
+                purpose,
+                status: 'indexing',
+                namespace: 'global',
+                uploadedAt: new Date().toISOString(),
+                vectorsIndexed: 0,
+                isReady: false,
+            };
+        } catch (error: any) {
+            return handleFetchError(error, 'CreateKnowledgeText');
+        }
+    },
+
+    /** @deprecated Use createKnowledgeText — upload legado por arquivo */
     async uploadFile(file: File, namespace: string = 'global', purpose: 'rag' | 'skills' = 'rag'): Promise<KnowledgeFile> {
         const { isAllowedKnowledgeUploadFile, KNOWLEDGE_FORMAT_ERROR } = await import(
             '../lib/knowledge-file-formats'

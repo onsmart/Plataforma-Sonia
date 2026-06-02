@@ -746,8 +746,11 @@ export async function chatWithAgent(
         if (!companyId) return []
         const linkedFileIds = await getAgentLinkedFileIds(agentId, companyId)
         if (linkedFileIds.length === 0) return []
+        const { filterReadyFileIds } = await import('../files/file-readiness.service')
+        const { readyIds } = await filterReadyFileIds(linkedFileIds, companyId)
+        if (readyIds.length === 0) return []
         const { getAgentSkills } = await import('./get-agent-skills')
-        return await getAgentSkills(agentId, companyId, linkedFileIds)
+        return await getAgentSkills(agentId, companyId, readyIds)
       } catch (skillsError: any) {
         console.warn('[chatWithAgent] ⚠️ [SKILLS] Erro ao buscar skills:', skillsError?.message || skillsError)
         return []
@@ -800,16 +803,32 @@ export async function chatWithAgent(
             companyId,
           })
         } else {
+          const { filterReadyFileIds } = await import('../files/file-readiness.service')
+          const { readyIds, blocked } = await filterReadyFileIds(linkedFileIds, companyId)
+          if (blocked.length > 0) {
+            console.log('[chatWithAgent] ⏳ [RAG] Arquivos vinculados ainda não processados:', {
+              agentId,
+              blockedCount: blocked.length,
+              blockedIds: blocked.map((b) => b.fileId),
+            })
+          }
+          if (readyIds.length === 0) {
+            console.log('[chatWithAgent] ⚡ [RAG] Nenhum arquivo pronto; pulando RAG e skills', {
+              agentId,
+              companyId,
+              linkedFilesCount: linkedFileIds.length,
+            })
+          } else {
           console.log('[chatWithAgent] 📚 [RAG] Buscando contexto dos arquivos vinculados ao agente...', {
             agentId,
             companyId,
             messageLength: message?.length || 0,
-            linkedFilesCount: linkedFileIds.length,
+            linkedFilesCount: readyIds.length,
           })
 
           const userQueryForRag = getConsultarArquivosUserQuery(message, context)
           const skillsPromise = loadSkillsFromLinkedFiles()
-          const ragPromise = consultarArquivos(agentId, companyId, userQueryForRag, linkedFileIds)
+          const ragPromise = consultarArquivos(agentId, companyId, userQueryForRag, readyIds)
           const [skillsResult, ragResult] = await Promise.all([skillsPromise, ragPromise])
 
           sk = skillsResult
@@ -839,6 +858,7 @@ export async function chatWithAgent(
             })
           } else {
             console.log('[chatWithAgent] ℹ️ [RAG] Nenhum arquivo relevante encontrado para esta mensagem')
+          }
           }
         }
       } else {

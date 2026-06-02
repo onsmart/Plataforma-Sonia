@@ -642,8 +642,12 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
                 const linkedFileIds = await getAgentLinkedFileIds(agentId, companyId);
                 if (linkedFileIds.length === 0)
                     return [];
+                const { filterReadyFileIds } = await Promise.resolve().then(() => __importStar(require('../files/file-readiness.service')));
+                const { readyIds } = await filterReadyFileIds(linkedFileIds, companyId);
+                if (readyIds.length === 0)
+                    return [];
                 const { getAgentSkills } = await Promise.resolve().then(() => __importStar(require('./get-agent-skills')));
-                return await getAgentSkills(agentId, companyId, linkedFileIds);
+                return await getAgentSkills(agentId, companyId, readyIds);
             }
             catch (skillsError) {
                 console.warn('[chatWithAgent] ⚠️ [SKILLS] Erro ao buscar skills:', skillsError?.message || skillsError);
@@ -694,41 +698,59 @@ async function chatWithAgent(email, agentId, message, context // Contexto para s
                     });
                 }
                 else {
-                    console.log('[chatWithAgent] 📚 [RAG] Buscando contexto dos arquivos vinculados ao agente...', {
-                        agentId,
-                        companyId,
-                        messageLength: message?.length || 0,
-                        linkedFilesCount: linkedFileIds.length,
-                    });
-                    const userQueryForRag = getConsultarArquivosUserQuery(message, context);
-                    const skillsPromise = loadSkillsFromLinkedFiles();
-                    const ragPromise = (0, consultarArquivos_1.consultarArquivos)(agentId, companyId, userQueryForRag, linkedFileIds);
-                    const [skillsResult, ragResult] = await Promise.all([skillsPromise, ragPromise]);
-                    sk = skillsResult;
-                    console.log('[chatWithAgent] 🎯 [SKILLS] Skills encontrados:', {
-                        count: sk.length,
-                        skills: sk.map((s) => s.name),
-                    });
-                    fc = ragResult.context;
-                    const outSources = ragResult.sources || [];
-                    const outNames = ragResult.sourceNames || [];
-                    rs.push(...outSources);
-                    rsn.push(...outNames);
-                    console.log('[chatWithAgent] 🔍 [RAG] Resultado da consulta:', {
-                        hasContext: !!fc,
-                        contextLength: fc?.length || 0,
-                        contextPreview: safeLogPreview(fc),
-                        sourcesCount: rs.length,
-                        sourceNames: rsn,
-                    });
-                    if (fc) {
-                        console.log('[chatWithAgent] ✅ [RAG] Contexto dos arquivos encontrado', {
-                            contextLength: fc.length,
-                            preview: safeLogPreview(fc),
+                    const { filterReadyFileIds } = await Promise.resolve().then(() => __importStar(require('../files/file-readiness.service')));
+                    const { readyIds, blocked } = await filterReadyFileIds(linkedFileIds, companyId);
+                    if (blocked.length > 0) {
+                        console.log('[chatWithAgent] ⏳ [RAG] Arquivos vinculados ainda não processados:', {
+                            agentId,
+                            blockedCount: blocked.length,
+                            blockedIds: blocked.map((b) => b.fileId),
+                        });
+                    }
+                    if (readyIds.length === 0) {
+                        console.log('[chatWithAgent] ⚡ [RAG] Nenhum arquivo pronto; pulando RAG e skills', {
+                            agentId,
+                            companyId,
+                            linkedFilesCount: linkedFileIds.length,
                         });
                     }
                     else {
-                        console.log('[chatWithAgent] ℹ️ [RAG] Nenhum arquivo relevante encontrado para esta mensagem');
+                        console.log('[chatWithAgent] 📚 [RAG] Buscando contexto dos arquivos vinculados ao agente...', {
+                            agentId,
+                            companyId,
+                            messageLength: message?.length || 0,
+                            linkedFilesCount: readyIds.length,
+                        });
+                        const userQueryForRag = getConsultarArquivosUserQuery(message, context);
+                        const skillsPromise = loadSkillsFromLinkedFiles();
+                        const ragPromise = (0, consultarArquivos_1.consultarArquivos)(agentId, companyId, userQueryForRag, readyIds);
+                        const [skillsResult, ragResult] = await Promise.all([skillsPromise, ragPromise]);
+                        sk = skillsResult;
+                        console.log('[chatWithAgent] 🎯 [SKILLS] Skills encontrados:', {
+                            count: sk.length,
+                            skills: sk.map((s) => s.name),
+                        });
+                        fc = ragResult.context;
+                        const outSources = ragResult.sources || [];
+                        const outNames = ragResult.sourceNames || [];
+                        rs.push(...outSources);
+                        rsn.push(...outNames);
+                        console.log('[chatWithAgent] 🔍 [RAG] Resultado da consulta:', {
+                            hasContext: !!fc,
+                            contextLength: fc?.length || 0,
+                            contextPreview: safeLogPreview(fc),
+                            sourcesCount: rs.length,
+                            sourceNames: rsn,
+                        });
+                        if (fc) {
+                            console.log('[chatWithAgent] ✅ [RAG] Contexto dos arquivos encontrado', {
+                                contextLength: fc.length,
+                                preview: safeLogPreview(fc),
+                            });
+                        }
+                        else {
+                            console.log('[chatWithAgent] ℹ️ [RAG] Nenhum arquivo relevante encontrado para esta mensagem');
+                        }
                     }
                 }
             }
