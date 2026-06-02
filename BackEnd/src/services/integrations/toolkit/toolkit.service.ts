@@ -1,4 +1,5 @@
 import { resolveAppointmentProvider } from '../../appointments'
+import { formatCalendlyApiErrorDetail } from '../calendly/calendly.client'
 import {
   createHubSpotPatientContact,
   findHubSpotContactByIdentifiers,
@@ -157,23 +158,51 @@ export async function executeIntegrationTool(input: {
   if (provider === 'calendly' && toolName === 'book_appointment') {
     const integrationId = ensureField(payload.integrationId)
     const appointmentProvider = resolveAppointmentProvider('calendly', { integrationId })
-    const appointment = await appointmentProvider.book({
-      specialty: ensureField(payload.specialty),
-      slotId: ensureField(payload.slotId),
-      patientName: ensureField(payload.patientName),
-      patientEmail: ensureField(payload.patientEmail),
-      patientPhone: ensureField(payload.patientPhone) || null,
-      consultationType: ensureField(payload.consultationType) || null,
-      unit: ensureField(payload.unit) || null,
-      notes: ensureField(payload.notes) || null,
-    })
-    return {
-      success: true,
-      provider,
-      toolName,
-      status: 'success',
-      userSafeMessage: 'Consulta agendada com sucesso no Calendly.',
-      data: { appointment },
+    try {
+      const appointment = await appointmentProvider.book({
+        specialty: ensureField(payload.specialty),
+        slotId: ensureField(payload.slotId),
+        patientName: ensureField(payload.patientName),
+        patientEmail: ensureField(payload.patientEmail),
+        patientPhone: ensureField(payload.patientPhone) || null,
+        consultationType: ensureField(payload.consultationType) || null,
+        unit: ensureField(payload.unit) || null,
+        notes: ensureField(payload.notes) || null,
+      })
+      return {
+        success: true,
+        provider,
+        toolName,
+        status: 'success',
+        userSafeMessage: 'Consulta agendada com sucesso no Calendly.',
+        data: { appointment },
+      }
+    } catch (error: unknown) {
+      const raw = error instanceof Error ? error.message : String(error)
+      const calendlyDetail = formatCalendlyApiErrorDetail(error) || raw
+      const lower = calendlyDetail.toLowerCase()
+
+      let userSafeMessage =
+        'Não foi possível confirmar o horário no Calendly. Tente outro dia ou horário.'
+
+      if (raw === 'slot_start_time_in_past' || lower.includes('must be in the future')) {
+        userSafeMessage =
+          'Esse horário já passou ou não é mais válido no Calendly. Informe outro *dia e horário* (ex.: 03/06/2026 às 15:00).'
+      } else if (raw === 'slot_unavailable') {
+        userSafeMessage =
+          'Esse horário não está mais disponível. Escolha outro horário ou peça para eu listar opções livres.'
+      } else if (raw === 'patient_identity_required') {
+        userSafeMessage = 'Preciso do *nome completo* e do *e-mail* para confirmar a reserva.'
+      }
+
+      return {
+        success: false,
+        provider,
+        toolName,
+        status: 'failed',
+        userSafeMessage,
+        error: raw.slice(0, 240),
+      }
     }
   }
 

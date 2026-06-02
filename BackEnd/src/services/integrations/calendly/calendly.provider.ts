@@ -1,4 +1,5 @@
 import logger from '../../../lib/logger'
+import { brazilDayBoundsUtc } from '../../agents/agent-scheduling-datetime'
 import {
   AppointmentAvailabilityQuery,
   AppointmentBookingInput,
@@ -36,9 +37,12 @@ function parseSlotId(slotId: string): { eventTypeUri: string; startsAt: string }
 
 function toRange(preferredDate?: string | null): { startTime: string; endTime: string } {
   if (preferredDate) {
-    const start = new Date(`${preferredDate}T00:00:00.000Z`)
-    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000)
-    return { startTime: start.toISOString(), endTime: end.toISOString() }
+    const bounds = brazilDayBoundsUtc(preferredDate)
+    const nowIso = new Date().toISOString()
+    return {
+      startTime: bounds.startTime > nowIso ? bounds.startTime : nowIso,
+      endTime: bounds.endTime,
+    }
   }
   const start = new Date(Date.now() + 60 * 60 * 1000)
   const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
@@ -465,6 +469,15 @@ export class RealCalendlyProvider implements AppointmentProvider {
     const parsedSlot = parseSlotId(input.slotId)
     if (!parsedSlot) {
       throw new Error('slot_unavailable')
+    }
+
+    const slotStartMs = Date.parse(parsedSlot.startsAt)
+    if (!Number.isFinite(slotStartMs) || slotStartMs <= Date.now() + 90_000) {
+      logger.warn('[calendly.provider] Slot recusado: horario no passado', {
+        integrationId: this.integrationId,
+        startsAt: parsedSlot.startsAt,
+      })
+      throw new Error('slot_start_time_in_past')
     }
     const patientName = String(input.patientName || '').trim()
     const patientEmail = String(input.patientEmail || '').trim()

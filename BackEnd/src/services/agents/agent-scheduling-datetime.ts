@@ -35,27 +35,15 @@ export async function extractDateTimeFromMessage(message: string): Promise<Extra
   const regexTime = text.match(/\b(\d{1,2})[:h](\d{2})\b/i)
 
   if (regexDate) {
-    const day = regexDate[1].padStart(2, '0')
-    const month = regexDate[2].padStart(2, '0')
-    let year = regexDate[3]
-    if (year.length === 2) year = `20${year}`
-    const date = `${year}-${month}-${day}`
+    const date = buildBrazilianIsoDate(regexDate[1], regexDate[2], regexDate[3])
     const time = regexTime ? `${regexTime[1].padStart(2, '0')}:${regexTime[2]}` : null
-    return { date, time, confidence: 'high' }
+    return { date: trySwapMonthDayIfPast(date, todayIsoInSaoPaulo()), time, confidence: 'high' }
   }
 
   if (regexDateShort) {
-    const day = regexDateShort[1].padStart(2, '0')
-    const month = regexDateShort[2].padStart(2, '0')
-    const today = todayIsoInSaoPaulo()
-    let year = today.slice(0, 4)
-    const candidate = `${year}-${month}-${day}`
-    if (candidate < today) {
-      year = String(Number(year) + 1)
-    }
-    const date = `${year}-${month}-${day}`
+    const date = buildBrazilianIsoDateShort(regexDateShort[1], regexDateShort[2])
     const time = regexTime ? `${regexTime[1].padStart(2, '0')}:${regexTime[2]}` : null
-    return { date, time, confidence: 'high' }
+    return { date: trySwapMonthDayIfPast(date, todayIsoInSaoPaulo()), time, confidence: 'high' }
   }
 
   const result = await chatText({
@@ -75,8 +63,10 @@ Exemplos: "terca as 15h" -> proxima terca; "amanha 10:30" -> data calculada.`,
 
   try {
     const parsed = JSON.parse(String(result.content || '{}')) as ExtractedDateTime
+    const today = todayIsoInSaoPaulo()
+    const rawDate = parsed.date ? String(parsed.date).trim() : null
     return {
-      date: parsed.date ? String(parsed.date).trim() : null,
+      date: rawDate ? trySwapMonthDayIfPast(rawDate, today) : null,
       time: parsed.time ? String(parsed.time).trim() : null,
       confidence: parsed.confidence === 'high' ? 'high' : 'low',
     }
@@ -85,13 +75,97 @@ Exemplos: "terca as 15h" -> proxima terca; "amanha 10:30" -> data calculada.`,
   }
 }
 
-function todayIsoInSaoPaulo(): string {
+export function todayIsoInSaoPaulo(): string {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
   }).format(new Date())
+}
+
+/** DD/MM — primeiro segmento é dia, segundo é mês (padrão Brasil). */
+function buildBrazilianIsoDate(dayRaw: string, monthRaw: string, yearRaw: string): string {
+  const day = dayRaw.padStart(2, '0')
+  const month = monthRaw.padStart(2, '0')
+  let year = String(yearRaw || '').trim()
+  if (year.length === 2) year = `20${year}`
+  if (!year) {
+    year = todayIsoInSaoPaulo().slice(0, 4)
+  }
+  return `${year}-${month}-${day}`
+}
+
+function buildBrazilianIsoDateShort(dayRaw: string, monthRaw: string): string {
+  const today = todayIsoInSaoPaulo()
+  let year = today.slice(0, 4)
+  const day = dayRaw.padStart(2, '0')
+  const month = monthRaw.padStart(2, '0')
+  let candidate = `${year}-${month}-${day}`
+  if (candidate < today) {
+    year = String(Number(year) + 1)
+    candidate = `${year}-${month}-${day}`
+  }
+  return candidate
+}
+
+/**
+ * Corrige YYYY-MM-DD vindos da IA no formato americano (MM-DD) quando a data já passou
+ * mas a troca dia↔mês cai no futuro — ex.: 2026-03-06 → 2026-06-03 para "03/06".
+ */
+export function trySwapMonthDayIfPast(dateIso: string, todayIso: string): string {
+  const normalized = String(dateIso || '').trim()
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalized)
+  if (!match) return normalized
+
+  const year = match[1]
+  const partA = match[2]
+  const partB = match[3]
+  if (Number(partA) > 12 || Number(partB) > 12) return normalized
+
+  if (normalized >= todayIso) return normalized
+
+  const swapped = `${year}-${partB}-${partA}`
+  if (swapped >= todayIso) return swapped
+
+  return normalized
+}
+
+/** Limites do dia civil em America/Sao_Paulo (UTC−3 fixo) para consulta Calendly. */
+export function brazilDayBoundsUtc(dateIso: string): { startTime: string; endTime: string } {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateIso || '').trim())
+  if (!match) {
+    const start = new Date(Date.now() + 60 * 60 * 1000)
+    const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000)
+    return { startTime: start.toISOString(), endTime: end.toISOString() }
+  }
+
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  const start = new Date(Date.UTC(year, month - 1, day, 3, 0, 0))
+  const end = new Date(Date.UTC(year, month - 1, day + 1, 3, 0, 0))
+  return { startTime: start.toISOString(), endTime: end.toISOString() }
+}
+
+export function parseCalendlySlotId(slotId: string): { startsAt: string } | null {
+  const normalized = String(slotId || '').trim()
+  if (!normalized) return null
+  try {
+    const parsed = JSON.parse(Buffer.from(normalized, 'base64url').toString('utf8')) as {
+      startsAt?: string
+    }
+    const startsAt = String(parsed.startsAt || '').trim()
+    return startsAt ? { startsAt } : null
+  } catch {
+    return null
+  }
+}
+
+export function isSlotStartInPast(startsAt: string, bufferMs = 90_000): boolean {
+  const ms = Date.parse(startsAt)
+  if (!Number.isFinite(ms)) return true
+  return ms <= Date.now() + bufferMs
 }
 
 function slotLocalParts(startsAt: string): { date: string; time: string } | null {

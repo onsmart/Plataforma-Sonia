@@ -8,7 +8,16 @@ import {
   parseToolKey,
 } from './agent-extra-features'
 import { executeIntegrationTool } from '../integrations/toolkit/toolkit.service'
-import { extractDateTimeFromMessage, pickCalendlySlotForRequest, slotMatchesRequestedTime, type CalendlySlotPick } from './agent-scheduling-datetime'
+import {
+  extractDateTimeFromMessage,
+  isSlotStartInPast,
+  parseCalendlySlotId,
+  pickCalendlySlotForRequest,
+  slotMatchesRequestedTime,
+  todayIsoInSaoPaulo,
+  trySwapMonthDayIfPast,
+  type CalendlySlotPick,
+} from './agent-scheduling-datetime'
 import { extractPatientProfileFromMessage } from '../flows/flow-patient-intake'
 import type { IntegrationToolExecutionResult } from '../integrations/toolkit/toolkit.types'
 
@@ -591,15 +600,18 @@ export async function runAgentIntegrationToolFromLlm(input: {
   }
 
   if (toolKey === 'calendly.check_availability') {
-    let preferredDate = String(payload.preferredDate || '').trim()
+    const today = todayIsoInSaoPaulo()
+    let preferredDate = trySwapMonthDayIfPast(String(payload.preferredDate || '').trim(), today)
     let preferredTime = String(payload.preferredTime || '').trim()
     const dateSource = channelUserMessage || String(input.userMessage || '')
     if (!preferredDate && dateSource) {
       const extracted = await extractDateTimeFromMessage(dateSource)
-      if (extracted.date) preferredDate = extracted.date
+      if (extracted.date) preferredDate = trySwapMonthDayIfPast(extracted.date, today)
       if (extracted.time) preferredTime = extracted.time
       if (preferredDate) payload.preferredDate = preferredDate
       if (preferredTime) payload.preferredTime = preferredTime
+    } else if (preferredDate) {
+      payload.preferredDate = preferredDate
     }
     if (!preferredDate) {
       return {
@@ -629,6 +641,17 @@ export async function runAgentIntegrationToolFromLlm(input: {
     const patientName = String(payload.patientName || '').trim()
     const patientEmail = String(payload.patientEmail || '').trim()
     const slotId = String(payload.slotId || '').trim()
+    const slotMeta = slotId ? parseCalendlySlotId(slotId) : null
+    if (slotMeta?.startsAt && isSlotStartInPast(slotMeta.startsAt)) {
+      if (agentId && contactId) {
+        await clearLastCalendlyLookup(agentId, contactId)
+      }
+      return {
+        ok: false,
+        reply:
+          'Esse horário já não está mais disponível para reserva (data/hora no passado). Informe outro *dia e horário*, por favor.',
+      }
+    }
     if (!slotId) {
       return {
         ok: false,
