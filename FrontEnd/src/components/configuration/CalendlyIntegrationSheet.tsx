@@ -316,7 +316,13 @@ export function CalendlyIntegrationSheet({
       const json = await response.json()
       if (!response.ok) throw new Error(json.error || 'Erro ao testar integração')
       const result = json.result || {}
-      toast.success(`Calendly conectado. ${result.eventTypesCount || 0} event types encontrados.`)
+      if (result.webhookListOk === false && result.webhookListError) {
+        toast.warning(
+          `Calendly conectado (${result.eventTypesCount || 0} event types), mas o PAT nao consegue acessar webhooks: ${result.webhookListError}`
+        )
+      } else {
+        toast.success(`Calendly conectado. ${result.eventTypesCount || 0} event types encontrados.`)
+      }
       await onSave()
       await loadEventTypes(form.integrationId)
     } catch (error: any) {

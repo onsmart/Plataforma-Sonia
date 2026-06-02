@@ -14,7 +14,7 @@ import {
   setCalendlyIntegrationDefaultForUser,
   updateCalendlyIntegrationMetadata,
 } from './calendly.repository'
-import { CalendlyApiClient, CalendlyApiError } from './calendly.client'
+import { CalendlyApiClient, CalendlyApiError, formatCalendlyApiErrorDetail } from './calendly.client'
 import { pickEventTypePrimaryLocation } from './calendly.provider'
 import {
   CalendlyCurrentUserResource,
@@ -124,7 +124,26 @@ function buildCalendlyPermissionMessage(scope: CalendlyWebhookScope) {
   if (scope === 'organization') {
     return 'O Calendly recusou o webhook no escopo organization. Use um PAT de Owner/Admin da organizacao ou altere o escopo do webhook para user.'
   }
-  return 'O Calendly recusou o webhook por permissao. Gere um novo PAT com webhooks:write e permissoes de leitura dos eventos agendados, e confirme que a conta possui plano com suporte a webhooks.'
+  return 'O Calendly recusou o webhook por permissao. Gere um novo PAT com webhooks:write e scheduled_events:read, e confirme que a conta possui plano pago (Professional ou superior) com suporte a webhooks via API.'
+}
+
+function buildCalendlyWebhookPermissionError(
+  scope: CalendlyWebhookScope,
+  upstream: unknown
+): CalendlyWebhookSetupError {
+  const calendlyDetail = formatCalendlyApiErrorDetail(upstream)
+  const base = buildCalendlyPermissionMessage(scope)
+  const message = calendlyDetail ? `${base} Detalhe Calendly: ${calendlyDetail}` : base
+
+  if (upstream instanceof CalendlyApiError) {
+    logger.warn('[calendly.webhook] Criacao de webhook recusada pelo Calendly', {
+      scope,
+      statusCode: upstream.statusCode,
+      responseBody: upstream.responseBody?.slice(0, 1200),
+    })
+  }
+
+  return new CalendlyWebhookSetupError(message, 403)
 }
 
 function ensureMappings(value: unknown): CalendlyEventTypeMapping[] {
@@ -237,11 +256,37 @@ export async function testCalendlyIntegrationForUser(userEmail: string, integrat
     active: true,
     count: 50,
   })
+
+  const webhookScope: CalendlyWebhookScope = hydrated.webhookScope || 'organization'
+  const organizationUri = hydrated.organizationUri || currentUser.current_organization || null
+  const ownerUri = hydrated.ownerUri || currentUser.uri || null
+  let webhookListOk = false
+  let webhookListError: string | null = null
+
+  if (organizationUri && (webhookScope !== 'user' || ownerUri)) {
+    try {
+      await client.listWebhookSubscriptions({
+        scope: webhookScope,
+        organizationUri,
+        ownerUri,
+        count: 1,
+      })
+      webhookListOk = true
+    } catch (error) {
+      webhookListError = formatCalendlyApiErrorDetail(error) || (error instanceof Error ? error.message : String(error))
+    }
+  } else {
+    webhookListError = 'Organization ou user URI ausente; salve e teste a conexao novamente.'
+  }
+
   return {
     success: true,
     provider: 'calendly',
     currentUser,
     eventTypesCount: eventTypes.length,
+    webhookScope,
+    webhookListOk,
+    webhookListError,
     integration: buildCalendlyIntegrationResponse(hydrated),
   }
 }
@@ -373,13 +418,13 @@ export async function syncCalendlyWebhookForIntegration(
           }
           resource = existing
         } else if (isCalendlyPermissionError(fallbackError)) {
-          throw new CalendlyWebhookSetupError(buildCalendlyPermissionMessage('user'), 403)
+          throw buildCalendlyWebhookPermissionError('user', fallbackError)
         } else {
           throw fallbackError
         }
       }
     } else if (isCalendlyPermissionError(error)) {
-      throw new CalendlyWebhookSetupError(buildCalendlyPermissionMessage(resolvedWebhookScope), 403)
+      throw buildCalendlyWebhookPermissionError(resolvedWebhookScope, error)
     } else {
       throw error
     }

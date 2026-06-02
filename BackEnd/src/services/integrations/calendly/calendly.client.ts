@@ -34,6 +34,23 @@ export class CalendlyApiError extends Error {
   }
 }
 
+/** Extrai mensagem legível do corpo JSON/texto retornado pela API Calendly. */
+export function formatCalendlyApiErrorDetail(error: unknown): string | null {
+  if (!(error instanceof CalendlyApiError)) return null
+  const body = String(error.responseBody || '').trim()
+  if (!body) return `HTTP ${error.statusCode}`
+
+  try {
+    const parsed = JSON.parse(body) as Record<string, unknown>
+    const title = String(parsed.title || parsed.error || '').trim()
+    const message = String(parsed.message || parsed.detail || parsed.details || '').trim()
+    if (title && message && title !== message) return `${title}: ${message}`
+    return String(message || title || body).slice(0, 600)
+  } catch {
+    return body.slice(0, 600)
+  }
+}
+
 export class CalendlyApiClient {
   constructor(private readonly config: CalendlyIntegrationConfig) {}
 
