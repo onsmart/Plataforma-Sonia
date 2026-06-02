@@ -998,7 +998,10 @@ export async function getAgentGenerateAiStatus(req: Request, res: Response) {
       return res.status(401).json({ error: 'Usuario nao autenticado' })
     }
 
-    const catalog = await buildIntegrationToolsCatalogForSetup(email)
+    const catalog = await buildIntegrationToolsCatalogForSetup(email, {
+      userId: getAuthenticatedUserId(req) || null,
+      companyId: getAuthenticatedCompaniesId(req) || null,
+    })
 
     return res.json({
       success: true,

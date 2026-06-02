@@ -1,8 +1,7 @@
 import logger from '../../../lib/logger'
 import { listCalendlyIntegrationsForUser } from '../calendly'
 import { listCRMIntegrationsForUserManager } from '../crm/crm-integration.manager'
-import { supabase } from '../../../lib/supabase'
-import { getUserIdAndCompanyIdByEmail } from '../../../utils/company-helper'
+import { listOwnedWhatsappIntegrationOptions } from '../whatsapp/whatsapp-integration-list.service'
 import { buildToolKey } from '../../agents/agent-extra-features'
 import { PLATFORM_TEMPLATE_INTEGRATION_TOOLS_SECTION } from '../../agents/agent-integration-tools-prompt'
 import { listIntegrationToolkitCatalog } from './toolkit.service'
@@ -34,45 +33,15 @@ const PROVIDER_LABELS: Record<string, string> = {
 /** Sempre listados na UI do agente; ferramentas só habilitam com conta conectada */
 export const AGENT_SETUP_PROVIDER_ORDER = ['calendly', 'hubspot', 'whatsapp'] as const
 
-function isOwnedWhatsAppIntegrationRow(
-  row: { user_id?: string | null; companies_id?: string | null },
-  userId: string | null,
-  companyId: string | null
-): boolean {
-  if (userId && String(row.user_id || '') === userId) return true
-  if (companyId && String(row.companies_id || '') === companyId) return true
-  return false
+export type BuildIntegrationCatalogWorkspace = {
+  userId?: string | null
+  companyId?: string | null
 }
 
-async function listWhatsappIntegrationsForSetup(
-  userEmail: string
-): Promise<IntegrationInstanceOption[]> {
-  const { userId, companyId } = await getUserIdAndCompanyIdByEmail(userEmail)
-  if (!userId && !companyId) return []
-
-  const { data: waRows, error } = await supabase
-    .from('tb_integrations')
-    .select('id, phone_number, provider, email_address, user_id, companies_id')
-    .eq('provider', 'whatsapp')
-    .order('created_at', { ascending: false })
-
-  if (error) {
-    logger.warn('[toolkit-catalog-for-setup] Falha ao listar WhatsApp', {
-      error: error.message,
-    })
-    return []
-  }
-
-  return (waRows || [])
-    .filter((row) => isOwnedWhatsAppIntegrationRow(row, userId, companyId))
-    .map((row) => ({
-      id: String(row.id),
-      label: String(row.phone_number || row.email_address || row.id),
-      isActive: true,
-    }))
-}
-
-export async function buildIntegrationToolsCatalogForSetup(userEmail: string) {
+export async function buildIntegrationToolsCatalogForSetup(
+  userEmail: string,
+  workspace?: BuildIntegrationCatalogWorkspace
+) {
   const email = String(userEmail || '').trim()
 
   const integrationsByProvider: Record<string, IntegrationInstanceOption[]> = {
@@ -107,7 +76,11 @@ export async function buildIntegrationToolsCatalogForSetup(userEmail: string) {
   }
 
   try {
-    integrationsByProvider.whatsapp = await listWhatsappIntegrationsForSetup(email)
+    integrationsByProvider.whatsapp = await listOwnedWhatsappIntegrationOptions({
+      userEmail: email,
+      workspaceUserId: workspace?.userId,
+      workspaceCompanyId: workspace?.companyId,
+    })
   } catch (err: any) {
     logger.warn('[toolkit-catalog-for-setup] Falha ao listar WhatsApp', {
       error: err?.message || err,

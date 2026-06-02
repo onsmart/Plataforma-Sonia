@@ -1,6 +1,10 @@
 import { Request, Response } from 'express'
 import logger from '../../lib/logger'
-import { getAuthenticatedEmail, getAuthenticatedCompaniesId } from '../../utils/request-auth'
+import {
+  getAuthenticatedEmail,
+  getAuthenticatedCompaniesId,
+  getAuthenticatedUserId,
+} from '../../utils/request-auth'
 import {
   assertIntegrationToolPayloadOwned,
   TenantOwnershipError,
@@ -43,7 +47,10 @@ export async function listIntegrationToolsCatalogForSetup(req: Request, res: Res
     if (!email) {
       return res.status(401).json({ error: 'Usuario nao autenticado.' })
     }
-    const catalog = await buildIntegrationToolsCatalogForSetup(email)
+    const catalog = await buildIntegrationToolsCatalogForSetup(email, {
+      userId: getAuthenticatedUserId(req) || null,
+      companyId: getAuthenticatedCompaniesId(req) || null,
+    })
     return res.json({ success: true, ...catalog })
   } catch (error: any) {
     return handleControllerError(
