@@ -20,6 +20,7 @@ import {
 } from './agent-scheduling-datetime'
 import { extractPatientProfileFromMessage } from '../flows/flow-patient-intake'
 import type { IntegrationToolExecutionResult } from '../integrations/toolkit/toolkit.types'
+import { saveSystemLog } from '../system-logs'
 
 const LOOKUP_CACHE_TTL_SEC = 30 * 24 * 60 * 60
 
@@ -64,7 +65,10 @@ export function messageLooksLikeIdentitySubmission(text: string): boolean {
   return resolveCalendlyIdentityFromChannel(text) !== null
 }
 
-/** Evita vazar mensagens técnicas da API Calendly no WhatsApp. */
+const WHATSAPP_TECHNICAL_LEAK =
+  /start_time must|must be before end_time|calendly api|erro ao executar|não foi possível concluir|não consegui consultar|não consegui concluir|❌|integration_tool_failed|tool_key listado|não está ativa neste agente|ferramenta inválida/i
+
+/** Evita vazar mensagens técnicas da API Calendly em canais internos (webchat). */
 export function sanitizeCalendlyUserReply(reply: string): string {
   const text = String(reply || '').trim()
   if (!text) return text
@@ -84,6 +88,157 @@ export function sanitizeCalendlyUserReply(reply: string): string {
   }
 
   return text
+}
+
+export function containsWhatsAppTechnicalLeak(text: string): boolean {
+  return WHATSAPP_TECHNICAL_LEAK.test(String(text || ''))
+}
+
+export function isConversationalToolPrompt(reply: string): boolean {
+  const t = String(reply || '').trim()
+  if (!t || containsWhatsAppTechnicalLeak(t)) return false
+  return (
+    /Qual \*dia e horário/i.test(t) ||
+    /Essa data já passou/i.test(t) ||
+    /Informe outro \*dia e horário/i.test(t) ||
+    /Ainda não tenho o horário/i.test(t) ||
+    /nome completo.*e-mail|e-mail.*nome completo/i.test(t) ||
+    /Para confirmar no Calendly/i.test(t) ||
+    /Recebi seus dados/i.test(t) ||
+    /horário.*disponível|disponível.*horário/i.test(t) ||
+    /Reunião \*confirmada/i.test(t) ||
+    /Escolha o \*número\*/i.test(t) ||
+    /Horários disponíveis:/i.test(t) ||
+    /ocupado ou indisponível/i.test(t) ||
+    /Não encontrei reunião ativa/i.test(t) ||
+    /Próxima reunião:/i.test(t) ||
+    /Reunião cancelada/i.test(t) ||
+    /Não encontrei reserva ativa/i.test(t) ||
+    /sugere outro dia ou horário/i.test(t) ||
+    /Informe uma data futura/i.test(t)
+  )
+}
+
+function neutralWhatsAppFallback(toolKey?: string): string {
+  if (String(toolKey || '').startsWith('calendly.')) {
+    return 'Qual *dia e horário* você prefere para a reunião? (ex.: 03/06/2026 às 15:00)'
+  }
+  return 'Recebi sua mensagem. Como posso te ajudar agora?'
+}
+
+export async function logIntegrationToolFailureToPlatform(input: {
+  userEmail?: string
+  agentId?: string
+  contactId?: string
+  toolKey?: string
+  internalMessage: string
+  metadata?: Record<string, unknown>
+}): Promise<void> {
+  const internalMessage = String(input.internalMessage || '').trim()
+  if (!internalMessage) return
+  try {
+    await saveSystemLog({
+      user_email: input.userEmail,
+      agent_id: input.agentId,
+      conversation_id: input.contactId,
+      log_type: 'integration_tool_failed',
+      level: 'error',
+      message: `[WhatsApp] Falha em ferramenta ${input.toolKey || 'desconhecida'}: ${internalMessage.slice(0, 500)}`,
+      metadata: {
+        channel: 'whatsapp',
+        tool_key: input.toolKey,
+        contact_id: input.contactId,
+        ...(input.metadata || {}),
+      },
+      impact_level: 'medium',
+    })
+  } catch (err: unknown) {
+    logger.warn('[integration-tool] Falha ao salvar log na plataforma', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+export function finalizeIntegrationToolReplyForChannel(input: {
+  channel?: 'whatsapp' | 'webchat' | string
+  ok: boolean
+  reply: string
+  toolKey: string
+  userEmail?: string
+  agentId?: string
+  contactId?: string
+  internalError?: string
+  conversational?: boolean
+}): string {
+  let reply = sanitizeSchedulingOutboundReply(String(input.reply || ''))
+  const isWhatsApp = String(input.channel || '').toLowerCase() === 'whatsapp'
+  if (!isWhatsApp) {
+    return sanitizeCalendlyUserReply(reply)
+  }
+
+  if (input.ok) {
+    if (containsWhatsAppTechnicalLeak(reply)) {
+      void logIntegrationToolFailureToPlatform({
+        userEmail: input.userEmail,
+        agentId: input.agentId,
+        contactId: input.contactId,
+        toolKey: input.toolKey,
+        internalMessage: reply,
+      })
+      return neutralWhatsAppFallback(input.toolKey)
+    }
+    return reply
+  }
+
+  const conversational = input.conversational ?? isConversationalToolPrompt(reply)
+  if (conversational && !containsWhatsAppTechnicalLeak(reply)) {
+    return reply
+  }
+
+  void logIntegrationToolFailureToPlatform({
+    userEmail: input.userEmail,
+    agentId: input.agentId,
+    contactId: input.contactId,
+    toolKey: input.toolKey,
+    internalMessage: input.internalError || reply,
+  })
+
+  return neutralWhatsAppFallback(input.toolKey)
+}
+
+/** Última barreira antes de enviar texto ao contato no WhatsApp. */
+export function filterWhatsAppOutboundForEndUser(
+  text: string,
+  meta?: {
+    toolKey?: string
+    userEmail?: string
+    agentId?: string
+    contactId?: string
+  }
+): string {
+  const t = String(text || '').trim()
+  if (!t) return ''
+  if (
+    containsWhatsAppTechnicalLeak(t) ||
+    /^❌/.test(t) ||
+    /Erro ao enviar WhatsApp/i.test(t) ||
+    /Erro ao ler emails/i.test(t) ||
+    /Erro ao processar mensagem/i.test(t) ||
+    /Ação não reconhecida/i.test(t) ||
+    /Não foi possível enviar/i.test(t) ||
+    /está cancelado|está pausado|está inativo/i.test(t)
+  ) {
+    void logIntegrationToolFailureToPlatform({
+      userEmail: meta?.userEmail,
+      agentId: meta?.agentId,
+      contactId: meta?.contactId,
+      toolKey: meta?.toolKey,
+      internalMessage: t,
+      metadata: { source: 'whatsapp_outbound_filter' },
+    })
+    return neutralWhatsAppFallback(meta?.toolKey)
+  }
+  return t
 }
 
 async function buildCalendlyBookPayloadIfReady(input: {
@@ -187,6 +342,8 @@ export async function tryAutoBookCalendlyFromMessage(input: {
   contactId: string
   channelUserMessage: string
   fallbackPhone?: string | null
+  channel?: 'whatsapp' | 'webchat' | string
+  userEmail?: string
 }): Promise<{ ok: boolean; reply: string } | null> {
   const extra = parseAgentExtraFeatures(input.agentExtraFeatures)
   const hasBook = getEnabledTools(extra).some(
@@ -211,6 +368,8 @@ export async function tryAutoBookCalendlyFromMessage(input: {
     agentId: input.agentId,
     contactId: input.contactId,
     skipPromotion: true,
+    channel: input.channel,
+    userEmail: input.userEmail,
   })
 }
 
@@ -560,21 +719,42 @@ export async function runAgentIntegrationToolFromLlm(input: {
   agentId?: string
   contactId?: string
   skipPromotion?: boolean
+  channel?: 'whatsapp' | 'webchat' | string
+  userEmail?: string
 }): Promise<{ ok: boolean; reply: string }> {
   const extra = parseAgentExtraFeatures(input.agentExtraFeatures)
   let toolKey = String(input.toolKey || '').trim().toLowerCase()
   const parsed = parseToolKey(toolKey)
 
+  const finish = (
+    ok: boolean,
+    reply: string,
+    opts?: { conversational?: boolean; internalError?: string }
+  ): { ok: boolean; reply: string } => ({
+    ok,
+    reply: finalizeIntegrationToolReplyForChannel({
+      channel: input.channel,
+      ok,
+      reply,
+      toolKey,
+      userEmail: input.userEmail,
+      agentId: String(input.agentId || '').trim() || undefined,
+      contactId: String(input.contactId || '').trim() || undefined,
+      internalError: opts?.internalError,
+      conversational: opts?.conversational,
+    }),
+  })
+
   if (!parsed) {
-    return { ok: false, reply: 'Ferramenta inválida. Use o tool_key listado nas ferramentas ativas.' }
+    return finish(false, 'Ferramenta inválida. Use o tool_key listado nas ferramentas ativas.')
   }
 
   const toolEntry = findEnabledTool(extra, toolKey)
   if (!toolEntry) {
-    return {
-      ok: false,
-      reply: `A ferramenta *${toolKey}* não está ativa neste agente. Ative-a nas configurações do agente.`,
-    }
+    return finish(
+      false,
+      `A ferramenta *${toolKey}* não está ativa neste agente. Ative-a nas configurações do agente.`
+    )
   }
 
   const agentId = String(input.agentId || '').trim()
@@ -599,21 +779,21 @@ export async function runAgentIntegrationToolFromLlm(input: {
     ) {
       const cached = await loadLastCalendlyLookup(agentId, contactId)
       if (!cached?.slotId) {
-        return {
-          ok: false,
-          reply:
-            'Recebi seus dados. Qual *dia e horário* você prefere para a reunião?',
-        }
+        return finish(
+          false,
+          'Recebi seus dados. Qual *dia e horário* você prefere para a reunião?',
+          { conversational: true }
+        )
       }
     }
   }
 
   const activeToolEntry = findEnabledTool(extra, toolKey)
   if (!activeToolEntry) {
-    return {
-      ok: false,
-      reply: `A ferramenta *${toolKey}* não está ativa neste agente. Ative-a nas configurações do agente.`,
-    }
+    return finish(
+      false,
+      `A ferramenta *${toolKey}* não está ativa neste agente. Ative-a nas configurações do agente.`
+    )
   }
 
   let payload = enrichPayload(activeToolEntry, parseToolPayload(input.toolPayload))
@@ -636,18 +816,18 @@ export async function runAgentIntegrationToolFromLlm(input: {
       payload.preferredDate = preferredDate
     }
     if (!preferredDate) {
-      return {
-        ok: false,
-        reply:
-          'Qual *dia e horário* você prefere para a reunião? (ex.: 03/06/2026 às 15:00)',
-      }
+      return finish(
+        false,
+        'Qual *dia e horário* você prefere para a reunião? (ex.: 03/06/2026 às 15:00)',
+        { conversational: true }
+      )
     }
     if (preferredDate < today) {
-      return {
-        ok: false,
-        reply:
-          'Essa data já passou. Informe um *dia futuro* (ex.: 03/06/2026 às 15:00).',
-      }
+      return finish(
+        false,
+        'Essa data já passou. Informe um *dia futuro* (ex.: 03/06/2026 às 15:00).',
+        { conversational: true }
+      )
     }
   }
 
@@ -675,25 +855,25 @@ export async function runAgentIntegrationToolFromLlm(input: {
       if (agentId && contactId) {
         await clearLastCalendlyLookup(agentId, contactId)
       }
-      return {
-        ok: false,
-        reply:
-          'Esse horário já não está mais disponível para reserva (data/hora no passado). Informe outro *dia e horário*, por favor.',
-      }
+      return finish(
+        false,
+        'Esse horário já não está mais disponível para reserva (data/hora no passado). Informe outro *dia e horário*, por favor.',
+        { conversational: true }
+      )
     }
     if (!slotId) {
-      return {
-        ok: false,
-        reply:
-          'Ainda não tenho o horário selecionado no sistema. Informe o *dia e horário* desejados (ou o número da opção da lista).',
-      }
+      return finish(
+        false,
+        'Ainda não tenho o horário selecionado no sistema. Informe o *dia e horário* desejados (ou o número da opção da lista).',
+        { conversational: true }
+      )
     }
     if (!patientName || !patientEmail) {
-      return {
-        ok: false,
-        reply:
-          'Para confirmar no Calendly, preciso do seu *nome completo* e do *e-mail* usados na reserva.',
-      }
+      return finish(
+        false,
+        'Para confirmar no Calendly, preciso do seu *nome completo* e do *e-mail* usados na reserva.',
+        { conversational: true }
+      )
     }
     if (agentId && contactId) {
       await saveLastCalendlyLookup(agentId, contactId, {
@@ -712,7 +892,7 @@ export async function runAgentIntegrationToolFromLlm(input: {
   ) {
     const identity = resolveCalendlyIdentityFromChannel(channelUserMessage)
     if (!identity) {
-      return { ok: false, reply: SCHEDULING_ASK_IDENTITY_FOR_LOOKUP_REPLY }
+      return finish(false, SCHEDULING_ASK_IDENTITY_FOR_LOOKUP_REPLY, { conversational: true })
     }
     payload.patientName = identity.patientName
     payload.patientEmail = identity.patientEmail
@@ -726,20 +906,22 @@ export async function runAgentIntegrationToolFromLlm(input: {
       payload: enrichPayload(activeToolEntry, payload),
     })
     if (!listResult.success) {
-      return {
-        ok: false,
-        reply:
-          listResult.userSafeMessage ||
-          'Não encontrei reserva ativa no Calendly com esses dados.',
-      }
+      const listReply =
+        listResult.userSafeMessage ||
+        'Não encontrei reserva ativa no Calendly com esses dados.'
+      return finish(false, listReply, {
+        conversational: isConversationalToolPrompt(listReply),
+        internalError: listResult.error || listReply,
+      })
     }
     const appointments = (listResult.data?.appointments || []) as Array<{ appointmentId?: string }>
     const first = appointments.find((a) => a.appointmentId)
     if (!first?.appointmentId) {
-      return {
-        ok: false,
-        reply: 'Não encontrei reserva ativa no Calendly com esse *nome* e *e-mail*.',
-      }
+      return finish(
+        false,
+        'Não encontrei reserva ativa no Calendly com esse *nome* e *e-mail*.',
+        { conversational: true }
+      )
     }
     payload.appointmentId = first.appointmentId
   }
@@ -841,13 +1023,15 @@ export async function runAgentIntegrationToolFromLlm(input: {
       }
     }
 
-    return { ok: result.success, reply: sanitizeCalendlyUserReply(reply) }
+    return finish(result.success, reply, {
+      internalError: result.success
+        ? undefined
+        : String(result.error || result.userSafeMessage || reply),
+    })
   } catch (error: any) {
-    return {
-      ok: false,
-      reply: sanitizeCalendlyUserReply(
-        `Erro ao executar ${toolKey}: ${String(error?.message || error).slice(0, 200)}`
-      ),
-    }
+    const internalError = String(error?.message || error).slice(0, 200)
+    return finish(false, `Erro ao executar ${toolKey}: ${internalError}`, {
+      internalError,
+    })
   }
 }

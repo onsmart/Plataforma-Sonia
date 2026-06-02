@@ -186,6 +186,16 @@ else
     log "Node.js já está instalado: $(node --version)"
 fi
 
+# 5.1 PM2 — processo persistente (sobrevive a queda de SSH)
+log "Verificando PM2..."
+if ! command -v pm2 &> /dev/null; then
+    log "Instalando PM2 globalmente..."
+    npm install -g pm2
+    log "PM2 instalado: $(pm2 --version)"
+else
+    log "PM2 já está instalado: $(pm2 --version)"
+fi
+
 # 6. Instalar cloudflared (via script específico)
 log "Cloudflare Tunnel será configurado pelo script setup-cloudflare-tunnel.sh"
 log "Execute: sudo ./scripts/setup-cloudflare-tunnel.sh"

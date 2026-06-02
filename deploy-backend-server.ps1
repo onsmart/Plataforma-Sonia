@@ -144,20 +144,46 @@ $escapedPm2Name = $Pm2Name.Replace('"', '\"')
 
 $restartBlock = if ([string]::IsNullOrWhiteSpace($RemoteRestartCommand)) {
 @"
-if command -v pm2 >/dev/null 2>&1; then
+ensure_pm2() {
+  if command -v pm2 >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "[INFO] PM2 nao encontrado; instalando globalmente..."
+  if npm install -g pm2; then
+    return 0
+  fi
+  echo "[ERRO] Nao foi possivel instalar PM2. Execute no servidor: npm install -g pm2"
+  return 1
+}
+
+mkdir -p logs
+
+if ensure_pm2; then
   if pm2 describe "$escapedPm2Name" >/dev/null 2>&1; then
-    pm2 restart "$escapedPm2Name"
+    pm2 restart ecosystem.config.cjs --update-env
+  elif [ -f ecosystem.config.cjs ]; then
+    pm2 start ecosystem.config.cjs
   else
     pm2 start dist/index.js --name "$escapedPm2Name"
+  fi
+  pm2 save || true
+  pm2 status "$escapedPm2Name" || true
+  if ! systemctl list-unit-files 2>/dev/null | grep -qE '^pm2-'; then
+    echo "[WARN] Boot automatico ainda nao configurado. Execute UMA VEZ no servidor:"
+    echo "       pm2 startup"
+    echo "       (copie e rode o comando sudo exibido)"
+    echo "       pm2 save"
   fi
 elif command -v systemctl >/dev/null 2>&1; then
   if systemctl list-unit-files 2>/dev/null | grep -q "^$escapedPm2Name\.service"; then
     sudo systemctl restart "$escapedPm2Name"
   else
-    echo "[WARN] Nenhum processo pm2 ou service '$escapedPm2Name' encontrado para reiniciar."
+    echo "[ERRO] PM2 e systemd service '$escapedPm2Name' indisponiveis. Backend NAO foi iniciado."
+    exit 1
   fi
 else
-  echo "[WARN] pm2/systemctl nao encontrados no servidor. Reinicie o processo manualmente."
+  echo "[ERRO] PM2/systemctl nao encontrados. Backend NAO foi iniciado."
+  exit 1
 fi
 "@
 } else {

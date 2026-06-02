@@ -4,6 +4,9 @@ import {
   runAgentIntegrationToolFromLlm,
   sanitizeSchedulingOutboundReply,
   stripSchedulingMetaPreamble,
+  finalizeIntegrationToolReplyForChannel,
+  filterWhatsAppOutboundForEndUser,
+  containsWhatsAppTechnicalLeak,
 } from './agent-integration-tool-runner'
 
 vi.mock('../integrations/toolkit/toolkit.service', () => ({
@@ -14,8 +17,13 @@ vi.mock('../../lib/redis', () => ({
   getRedisClient: vi.fn(),
 }))
 
+vi.mock('../system-logs', () => ({
+  saveSystemLog: vi.fn().mockResolvedValue({ success: true, id: 'log-1' }),
+}))
+
 import { getRedisClient } from '../../lib/redis'
 import { executeIntegrationTool } from '../integrations/toolkit/toolkit.service'
+import { saveSystemLog } from '../system-logs'
 
 const calendlyId = 'e81f647d-d2b6-45b7-94bb-40701255c9b1'
 
@@ -84,14 +92,14 @@ describe('runAgentIntegrationToolFromLlm', () => {
       status: 'success',
       userSafeMessage: 'ok',
       data: {
-        slots: [{ slotId: 's1', startsAt: '2026-05-26T14:00:00.000Z' }],
+        slots: [{ slotId: 's1', startsAt: '2026-06-03T14:00:00.000Z' }],
       },
     })
 
     const result = await runAgentIntegrationToolFromLlm({
       agentExtraFeatures: extraWithCalendlyTools(),
       toolKey: 'calendly.check_availability',
-      toolPayload: JSON.stringify({ preferredDate: '2026-05-26' }),
+      toolPayload: JSON.stringify({ preferredDate: '2026-06-03' }),
       userMessage: 'Verificando horarios...',
     })
 
@@ -123,7 +131,7 @@ describe('runAgentIntegrationToolFromLlm', () => {
     const result = await runAgentIntegrationToolFromLlm({
       agentExtraFeatures: extraWithCalendlyTools(),
       toolKey: 'calendly.check_availability',
-      toolPayload: JSON.stringify({ preferredDate: '2026-05-26' }),
+      toolPayload: JSON.stringify({ preferredDate: '2026-06-03' }),
       userMessage:
         'Por favor, aguarde pois vou verificar quais são os horários livres para você.',
     })
@@ -138,7 +146,7 @@ describe('runAgentIntegrationToolFromLlm', () => {
         JSON.stringify({
           slotId: 'slot-pending',
           integrationId: calendlyId,
-          startsAt: '2026-05-26T16:00:00.000Z',
+          startsAt: '2026-06-03T16:00:00.000Z',
         })
       ),
       setEx: vi.fn(),
@@ -154,7 +162,7 @@ describe('runAgentIntegrationToolFromLlm', () => {
       data: {
         appointment: {
           appointmentId: 'appt-1',
-          slot: { startsAt: '2026-05-26T16:00:00.000Z' },
+          slot: { startsAt: '2026-06-03T16:00:00.000Z' },
         },
       },
     })
@@ -162,7 +170,7 @@ describe('runAgentIntegrationToolFromLlm', () => {
     const result = await runAgentIntegrationToolFromLlm({
       agentExtraFeatures: extraWithCalendlyCheckAndBook(),
       toolKey: 'calendly.check_availability',
-      toolPayload: JSON.stringify({ preferredDate: '2026-05-26', preferredTime: '13:00' }),
+      toolPayload: JSON.stringify({ preferredDate: '2026-06-03', preferredTime: '13:00' }),
       channelUserMessage: 'Mateus Mantovani\nmateus.mantovani@onsmart.com.br',
       agentId: 'agent-1',
       contactId: 'contact-1',
@@ -223,7 +231,7 @@ describe('sanitizeSchedulingOutboundReply', () => {
         slots: [
           {
             slotId: 'slot-26-14',
-            startsAt: '2026-05-26T17:00:00.000Z',
+            startsAt: '2026-06-03T17:00:00.000Z',
           },
         ],
       },
@@ -233,7 +241,7 @@ describe('sanitizeSchedulingOutboundReply', () => {
       agentExtraFeatures: extraWithCalendlyTools(),
       toolKey: 'calendly.check_availability',
       toolPayload: JSON.stringify({
-        preferredDate: '2026-05-26',
+        preferredDate: '2026-06-03',
         preferredTime: '14:00',
       }),
       agentId: 'agent-1',
@@ -254,5 +262,74 @@ describe('sanitizeSchedulingOutboundReply', () => {
     expect(out).not.toMatch(/um momento/i)
     expect(out).toMatch(/nome completo/i)
     expect(out).toMatch(/e-mail/i)
+  })
+})
+
+describe('whatsapp outbound error filtering', () => {
+  beforeEach(() => {
+    vi.mocked(saveSystemLog).mockClear()
+  })
+
+  it('detecta vazamento tecnico do Calendly', () => {
+    expect(containsWhatsAppTechnicalLeak('start_time must be in the future')).toBe(true)
+    expect(containsWhatsAppTechnicalLeak('Qual *dia e horário* você prefere?')).toBe(false)
+  })
+
+  it('substitui erro tecnico por mensagem neutra no WhatsApp', () => {
+    const out = finalizeIntegrationToolReplyForChannel({
+      channel: 'whatsapp',
+      ok: false,
+      reply: 'start_time must be in the future',
+      toolKey: 'calendly.check_availability',
+      userEmail: 'ops@test.com',
+      agentId: 'agent-1',
+      contactId: '5511999999999',
+    })
+    expect(out).toMatch(/dia e horário/i)
+    expect(out).not.toMatch(/start_time/i)
+  })
+
+  it('mantem prompts conversacionais no WhatsApp', () => {
+    const prompt =
+      'Para confirmar no Calendly, preciso do seu *nome completo* e do *e-mail* usados na reserva.'
+    const out = finalizeIntegrationToolReplyForChannel({
+      channel: 'whatsapp',
+      ok: false,
+      reply: prompt,
+      toolKey: 'calendly.book_appointment',
+      conversational: true,
+    })
+    expect(out).toBe(prompt)
+  })
+
+  it('filtra respostas com emoji de erro antes do envio', () => {
+    const out = filterWhatsAppOutboundForEndUser('❌ Erro ao enviar WhatsApp: timeout', {
+      userEmail: 'ops@test.com',
+      agentId: 'agent-1',
+      contactId: '5511999999999',
+      toolKey: 'calendly.book_appointment',
+    })
+    expect(out).toMatch(/dia e horário/i)
+    expect(out).not.toMatch(/❌/)
+  })
+
+  it('registra falha de integracao na plataforma para WhatsApp', async () => {
+    finalizeIntegrationToolReplyForChannel({
+      channel: 'whatsapp',
+      ok: false,
+      reply: 'Erro ao executar calendly.check_availability: API down',
+      toolKey: 'calendly.check_availability',
+      userEmail: 'ops@test.com',
+      agentId: 'agent-1',
+      contactId: '5511999999999',
+    })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(saveSystemLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        log_type: 'integration_tool_failed',
+        user_email: 'ops@test.com',
+        agent_id: 'agent-1',
+      })
+    )
   })
 })

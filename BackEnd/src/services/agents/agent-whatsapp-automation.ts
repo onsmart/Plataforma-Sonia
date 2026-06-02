@@ -6,6 +6,7 @@ import {
 } from '../integrations/whatsapp/whatsapp.redis'
 import { sendAgentWhatsAppResponseWithVoiceFallback } from '../../modules/voice/services/voiceRuntime.service'
 import { parseAgentExtraFeatures, resolveWelcomeMessage } from './agent-extra-features'
+import { filterWhatsAppOutboundForEndUser } from './agent-integration-tool-runner'
 import { runAgentConversationTurn } from './agent-turn.service'
 import { unwrapAgentReplyText } from './agent-reply-text'
 
@@ -150,6 +151,12 @@ export async function runAgentWhatsAppTurn(
   })
 
   let replyText = unwrapAgentReplyText(turn.reply)
+
+  replyText = filterWhatsAppOutboundForEndUser(replyText, {
+    userEmail: params.userEmail,
+    agentId: params.agentId,
+    contactId: historyKey,
+  })
 
   if (isInternalWhatsAppDeliveryAck(replyText)) {
     logger.warn('[agent-whatsapp-automation] Resposta interna ignorada (nao enviar ao contato)', {

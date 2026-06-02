@@ -10,6 +10,7 @@ import {
   messageContainsSchedulingMeta,
   sanitizeSchedulingOutboundReply,
   tryAutoBookCalendlyFromMessage,
+  filterWhatsAppOutboundForEndUser,
 } from './agent-integration-tool-runner'
 import { resolveAgentTemplateRole } from './resolve-agent-template-role'
 import { processSchedulingTurn } from './agent-scheduling-coordinator'
@@ -158,6 +159,8 @@ export async function runAgentConversationTurn(
     contactId: input.contactId,
     channelUserMessage: input.message,
     fallbackPhone: input.fallbackPhone,
+    channel: input.channel,
+    userEmail: input.userEmail,
   })
   if (autoBook) {
     let replyText = autoBook.reply
@@ -166,6 +169,13 @@ export async function runAgentConversationTurn(
     }
     if (prependGreeting) {
       replyText = replyText ? `${prependGreeting}\n\n${replyText}` : prependGreeting
+    }
+    if (isWhatsApp) {
+      replyText = filterWhatsAppOutboundForEndUser(replyText, {
+        userEmail: input.userEmail,
+        agentId: input.agentId,
+        contactId: input.contactId,
+      })
     }
     console.warn('[runAgentConversationTurn] Calendly auto-book executado', {
       agentId: input.agentId,
@@ -192,6 +202,14 @@ export async function runAgentConversationTurn(
 
   if (prependGreeting) {
     replyText = replyText ? `${prependGreeting}\n\n${replyText}` : prependGreeting
+  }
+
+  if (isWhatsApp) {
+    replyText = filterWhatsAppOutboundForEndUser(replyText, {
+      userEmail: input.userEmail,
+      agentId: input.agentId,
+      contactId: input.contactId,
+    })
   }
 
   return { reply: replyText, mode: 'llm' }
