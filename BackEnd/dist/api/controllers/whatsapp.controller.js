@@ -75,6 +75,7 @@ const voiceProfile_service_1 = require("../../modules/voice/services/voiceProfil
 const voiceRuntime_service_1 = require("../../modules/voice/services/voiceRuntime.service");
 const voiceCallSession_service_1 = require("../../modules/voice/services/voiceCallSession.service");
 const governance_postprocessing_1 = require("../../services/governance/governance-postprocessing");
+const whatsapp_agent_binding_service_1 = require("../../services/integrations/whatsapp-agent-binding.service");
 const governance_service_1 = require("../../services/governance/governance.service");
 function normalizePhoneNumberForDatabase(phoneNumberOrId) {
     if (phoneNumberOrId.endsWith('@s.whatsapp.net')) {
@@ -948,56 +949,6 @@ async function clearAgentAssignmentsForIntegrations(companiesId, integrationIds)
         throw new Error(error.message);
     }
 }
-async function syncCurrentIntegrationAgentAssignment(companiesId, integrationId, linkedAgentId) {
-    if (!companiesId) {
-        if (linkedAgentId) {
-            throw new Error('Nao foi possivel identificar a empresa para vincular o agente ao WhatsApp.');
-        }
-        return;
-    }
-    const { data: companyAgents, error: companyAgentsError } = await supabase_1.supabase
-        .from('tb_agents')
-        .select('id, integrations_id')
-        .eq('companies_id', companiesId);
-    if (companyAgentsError) {
-        throw new Error(companyAgentsError.message);
-    }
-    const agentsUsingThisIntegration = (companyAgents || [])
-        .filter((agent) => String(agent?.integrations_id || '').trim() === integrationId)
-        .map((agent) => String(agent.id));
-    if (!linkedAgentId) {
-        if (agentsUsingThisIntegration.length > 0) {
-            const { error } = await supabase_1.supabase
-                .from('tb_agents')
-                .update({ integrations_id: null })
-                .eq('companies_id', companiesId)
-                .in('id', agentsUsingThisIntegration);
-            if (error) {
-                throw new Error(error.message);
-            }
-        }
-        return;
-    }
-    const idsToClear = agentsUsingThisIntegration.filter((agentId) => agentId !== linkedAgentId);
-    if (idsToClear.length > 0) {
-        const { error } = await supabase_1.supabase
-            .from('tb_agents')
-            .update({ integrations_id: null })
-            .eq('companies_id', companiesId)
-            .in('id', idsToClear);
-        if (error) {
-            throw new Error(error.message);
-        }
-    }
-    const { error: assignError } = await supabase_1.supabase
-        .from('tb_agents')
-        .update({ integrations_id: integrationId })
-        .eq('id', linkedAgentId)
-        .eq('companies_id', companiesId);
-    if (assignError) {
-        throw new Error(assignError.message);
-    }
-}
 async function saveWhatsAppTrafficLog(params) {
     try {
         const { saveSystemLog } = await Promise.resolve().then(() => __importStar(require('../../services/system-logs')));
@@ -1088,7 +1039,12 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
         }
         const platformUser = await getAuthenticatedPlatformUser(req.user.email);
         const normalizedPayload = normalizeWhatsappPayload(req.body);
-        const linkedAgentId = normalizeLinkedAgentId(req.body?.linked_agent_id ?? req.body?.linkedAgentId);
+        const requestBody = req.body ?? {};
+        const hasLinkedAgentInBody = Object.prototype.hasOwnProperty.call(requestBody, 'linked_agent_id') ||
+            Object.prototype.hasOwnProperty.call(requestBody, 'linkedAgentId');
+        const linkedAgentId = hasLinkedAgentInBody
+            ? normalizeLinkedAgentId(requestBody.linked_agent_id ?? requestBody.linkedAgentId)
+            : null;
         const linkedFlowId = normalizeLinkedFlowId(req.body?.linked_flow_id ?? req.body?.linkedFlowId);
         const automationMode = normalizeAutomationMode(req.body?.automation_mode ?? req.body?.automationMode, linkedFlowId);
         const deleteIntegration = Boolean(req.body?.delete_integration ?? req.body?.deleteIntegration);
@@ -1227,7 +1183,15 @@ async function upsertCurrentWhatsAppIntegration(req, res) {
             integrationId = insertResult.data?.id || null;
         }
         if (integrationId) {
-            await syncCurrentIntegrationAgentAssignment(platformUser.companies_id, integrationId, linkedAgentId);
+            if (hasLinkedAgentInBody) {
+                await (0, whatsapp_agent_binding_service_1.syncWhatsAppAgentBinding)(platformUser.companies_id, integrationId, linkedAgentId);
+                if (linkedAgentId && automationMode === 'agent') {
+                    await (0, whatsapp_agent_binding_service_1.setIntegrationAgentAutomationMode)(platformUser.companies_id, integrationId);
+                }
+            }
+            else if (automationMode === 'flow') {
+                await (0, whatsapp_agent_binding_service_1.syncWhatsAppAgentBinding)(platformUser.companies_id, integrationId, null);
+            }
         }
         const linkedAgents = integrationId
             ? await loadLinkedAgentsForIntegration(integrationId, platformUser.companies_id)

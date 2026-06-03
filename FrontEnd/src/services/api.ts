@@ -238,6 +238,7 @@ export interface Agent {
     personalityPrompt?: string; // Comportamento/Personalidade
     templateRole?: string; // Conteúdo técnico vindo do template
     role_template_id?: string;
+    integrations_id?: string | null;
     systemPrompt?: string; // TODO: Migrar para personalityPrompt
     // Updated to match Backend Schema
     modelConfig?: Partial<AgentModelConfig>;

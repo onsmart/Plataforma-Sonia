@@ -6,6 +6,8 @@ export type WhatsappIntegrationOption = {
   app_key?: string | null
   provider?: string | null
   email?: string | null
+  automation_mode?: string | null
+  linked_flow_id?: string | null
 }
 
 async function resolveCompaniesId(input: {
@@ -40,7 +42,7 @@ export async function fetchWhatsappIntegrationsForWorkspace(input: {
 
   const { data, error } = await supabase
     .from('tb_integrations')
-    .select('id, phone_number, app_key, provider, email')
+    .select('id, phone_number, app_key, provider, email, automation_mode, linked_flow_id')
     .eq('companies_id', companiesId)
     .eq('provider', 'whatsapp')
     .order('created_at', { ascending: false })

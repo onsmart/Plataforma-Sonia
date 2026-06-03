@@ -57,7 +57,10 @@ import { AgentService, Agent } from "../services/api"
 import { supabase } from "../utils/supabase/client"
 import { InfoTooltip } from "../components/ui/infoTooltip"
 import { useAuth } from "../contexts/AuthContext"
-import { fetchWhatsappIntegrationsForWorkspace } from "../lib/workspace-integrations"
+import {
+    fetchWhatsappIntegrationsForWorkspace,
+    type WhatsappIntegrationOption,
+} from "../lib/workspace-integrations"
 import { useNavigation } from "../contexts/NavigationContext"
 import { toast } from "sonner"
 import { SUPPORTED_AGENT_LANGUAGES, getAgentLanguageLabel, normalizeAgentLanguageCode } from "../lib/agent-language"
@@ -146,12 +149,14 @@ type AgentTemplate = {
     IconComponent?: any
 }
 
-interface Integration {
-    id: string;
-    phone_number: string | null;
-    email: string | null;
-    account_sid: string | null;
-    smtp_host: string | null;
+type Integration = WhatsappIntegrationOption
+
+function formatWhatsappIntegrationLabel(integration: Integration): string {
+    const phone = integration.phone_number?.trim()
+    if (phone) return phone
+    const key = integration.app_key?.trim()
+    if (key) return `WhatsApp · …${key.slice(-6)}`
+    return `WhatsApp · ${integration.id.slice(0, 8)}`
 }
 
 interface CRMIntegration {
@@ -369,6 +374,7 @@ export function AgentsHub() {
     const [deletionBlockers, setDeletionBlockers] = useState<HubDeletionBlockers | null>(null)
     const [bulkBlockersFetchBusy, setBulkBlockersFetchBusy] = useState(false)
     const [bulkDeleteRunning, setBulkDeleteRunning] = useState(false)
+    const [whatsappBindingBusy, setWhatsappBindingBusy] = useState<Record<string, boolean>>({})
 
 
     // New Agent Form State
@@ -667,6 +673,7 @@ export function AgentsHub() {
                         status: status,
                         status_id: statusId, // Adicionar status_id ao objeto
                         role_template_id: agent.role_template_id || null, // Salvar o role_template_id para buscar o template depois
+                        integrations_id: agent.integrations_id ? String(agent.integrations_id) : null,
                         channels: Array.isArray(agent.channels) ? agent.channels : (agent.channels ? [agent.channels] : []),
                         languages: [normalizeAgentLanguageCode(agent.primary_language, 'pt-BR')],
                         avatar: (agent.nome || 'A').charAt(0).toUpperCase(),
@@ -918,6 +925,44 @@ export function AgentsHub() {
             })
         } finally {
             setIsSubmitting(false)
+        }
+    }
+
+    const handleAgentWhatsappBinding = async (agentId: string, value: string) => {
+        const integrationId = value === 'none' || value === 'loading' ? null : value
+        setWhatsappBindingBusy((prev) => ({ ...prev, [agentId]: true }))
+        try {
+            await AgentService.updateAgent(agentId, { integrations_id: integrationId })
+            setAgents((prev) =>
+                prev.map((agent) => {
+                    if (agent.id === agentId) {
+                        return { ...agent, integrations_id: integrationId }
+                    }
+                    if (integrationId && agent.integrations_id === integrationId) {
+                        return { ...agent, integrations_id: null }
+                    }
+                    return agent
+                })
+            )
+            if (integrationId) {
+                setIntegrations((prev) =>
+                    prev.map((row) =>
+                        row.id === integrationId
+                            ? { ...row, automation_mode: 'agent', linked_flow_id: null }
+                            : row
+                    )
+                )
+            }
+            toast.success(
+                integrationId ? t('whatsapp.bindSuccess') : t('whatsapp.unbindSuccess')
+            )
+        } catch (error: any) {
+            console.error('[handleAgentWhatsappBinding]', error)
+            toast.error(t('whatsapp.bindError'), {
+                description: error?.message || t('errors.unknownError'),
+            })
+        } finally {
+            setWhatsappBindingBusy((prev) => ({ ...prev, [agentId]: false }))
         }
     }
 
@@ -2843,6 +2888,100 @@ export function AgentsHub() {
                                                         return template?.role || t('agent.templateNotFound')
                                                     })()}
                                                 </p>
+                                            </div>
+
+                                            <div
+                                                className="rounded-lg px-4 py-3.5"
+                                                style={{
+                                                    ...elevatedInsetStyle,
+                                                    border: `1px solid ${isDark ? 'rgba(16, 185, 129, 0.18)' : 'rgba(16, 185, 129, 0.22)'}`
+                                                }}
+                                                onClick={(event) => event.stopPropagation()}
+                                            >
+                                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                    <div className="flex min-w-0 items-start gap-3">
+                                                        <div
+                                                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                                                            style={{
+                                                                background: isDark ? 'rgba(16, 185, 129, 0.14)' : 'rgba(16, 185, 129, 0.1)',
+                                                                color: '#10b981',
+                                                            }}
+                                                        >
+                                                            <MessageCircle className="h-4 w-4" />
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p
+                                                                className="text-[11px] font-semibold uppercase tracking-[0.18em]"
+                                                                style={{ color: panelTone.muted }}
+                                                            >
+                                                                {t('whatsapp.label')}
+                                                            </p>
+                                                            <p className="mt-1 text-xs leading-relaxed" style={{ color: panelTone.muted }}>
+                                                                {t('whatsapp.hint')}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-full shrink-0 sm:max-w-[260px]">
+                                                        <Select
+                                                            value={agent.integrations_id || 'none'}
+                                                            disabled={Boolean(whatsappBindingBusy[agent.id]) || integrationsLoading}
+                                                            onValueChange={(val) => handleAgentWhatsappBinding(agent.id, val)}
+                                                        >
+                                                            <SelectTrigger
+                                                                className="h-11 rounded-lg border px-3 text-sm font-medium shadow-none focus:ring-2 focus:ring-emerald-500/20"
+                                                                style={{
+                                                                    backgroundColor: isDark ? 'rgba(39, 39, 42, 0.9)' : 'rgba(248, 250, 252, 0.98)',
+                                                                    borderColor: panelTone.border,
+                                                                    color: panelTone.title,
+                                                                    borderRadius: radius.control,
+                                                                }}
+                                                            >
+                                                                {whatsappBindingBusy[agent.id] ? (
+                                                                    <span className="flex items-center gap-2">
+                                                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                        {t('whatsapp.saving')}
+                                                                    </span>
+                                                                ) : (
+                                                                    <SelectValue placeholder={t('whatsapp.placeholder')} />
+                                                                )}
+                                                            </SelectTrigger>
+                                                            <SelectContent className="rounded-xl">
+                                                                <SelectItem value="none">{t('whatsapp.none')}</SelectItem>
+                                                                {integrationsLoading ? (
+                                                                    <SelectItem value="loading" disabled>
+                                                                        {t('loading.integrations')}
+                                                                    </SelectItem>
+                                                                ) : integrations.length === 0 ? (
+                                                                    <SelectItem value="none" disabled>
+                                                                        {t('empty.noIntegrations')}
+                                                                    </SelectItem>
+                                                                ) : (
+                                                                    integrations.map((integration) => (
+                                                                        <SelectItem key={integration.id} value={integration.id}>
+                                                                            {formatWhatsappIntegrationLabel(integration)}
+                                                                            {integration.automation_mode === 'flow'
+                                                                                ? ` · ${t('whatsapp.flowModeBadge')}`
+                                                                                : ''}
+                                                                        </SelectItem>
+                                                                    ))
+                                                                )}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                </div>
+                                                {agent.integrations_id &&
+                                                integrations.find((row) => row.id === agent.integrations_id)?.automation_mode ===
+                                                    'flow' ? (
+                                                    <p
+                                                        className="mt-3 rounded-md px-3 py-2 text-xs leading-relaxed"
+                                                        style={{
+                                                            background: isDark ? 'rgba(245, 158, 11, 0.12)' : 'rgba(254, 243, 199, 0.9)',
+                                                            color: isDark ? '#fcd34d' : '#92400e',
+                                                        }}
+                                                    >
+                                                        {t('whatsapp.flowModeWarning')}
+                                                    </p>
+                                                ) : null}
                                             </div>
 
                                             <div className="mt-auto flex flex-wrap items-end justify-between gap-4 pt-1">

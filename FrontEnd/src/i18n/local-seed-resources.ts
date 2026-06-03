@@ -158,7 +158,17 @@ export const localSeedResources = {
       "success.agentPaused": "Agente pausado com sucesso",
       "success.agentReactivated": "Agente reativado com sucesso",
       "success.agentCancelled": "Agente cancelado com sucesso",
-      "confirm.cancelAgent": "Tem certeza que deseja cancelar este agente?"
+      "confirm.cancelAgent": "Tem certeza que deseja cancelar este agente?",
+      "whatsapp.label": "WhatsApp",
+      "whatsapp.hint": "Numero oficial que este agente atende automaticamente.",
+      "whatsapp.placeholder": "Selecione a integracao",
+      "whatsapp.none": "Sem WhatsApp vinculado",
+      "whatsapp.saving": "Salvando...",
+      "whatsapp.bindSuccess": "WhatsApp vinculado ao agente.",
+      "whatsapp.unbindSuccess": "WhatsApp desvinculado do agente.",
+      "whatsapp.bindError": "Erro ao vincular WhatsApp",
+      "whatsapp.flowModeBadge": "modo flow",
+      "whatsapp.flowModeWarning": "Este numero esta em modo Flow nas Integracoes. Ao vincular aqui, o atendimento passa a ser pelo agente."
     },
     "cockpit": {
       "title": "Cabine de Operações",
@@ -1102,7 +1112,17 @@ export const localSeedResources = {
       "success.agentPaused": "Agent paused successfully",
       "success.agentReactivated": "Agent reactivated successfully",
       "success.agentCancelled": "Agent cancelled successfully",
-      "confirm.cancelAgent": "Are you sure you want to cancel this agent?"
+      "confirm.cancelAgent": "Are you sure you want to cancel this agent?",
+      "whatsapp.label": "WhatsApp",
+      "whatsapp.hint": "Official number this agent handles automatically.",
+      "whatsapp.placeholder": "Select integration",
+      "whatsapp.none": "No WhatsApp linked",
+      "whatsapp.saving": "Saving...",
+      "whatsapp.bindSuccess": "WhatsApp linked to agent.",
+      "whatsapp.unbindSuccess": "WhatsApp unlinked from agent.",
+      "whatsapp.bindError": "Error linking WhatsApp",
+      "whatsapp.flowModeBadge": "flow mode",
+      "whatsapp.flowModeWarning": "This number uses Flow mode in Integrations. Linking here switches handling to this agent."
     },
     "cockpit": {
       "title": "Cockpit",
@@ -2046,7 +2066,17 @@ export const localSeedResources = {
       "success.agentPaused": "Agente pausado con éxito",
       "success.agentReactivated": "Agente reactivado con éxito",
       "success.agentCancelled": "Agente cancelado con éxito",
-      "confirm.cancelAgent": "¿Estás seguro de que deseas cancelar este agente?"
+      "confirm.cancelAgent": "¿Estás seguro de que deseas cancelar este agente?",
+      "whatsapp.label": "WhatsApp",
+      "whatsapp.hint": "Número oficial que este agente atiende automáticamente.",
+      "whatsapp.placeholder": "Selecciona la integración",
+      "whatsapp.none": "Sin WhatsApp vinculado",
+      "whatsapp.saving": "Guardando...",
+      "whatsapp.bindSuccess": "WhatsApp vinculado al agente.",
+      "whatsapp.unbindSuccess": "WhatsApp desvinculado del agente.",
+      "whatsapp.bindError": "Error al vincular WhatsApp",
+      "whatsapp.flowModeBadge": "modo flow",
+      "whatsapp.flowModeWarning": "Este número está en modo Flow en Integraciones. Al vincular aquí, la atención pasa a ser por el agente."
     },
     "cockpit": {
       "title": "Cabina de operaciones",

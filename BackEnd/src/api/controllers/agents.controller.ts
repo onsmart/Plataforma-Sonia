@@ -19,6 +19,10 @@ import {
   TenantOwnershipError,
 } from '../../utils/tenant-ownership'
 import { getAuthenticatedEmail, getAuthenticatedCompaniesId, getAuthenticatedUserId } from '../../utils/request-auth'
+import {
+  syncWhatsAppAgentBinding,
+  setIntegrationAgentAutomationMode,
+} from '../../services/integrations/whatsapp-agent-binding.service'
 
 function normalizeIntegrationId(value: unknown): string | null {
   const normalized = String(value || '').trim()
@@ -312,7 +316,7 @@ export async function updateAgent(req: Request, res: Response) {
     // Verificar se o agente pertence à empresa
     const { data: agent, error: agentError } = await supabase
       .from('tb_agents')
-      .select('id, companies_id')
+      .select('id, companies_id, integrations_id')
       .eq('id', id)
       .eq('companies_id', companiesId)
       .maybeSingle()
@@ -377,6 +381,29 @@ export async function updateAgent(req: Request, res: Response) {
         error: 'Erro ao atualizar agente',
         details: updateError.message
       })
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updatePayload, 'integrations_id')) {
+      const previousIntegrationId = agent.integrations_id ? String(agent.integrations_id).trim() : null
+
+      try {
+        if (previousIntegrationId && previousIntegrationId !== normalizedIntegrationId) {
+          await syncWhatsAppAgentBinding(companiesId, previousIntegrationId, null)
+        }
+
+        if (normalizedIntegrationId) {
+          await syncWhatsAppAgentBinding(companiesId, normalizedIntegrationId, id)
+          await setIntegrationAgentAutomationMode(companiesId, normalizedIntegrationId)
+        } else if (previousIntegrationId) {
+          await syncWhatsAppAgentBinding(companiesId, previousIntegrationId, null)
+        }
+      } catch (bindingError: any) {
+        logger.error('[updateAgent] Erro ao sincronizar vinculo WhatsApp:', bindingError)
+        return res.status(500).json({
+          error: 'Erro ao vincular integracao WhatsApp ao agente',
+          details: bindingError?.message || 'Falha na sincronizacao',
+        })
+      }
     }
 
     logger.log(`[updateAgent] ✅ Agente ${id} atualizado com sucesso`)

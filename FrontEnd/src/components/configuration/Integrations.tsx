@@ -11,6 +11,7 @@ import { IntegrationBrandIcon } from "../integrations/IntegrationBrandIcon"
 import { Badge } from "../ui/badge"
 import { supabase } from "../../utils/supabase/client"
 import { useAuth } from "../../contexts/AuthContext"
+import { useNavigation } from "../../contexts/NavigationContext"
 import { CRMIntegrationSheet } from "./CRMIntegrationSheet"
 import { CalendlyIntegrationRow, CalendlyIntegrationSheet } from "./CalendlyIntegrationSheet"
 import { useTheme } from "next-themes"
@@ -388,6 +389,7 @@ export function Integrations() {
     const { theme } = useTheme()
     const { t } = useTranslation('configuration')
     const { user, userId } = useAuth()
+    const { navigate } = useNavigation()
     const [translationsReady, setTranslationsReady] = useState(false)
     const [loading, setLoading] = useState(false)
     const [saving, setSaving] = useState(false)
@@ -745,10 +747,6 @@ export function Integrations() {
                 access_token: trimmedAccessToken || null,
                 auth_token: trimmedVerifyToken || null,
                 meta_app_secret: trimmedAppSecret || null,
-                linked_agent_id:
-                    normalizedAutomationMode === 'agent' && selectedLinkedAgentId !== 'none'
-                        ? selectedLinkedAgentId
-                        : null,
                 linked_flow_id:
                     normalizedAutomationMode === 'flow' && selectedLinkedFlowId !== 'none'
                         ? selectedLinkedFlowId
@@ -831,10 +829,6 @@ export function Integrations() {
 
         return {
             meta_app_secret: trimmedAppSecret || null,
-            linked_agent_id:
-                normalizedAutomationMode === 'agent' && selectedLinkedAgentId !== 'none'
-                    ? selectedLinkedAgentId
-                    : null,
             linked_flow_id:
                 normalizedAutomationMode === 'flow' && selectedLinkedFlowId !== 'none'
                     ? selectedLinkedFlowId
@@ -1908,7 +1902,6 @@ export function Integrations() {
     if (loading || !translationsReady) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
 
     const selectedAgentName =
-        assignableAgents.find((agent) => agent.id === selectedLinkedAgentId)?.nome ||
         whatsappLockedSummary?.agentName ||
         null
     const selectedFlowName =
@@ -1974,27 +1967,39 @@ export function Integrations() {
             </div>
 
             {automationMode === 'agent' ? (
-                <div className="space-y-2">
-                    <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
-                        Agente alocado
-                    </Label>
-                    <Select value={selectedLinkedAgentId} onValueChange={setSelectedLinkedAgentId}>
-                        <SelectTrigger className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20" style={inputSurface}>
-                            <div className="flex items-center gap-3">
-                                <Bot className="h-4 w-4 shrink-0 text-emerald-500" />
-                                <SelectValue placeholder="Selecione o agente" />
-                            </div>
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl">
-                            <SelectItem value="none">Nenhum agente (somente recebe, sem resposta automatica)</SelectItem>
-                            {assignableAgents.map((agent) => (
-                                <SelectItem key={agent.id} value={agent.id}>
-                                    {agent.nome}
-                                    {agent.status_id === 1 ? ' • ativo' : ''}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                <div
+                    className="space-y-3 rounded-xl border px-4 py-4"
+                    style={{
+                        backgroundColor: isDark ? 'rgba(37, 99, 235, 0.08)' : 'rgba(239, 246, 255, 0.95)',
+                        borderColor: isDark ? 'rgba(59, 130, 246, 0.24)' : 'rgba(191, 219, 254, 1)',
+                    }}
+                >
+                    <p className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#e0f2fe' : '#1e3a8a' }}>
+                        Agente de IA no Hub de Agentes
+                    </p>
+                    <p className="text-xs leading-relaxed" style={{ color: theme === 'dark' ? '#93c5fd' : '#475569' }}>
+                        Escolha qual agente atende cada numero WhatsApp diretamente nos cards do Hub de Agentes. Ao vincular la, este numero passa a usar modo agente automaticamente.
+                    </p>
+                    {selectedAgentName ? (
+                        <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                            Agente vinculado agora: {selectedAgentName}
+                        </p>
+                    ) : (
+                        <p className="text-xs font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                            Nenhum agente vinculado a este numero no momento.
+                        </p>
+                    )}
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-10 rounded-xl border px-4 text-xs font-semibold"
+                        style={inputSurface}
+                        onClick={() => navigate('agents')}
+                    >
+                        <Bot className="mr-2 h-4 w-4 text-emerald-500" />
+                        Abrir Hub de Agentes
+                    </Button>
                 </div>
             ) : (
                 <div className="space-y-2">

@@ -63,6 +63,7 @@ const agent_ai_generation_shared_1 = require("../../services/agents/agent-ai-gen
 const toolkit_catalog_for_setup_service_1 = require("../../services/integrations/toolkit/toolkit-catalog-for-setup.service");
 const tenant_ownership_1 = require("../../utils/tenant-ownership");
 const request_auth_1 = require("../../utils/request-auth");
+const whatsapp_agent_binding_service_1 = require("../../services/integrations/whatsapp-agent-binding.service");
 function normalizeIntegrationId(value) {
     const normalized = String(value || '').trim();
     if (!normalized || normalized === 'none' || normalized === 'loading') {
@@ -312,7 +313,7 @@ async function updateAgent(req, res) {
         // Verificar se o agente pertence à empresa
         const { data: agent, error: agentError } = await supabase_1.supabase
             .from('tb_agents')
-            .select('id, companies_id')
+            .select('id, companies_id, integrations_id')
             .eq('id', id)
             .eq('companies_id', companiesId)
             .maybeSingle();
@@ -367,6 +368,28 @@ async function updateAgent(req, res) {
                 error: 'Erro ao atualizar agente',
                 details: updateError.message
             });
+        }
+        if (Object.prototype.hasOwnProperty.call(updatePayload, 'integrations_id')) {
+            const previousIntegrationId = agent.integrations_id ? String(agent.integrations_id).trim() : null;
+            try {
+                if (previousIntegrationId && previousIntegrationId !== normalizedIntegrationId) {
+                    await (0, whatsapp_agent_binding_service_1.syncWhatsAppAgentBinding)(companiesId, previousIntegrationId, null);
+                }
+                if (normalizedIntegrationId) {
+                    await (0, whatsapp_agent_binding_service_1.syncWhatsAppAgentBinding)(companiesId, normalizedIntegrationId, id);
+                    await (0, whatsapp_agent_binding_service_1.setIntegrationAgentAutomationMode)(companiesId, normalizedIntegrationId);
+                }
+                else if (previousIntegrationId) {
+                    await (0, whatsapp_agent_binding_service_1.syncWhatsAppAgentBinding)(companiesId, previousIntegrationId, null);
+                }
+            }
+            catch (bindingError) {
+                logger_1.default.error('[updateAgent] Erro ao sincronizar vinculo WhatsApp:', bindingError);
+                return res.status(500).json({
+                    error: 'Erro ao vincular integracao WhatsApp ao agente',
+                    details: bindingError?.message || 'Falha na sincronizacao',
+                });
+            }
         }
         logger_1.default.log(`[updateAgent] ✅ Agente ${id} atualizado com sucesso`);
         return res.json({

@@ -45,6 +45,10 @@ import { getRealtimeVoiceAgentService } from '../../modules/voice/services/voice
 import { upsertVoiceCallSession } from '../../modules/voice/services/voiceCallSession.service'
 import { applyDLP } from '../../services/governance/governance-postprocessing'
 import {
+  syncWhatsAppAgentBinding,
+  setIntegrationAgentAutomationMode,
+} from '../../services/integrations/whatsapp-agent-binding.service'
+import {
   FALLBACK_GOVERNANCE_FOR_PREPROCESS,
   getGovernanceConfigForRuntime,
   type GovernanceConfig,
@@ -1209,71 +1213,6 @@ async function clearAgentAssignmentsForIntegrations(
   }
 }
 
-async function syncCurrentIntegrationAgentAssignment(
-  companiesId: string | null,
-  integrationId: string,
-  linkedAgentId: string | null
-): Promise<void> {
-  if (!companiesId) {
-    if (linkedAgentId) {
-      throw new Error('Nao foi possivel identificar a empresa para vincular o agente ao WhatsApp.')
-    }
-    return
-  }
-
-  const { data: companyAgents, error: companyAgentsError } = await supabase
-    .from('tb_agents')
-    .select('id, integrations_id')
-    .eq('companies_id', companiesId)
-
-  if (companyAgentsError) {
-    throw new Error(companyAgentsError.message)
-  }
-
-  const agentsUsingThisIntegration = (companyAgents || [])
-    .filter((agent: any) => String(agent?.integrations_id || '').trim() === integrationId)
-    .map((agent: any) => String(agent.id))
-
-  if (!linkedAgentId) {
-    if (agentsUsingThisIntegration.length > 0) {
-      const { error } = await supabase
-        .from('tb_agents')
-        .update({ integrations_id: null })
-        .eq('companies_id', companiesId)
-        .in('id', agentsUsingThisIntegration)
-
-      if (error) {
-        throw new Error(error.message)
-      }
-    }
-
-    return
-  }
-
-  const idsToClear = agentsUsingThisIntegration.filter((agentId) => agentId !== linkedAgentId)
-  if (idsToClear.length > 0) {
-    const { error } = await supabase
-      .from('tb_agents')
-      .update({ integrations_id: null })
-      .eq('companies_id', companiesId)
-      .in('id', idsToClear)
-
-    if (error) {
-      throw new Error(error.message)
-    }
-  }
-
-  const { error: assignError } = await supabase
-    .from('tb_agents')
-    .update({ integrations_id: integrationId })
-    .eq('id', linkedAgentId)
-    .eq('companies_id', companiesId)
-
-  if (assignError) {
-    throw new Error(assignError.message)
-  }
-}
-
 async function saveWhatsAppTrafficLog(params: {
   direction: 'inbound' | 'outbound'
   integration: StoredWhatsAppIntegration
@@ -1386,7 +1325,13 @@ export async function upsertCurrentWhatsAppIntegration(req: Request, res: Respon
 
     const platformUser = await getAuthenticatedPlatformUser(req.user.email)
     const normalizedPayload = normalizeWhatsappPayload(req.body)
-    const linkedAgentId = normalizeLinkedAgentId(req.body?.linked_agent_id ?? req.body?.linkedAgentId)
+    const requestBody = req.body ?? {}
+    const hasLinkedAgentInBody =
+      Object.prototype.hasOwnProperty.call(requestBody, 'linked_agent_id') ||
+      Object.prototype.hasOwnProperty.call(requestBody, 'linkedAgentId')
+    const linkedAgentId = hasLinkedAgentInBody
+      ? normalizeLinkedAgentId(requestBody.linked_agent_id ?? requestBody.linkedAgentId)
+      : null
     const linkedFlowId = normalizeLinkedFlowId(req.body?.linked_flow_id ?? req.body?.linkedFlowId)
     const automationMode = normalizeAutomationMode(req.body?.automation_mode ?? req.body?.automationMode, linkedFlowId)
     const deleteIntegration = Boolean(req.body?.delete_integration ?? req.body?.deleteIntegration)
@@ -1562,11 +1507,14 @@ export async function upsertCurrentWhatsAppIntegration(req: Request, res: Respon
     }
 
     if (integrationId) {
-      await syncCurrentIntegrationAgentAssignment(
-        platformUser.companies_id,
-        integrationId,
-        linkedAgentId
-      )
+      if (hasLinkedAgentInBody) {
+        await syncWhatsAppAgentBinding(platformUser.companies_id, integrationId, linkedAgentId)
+        if (linkedAgentId && automationMode === 'agent') {
+          await setIntegrationAgentAutomationMode(platformUser.companies_id, integrationId)
+        }
+      } else if (automationMode === 'flow') {
+        await syncWhatsAppAgentBinding(platformUser.companies_id, integrationId, null)
+      }
     }
 
     const linkedAgents = integrationId
