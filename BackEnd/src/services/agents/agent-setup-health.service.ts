@@ -90,6 +90,16 @@ async function userCanAccessAgent(agentId: string, userEmail: string): Promise<b
     return true
   }
 
+  // Fallback: compara companies_id via getCompanyIdByEmail (usa RPC robusta como primário)
+  // Necessário quando o usuário não está em tb_company_users mas tem empresa via auth/RPC,
+  // e também cobre agentes recém-criados antes de aparecerem na fn_get_agents_with_api_key.
+  if (agentCompanyId) {
+    const userCompanyId = await getCompanyIdByEmail(userEmail).catch(() => null)
+    if (userCompanyId && userCompanyId === agentCompanyId) {
+      return true
+    }
+  }
+
   const listed = await getAgentsByEmail(userEmail).catch(() => [])
   return listed.some((row) => String(row?.id || '') === agentId)
 }

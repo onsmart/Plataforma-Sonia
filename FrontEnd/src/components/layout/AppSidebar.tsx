@@ -1,5 +1,4 @@
 import * as React from "react"
-import { createPortal } from "react-dom"
 import {
   Bot,
   Command,
@@ -23,7 +22,7 @@ import {
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
-import { useNavigation } from "../../contexts/NavigationContext"
+import { useNavigation, type RoutePath } from "../../contexts/NavigationContext"
 import { useAuth } from "../../contexts/AuthContext"
 import { usePlanCapabilities } from "../../hooks/usePlanCapabilities"
 import { AgentService } from "../../services/api"
@@ -45,76 +44,220 @@ import {
   SidebarMenuItem,
   SidebarMenuButton,
   SidebarGroup,
-  SidebarGroupLabel
+  SidebarGroupLabel,
+  useSidebar,
 } from "../ui/sidebar"
 import { cn } from "../ui/utils"
 import { Switch } from "../ui/switch"
 
-// Animação de energia passando no botão ativo + Ajuste de largura quando compactado
-const energyAnimationStyle = `
-  @keyframes energyFlow {
-    0% {
-      background-position: -200% 0;
+const SIDEBAR_NAV_GROUPS: Array<{
+  labelKey: string
+  items: Array<{ id: RoutePath; nameKey: string; icon: React.ElementType }>
+}> = [
+  {
+    labelKey: "groups.operations",
+    items: [
+      { id: "home", nameKey: "menuItems.home", icon: Home },
+      { id: "cockpit", nameKey: "menuItems.cockpit", icon: LayoutDashboard },
+      { id: "inbox", nameKey: "menuItems.inbox", icon: MessageSquare },
+      { id: "playground", nameKey: "menuItems.playground", icon: Terminal },
+    ],
+  },
+  {
+    labelKey: "groups.aiStrategy",
+    items: [
+      { id: "agents", nameKey: "menuItems.agents", icon: Bot },
+      { id: "flows", nameKey: "menuItems.flows", icon: GitBranch },
+      { id: "governance", nameKey: "menuItems.governance", icon: ShieldCheck },
+    ],
+  },
+  {
+    labelKey: "groups.intelligence",
+    items: [
+      { id: "knowledge", nameKey: "menuItems.knowledge", icon: Database },
+      { id: "insights", nameKey: "menuItems.insights", icon: PieChart },
+    ],
+  },
+  {
+    labelKey: "groups.admin",
+    items: [
+      { id: "integrations", nameKey: "menuItems.integrations", icon: Plug },
+      { id: "configuration", nameKey: "menuItems.configuration", icon: Settings2 },
+    ],
+  },
+]
+
+const appSidebarStyles = `
+  @keyframes sidebarNavEnter {
+    from {
+      opacity: 0;
+      transform: translateX(-8px);
     }
-    100% {
-      background-position: 200% 0;
+    to {
+      opacity: 1;
+      transform: translateX(0);
     }
   }
 
-  [data-sidebar="menu-button"][data-active="true"] {
-    position: relative;
-    overflow: hidden;
+  @keyframes sidebarActivePulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.72;
+    }
   }
 
-  /* Altura automática para rótulos em duas linhas (evita cortar com h fixo) */
+  @keyframes sidebarLogoGlow {
+    0%, 100% {
+      box-shadow: var(--sidebar-logo-shadow-idle);
+    }
+    50% {
+      box-shadow: var(--sidebar-logo-shadow-active);
+    }
+  }
+
+  .app-sidebar-shell {
+    --sidebar-accent-bar: #2563eb;
+    --sidebar-nav-ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --sidebar-collapse-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    --sidebar-collapse-duration: 420ms;
+    --sidebar-collapse-fade: 300ms;
+  }
+
+  .app-sidebar-shell[data-theme-mode="light"] {
+    --sidebar-accent-bar: #1d4ed8;
+    --sidebar-logo-shadow-idle: 0 10px 24px -18px rgba(15, 23, 42, 0.18);
+    --sidebar-logo-shadow-active: 0 14px 32px -16px rgba(37, 99, 235, 0.28);
+    --sidebar-scrollbar-track: #e2e8f0;
+    --sidebar-scrollbar-thumb: #94a3b8;
+    --sidebar-scrollbar-thumb-hover: #64748b;
+  }
+
+  .app-sidebar-shell[data-theme-mode="dark"] {
+    --sidebar-accent-bar: #3b82f6;
+    --sidebar-logo-shadow-idle: 0 0 0 1px rgba(255, 255, 255, 0.06);
+    --sidebar-logo-shadow-active: 0 0 24px -6px rgba(59, 130, 246, 0.45);
+    --sidebar-scrollbar-track: #090b10;
+    --sidebar-scrollbar-thumb: #3f3f46;
+    --sidebar-scrollbar-thumb-hover: #52525b;
+  }
+
   [data-sidebar="menu-button"].app-sidebar-nav-btn {
     height: auto;
-    min-height: 3rem;
+    min-height: 2.75rem;
     align-items: center;
+    position: relative;
+    isolation: isolate;
+    transition:
+      background-color 0.24s var(--sidebar-nav-ease),
+      border-color 0.24s var(--sidebar-nav-ease),
+      color 0.24s var(--sidebar-nav-ease),
+      transform 0.24s var(--sidebar-nav-ease),
+      box-shadow 0.24s var(--sidebar-nav-ease);
   }
 
-  [data-sidebar="menu-button"][data-active="true"]::before {
+  [data-sidebar="menu-button"].app-sidebar-nav-btn:hover:not([data-active="true"]) {
+    transform: translateX(3px);
+  }
+
+  [data-sidebar="menu-button"].app-sidebar-nav-btn:active {
+    transform: scale(0.985);
+  }
+
+  [data-sidebar="menu-button"].app-sidebar-nav-btn[data-active="true"]::before {
     content: '';
     position: absolute;
-    top: 0;
     left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.03) 25%,
-      rgba(255, 255, 255, 0.08) 50%,
-      rgba(255, 255, 255, 0.03) 75%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
-    animation: energyFlow 2s ease-in-out infinite;
+    top: 50%;
+    width: 3px;
+    height: 58%;
+    border-radius: 0 999px 999px 0;
+    transform: translateY(-50%) scaleY(0);
+    transform-origin: center;
+    background: var(--sidebar-accent-bar);
+    animation: sidebarActiveBarIn 0.32s var(--sidebar-nav-ease) forwards;
+    z-index: 2;
     pointer-events: none;
-    z-index: 0;
   }
 
-  [data-sidebar="menu-button"][data-active="true"] > * {
+  @keyframes sidebarActiveBarIn {
+    from {
+      transform: translateY(-50%) scaleY(0);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(-50%) scaleY(1);
+      opacity: 1;
+    }
+  }
+
+  [data-sidebar="menu-button"].app-sidebar-nav-btn[data-active="true"] > * {
     position: relative;
     z-index: 1;
   }
 
-  /* Aumenta a largura da sidebar quando está compactada (modo ícone) */
-  [data-collapsible="icon"] [data-slot="sidebar-container"] {
-    width: 5rem !important;
-    min-width: 5rem !important;
-    max-width: 5rem !important;
+  .app-sidebar-group {
+    animation: sidebarNavEnter 0.42s var(--sidebar-nav-ease) both;
   }
 
-  /* Garante que os ícones fiquem centralizados e não cortados */
+  .app-sidebar-logo-badge {
+    transition: transform 0.28s var(--sidebar-nav-ease), box-shadow 0.28s var(--sidebar-nav-ease);
+  }
+
+  .app-sidebar-logo-badge:hover {
+    transform: translateY(-1px);
+    animation: sidebarLogoGlow 2.4s ease-in-out infinite;
+  }
+
+  .app-sidebar-reveal-text {
+    overflow: hidden;
+    white-space: nowrap;
+    max-width: 280px;
+    opacity: 1;
+    transform: translateX(0);
+    transition:
+      opacity var(--sidebar-collapse-fade) var(--sidebar-collapse-ease),
+      max-width var(--sidebar-collapse-duration) var(--sidebar-collapse-ease),
+      transform var(--sidebar-collapse-duration) var(--sidebar-collapse-ease),
+      margin var(--sidebar-collapse-duration) var(--sidebar-collapse-ease),
+      padding var(--sidebar-collapse-duration) var(--sidebar-collapse-ease);
+  }
+
+  .app-sidebar-brand-copy {
+    overflow: hidden;
+    max-width: 240px;
+    opacity: 1;
+    transform: translateX(0);
+    transition:
+      opacity var(--sidebar-collapse-fade) var(--sidebar-collapse-ease),
+      max-width var(--sidebar-collapse-duration) var(--sidebar-collapse-ease),
+      transform var(--sidebar-collapse-duration) var(--sidebar-collapse-ease);
+  }
+
+  [data-collapsible="icon"] .app-sidebar-reveal-text,
+  [data-collapsible="icon"] .app-sidebar-brand-copy {
+    max-width: 0;
+    opacity: 0;
+    transform: translateX(-10px);
+    pointer-events: none;
+  }
+
+  [data-collapsible="icon"] [data-sidebar="menu-button"] .app-sidebar-reveal-text {
+    flex: 0 0 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+  }
+
   [data-collapsible="icon"] [data-sidebar="menu-button"] {
     justify-content: center !important;
-    padding: 0.75rem !important;
+    padding: 0.65rem !important;
+    min-height: 2.75rem;
   }
 
-  /* Remove o card do usuário quando compactado e centraliza o avatar */
   [data-collapsible="icon"] .user-menu-trigger {
-    padding: 0 !important;
+    padding: 0.35rem !important;
     background: transparent !important;
     border: none !important;
     justify-content: center !important;
@@ -127,50 +270,88 @@ const energyAnimationStyle = `
     gap: 0 !important;
   }
 
-  /* Esconde o texto e ícone do dropdown quando compactado */
   [data-collapsible="icon"] .user-menu-text,
   [data-collapsible="icon"] .user-menu-chevron {
-    display: none !important;
+    max-width: 0;
+    opacity: 0;
+    transform: translateX(-8px);
+    overflow: hidden;
+    pointer-events: none;
   }
 
-  .custom-scrollbar {
+  .user-menu-text,
+  .user-menu-chevron {
+    transition:
+      opacity var(--sidebar-collapse-fade) var(--sidebar-collapse-ease),
+      max-width var(--sidebar-collapse-duration) var(--sidebar-collapse-ease),
+      transform var(--sidebar-collapse-duration) var(--sidebar-collapse-ease);
+  }
+
+  .user-menu-text {
+    max-width: 200px;
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  .user-menu-chevron {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+
+  .app-sidebar-theme-toggle {
+    transition:
+      padding var(--sidebar-collapse-duration) var(--sidebar-collapse-ease),
+      background-color 0.24s var(--sidebar-nav-ease),
+      border-color 0.24s var(--sidebar-nav-ease),
+      box-shadow 0.24s var(--sidebar-nav-ease);
+  }
+
+  [data-collapsible="icon"] .app-sidebar-theme-toggle {
+    justify-content: center;
+    padding: 0.625rem;
+  }
+
+  .app-sidebar-scroll {
     scrollbar-width: thin;
-    scrollbar-color: #3f3f46 #090b10;
+    scrollbar-color: var(--sidebar-scrollbar-thumb) var(--sidebar-scrollbar-track);
   }
 
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 10px;
+  .app-sidebar-scroll::-webkit-scrollbar {
+    width: 8px;
   }
 
-  .custom-scrollbar::-webkit-scrollbar-track {
-    background: #090b10;
+  .app-sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
   }
 
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #3f3f46;
+  .app-sidebar-scroll::-webkit-scrollbar-thumb {
+    background: var(--sidebar-scrollbar-thumb);
     border-radius: 9999px;
-    border: 2px solid #090b10;
+    border: 2px solid transparent;
+    background-clip: padding-box;
   }
 
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #52525b;
+  .app-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--sidebar-scrollbar-thumb-hover);
+    background-clip: padding-box;
   }
 
-  .custom-scrollbar.light-scrollbar {
-    scrollbar-color: #94a3b8 #e2e8f0;
-  }
+  @media (prefers-reduced-motion: reduce) {
+    .app-sidebar-group,
+    [data-sidebar="menu-button"].app-sidebar-nav-btn,
+    .app-sidebar-logo-badge,
+    .app-sidebar-reveal-text,
+    .app-sidebar-brand-copy,
+    .user-menu-text,
+    .user-menu-chevron,
+    .app-sidebar-theme-toggle {
+      animation: none !important;
+      transition: none !important;
+    }
 
-  .custom-scrollbar.light-scrollbar::-webkit-scrollbar-track {
-    background: #e2e8f0;
-  }
-
-  .custom-scrollbar.light-scrollbar::-webkit-scrollbar-thumb {
-    background: #94a3b8;
-    border: 2px solid #e2e8f0;
-  }
-
-  .custom-scrollbar.light-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #64748b;
+    [data-sidebar="menu-button"].app-sidebar-nav-btn:hover:not([data-active="true"]) {
+      transform: none;
+    }
   }
 `
 
@@ -201,85 +382,150 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     resolvedTheme === 'light' ||
     (theme === 'system' && resolvedTheme !== 'dark')
   const { navigate, currentRoute } = useNavigation()
+  const { isMobile, setOpenMobile } = useSidebar()
   const { userId, firstName, lastName, signOut, signingOut, user } = useAuth()
   const planCaps = usePlanCapabilities()
   const { t, i18n } = useTranslation('sidebar')
   const [isAdmin, setIsAdmin] = React.useState<boolean | null>(null)
-  const [translationsReady, setTranslationsReady] = React.useState(false)
-  const iconRef = React.useRef<HTMLElement>(null)
+
+  const handleNavigate = React.useCallback(
+    (route: RoutePath) => {
+      navigate(route)
+      if (isMobile) {
+        setOpenMobile(false)
+      }
+    },
+    [navigate, isMobile, setOpenMobile]
+  )
+
+  const handleThemeToggle = React.useCallback(() => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark'
+
+    let iconX = '50%'
+    let iconY = '50%'
+
+    const iconElement = document.getElementById('sidebar-theme-toggle-icon')
+    if (iconElement) {
+      const iconRect = iconElement.getBoundingClientRect()
+      iconX = `${((iconRect.left + iconRect.width / 2) / window.innerWidth) * 100}%`
+      iconY = `${((iconRect.top + iconRect.height / 2) / window.innerHeight) * 100}%`
+      iconElement.style.transition = 'transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1)'
+      iconElement.style.transform = 'rotate(360deg) scale(1.08)'
+      window.setTimeout(() => {
+        iconElement.style.transition = 'transform 0.2s ease'
+        iconElement.style.transform = 'rotate(0deg) scale(1)'
+      }, 550)
+    }
+
+    if (typeof document !== 'undefined' && document.startViewTransition) {
+      const transition = document.startViewTransition(() => {
+        setTheme(newTheme)
+      })
+
+      transition.ready.then(() => {
+        const style = document.createElement('style')
+        style.textContent = `
+          ::view-transition-old(root) {
+            animation: themeSweepOut 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+          }
+          ::view-transition-new(root) {
+            animation: themeSweepIn 0.55s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+          }
+          @keyframes themeSweepOut {
+            from { clip-path: circle(100% at ${iconX} ${iconY}); opacity: 1; }
+            to { clip-path: circle(0% at ${iconX} ${iconY}); opacity: 0; }
+          }
+          @keyframes themeSweepIn {
+            from { clip-path: circle(0% at ${iconX} ${iconY}); opacity: 0; }
+            to { clip-path: circle(150% at ${iconX} ${iconY}); opacity: 1; }
+          }
+        `
+        document.head.appendChild(style)
+        transition.finished.finally(() => {
+          if (document.head.contains(style)) {
+            document.head.removeChild(style)
+          }
+        })
+      })
+    } else {
+      setTheme(newTheme)
+    }
+  }, [setTheme, theme])
   
   const getUserInitials = () => buildInitials(firstName, lastName, user?.email);
   const getUserFullName = () => buildDisplayName(firstName, lastName, user?.email?.split("@")[0] || "Usuário");
   const sidebarPalette = isLight
     ? {
-        shell: '#e2e8f0',
-        shellHsl: '220 13% 91%',
+        shell: '#f1f5f9',
+        shellHsl: '210 40% 96%',
         foregroundHsl: '222 47% 11%',
-        borderHsl: '215 20% 82%',
-        accentHsl: '220 14% 96%',
+        borderHsl: '214 32% 88%',
+        accentHsl: '214 32% 94%',
         accentForegroundHsl: '222 47% 11%',
         ringHsl: '215 20% 55%',
-        edgeClass: 'border-slate-300',
-        headerBorderClass: 'border-slate-300',
-        logoBadgeClass: 'border-slate-300 bg-white shadow-[0_12px_28px_-22px_rgba(15,23,42,0.2)]',
-        subLabelClass: '!text-slate-600',
-        groupLabelClass: '!text-slate-500',
-        activeButtonClass: '!bg-white !text-slate-950 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.2)] scale-[1.02] border-slate-300',
-        idleButtonClass: 'border-transparent text-slate-700 hover:!bg-white/80 hover:!text-slate-950 hover:border-slate-300',
-        activeIcon: '#0f172a',
+        edgeClass: 'border-slate-200/90',
+        headerBorderClass: 'border-slate-200/90',
+        logoBadgeClass: 'border-slate-200/90 bg-white',
+        subLabelClass: '!text-slate-500',
+        groupLabelClass: '!text-slate-400',
+        activeButtonClass: '!bg-white !text-slate-950 shadow-[0_8px_24px_-20px_rgba(15,23,42,0.35)] border-slate-200/90',
+        idleButtonClass: 'border-transparent text-slate-600 hover:!bg-white/70 hover:!text-slate-950 hover:border-slate-200/80 hover:shadow-[0_4px_16px_-18px_rgba(15,23,42,0.25)]',
+        activeIcon: '#1d4ed8',
         idleIcon: '#64748b',
         activeTextClass: '!text-slate-950',
-        idleTextClass: '!text-slate-800',
-        userCardClass: 'border-slate-300 bg-white hover:bg-slate-50',
-        userAvatarClass: 'bg-slate-950 text-white',
+        idleTextClass: '!text-slate-700',
+        userCardClass: 'border-slate-200/90 bg-white/90 hover:bg-white hover:shadow-[0_8px_24px_-22px_rgba(15,23,42,0.2)]',
+        userAvatarClass: 'bg-slate-900 text-white',
         userNameClass: '!text-slate-900',
-        userSubtextClass: '!text-slate-600',
-        chevronClass: '!text-slate-500',
-        themeCardClass: 'border-slate-300 bg-white',
-        themeTextClass: '!text-slate-800',
-        switchClass: 'scale-75 data-[state=checked]:!bg-slate-900 [&_span]:data-[state=checked]:!bg-white',
+        userSubtextClass: '!text-slate-500',
+        chevronClass: '!text-slate-400',
+        themeCardClass: 'border-slate-200/90 bg-white/90 hover:bg-white',
+        themeCompactClass: 'border-slate-200/90 bg-white/90 hover:bg-white',
+        themeTextClass: '!text-slate-700',
+        switchClass: 'scale-[0.82] data-[state=checked]:!bg-slate-900 [&_span]:data-[state=checked]:!bg-white',
         userMenuContentClass:
-          'w-[calc(var(--radix-dropdown-menu-trigger-width)-0px)] min-w-[12.5rem] rounded-[1.25rem] border border-slate-300 bg-white p-1.5 shadow-[0_16px_40px_-28px_rgba(15,23,42,0.35)]',
+          'w-[calc(var(--radix-dropdown-menu-trigger-width)-0px)] min-w-[12.5rem] rounded-2xl border border-slate-200/90 bg-white/95 p-1.5 shadow-[0_20px_48px_-28px_rgba(15,23,42,0.35)] backdrop-blur-md',
         userMenuItemClass:
-          'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-800 focus:bg-slate-100 focus:text-slate-950 data-[highlighted]:bg-slate-100 data-[highlighted]:text-slate-950 [&_svg]:text-slate-600',
+          'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:bg-slate-100 focus:text-slate-950 data-[highlighted]:bg-slate-100 data-[highlighted]:text-slate-950 [&_svg]:text-slate-500',
         userMenuItemDestructiveClass:
-          'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-600 focus:bg-red-50 focus:text-red-700 data-[highlighted]:bg-red-50 data-[highlighted]:text-red-700 [&_svg]:!text-red-600',
+          'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-red-600 focus:bg-red-50 focus:text-red-700 data-[highlighted]:bg-red-50 data-[highlighted]:text-red-700 [&_svg]:!text-red-500',
         userMenuSeparatorClass: 'my-1 bg-slate-200',
       }
     : {
-        shell: '#05070b',
-        shellHsl: '220 38% 3%',
+        shell: '#07090e',
+        shellHsl: '222 47% 4%',
         foregroundHsl: '210 20% 98%',
         borderHsl: '220 13% 13%',
         accentHsl: '220 16% 8%',
         accentForegroundHsl: '210 20% 98%',
         ringHsl: '217 10% 64%',
-        edgeClass: 'border-white/5',
-        headerBorderClass: 'border-white/5',
-        logoBadgeClass: 'border-white/10 bg-white/5',
-        subLabelClass: '!text-zinc-400',
-        groupLabelClass: '!text-zinc-500',
-        activeButtonClass: '!bg-[#111318] !text-white shadow-[0_12px_28px_-24px_rgba(0,0,0,0.9)] scale-[1.02] border-white/8',
-        idleButtonClass: 'border-transparent text-white/70 hover:!bg-[#0d1015] hover:!text-white hover:border-white/6',
-        activeIcon: '#f8fafc',
-        idleIcon: '#94a3b8',
+        edgeClass: 'border-white/[0.06]',
+        headerBorderClass: 'border-white/[0.06]',
+        logoBadgeClass: 'border-white/10 bg-white/[0.04]',
+        subLabelClass: '!text-zinc-500',
+        groupLabelClass: '!text-zinc-600',
+        activeButtonClass: '!bg-[#12161f] !text-white shadow-[0_12px_32px_-24px_rgba(0,0,0,0.95)] border-white/10',
+        idleButtonClass: 'border-transparent text-zinc-400 hover:!bg-white/[0.04] hover:!text-zinc-100 hover:border-white/[0.08]',
+        activeIcon: '#60a5fa',
+        idleIcon: '#71717a',
         activeTextClass: '!text-white',
-        idleTextClass: '!text-zinc-100',
-        userCardClass: 'border-white/8 bg-[#0c0f14] hover:bg-[#10141b]',
+        idleTextClass: '!text-zinc-300',
+        userCardClass: 'border-white/[0.08] bg-[#0c1018]/90 hover:bg-[#101622] hover:border-white/12',
         userAvatarClass: 'bg-zinc-100 text-black',
         userNameClass: '!text-white',
-        userSubtextClass: '!text-zinc-400',
-        chevronClass: '!text-zinc-400',
-        themeCardClass: 'border-white/8 bg-[#0c0f14]',
-        themeTextClass: '!text-zinc-200',
-        switchClass: 'scale-75 data-[state=checked]:!bg-zinc-700 [&_span]:data-[state=checked]:!bg-white',
+        userSubtextClass: '!text-zinc-500',
+        chevronClass: '!text-zinc-500',
+        themeCardClass: 'border-white/[0.08] bg-[#0c1018]/90 hover:bg-[#101622]',
+        themeCompactClass: 'border-white/[0.08] bg-[#0c1018]/90 hover:bg-[#101622]',
+        themeTextClass: '!text-zinc-300',
+        switchClass: 'scale-[0.82] data-[state=checked]:!bg-blue-600 [&_span]:data-[state=checked]:!bg-white',
         userMenuContentClass:
-          'w-[calc(var(--radix-dropdown-menu-trigger-width)-0px)] min-w-[12.5rem] rounded-[1.25rem] border border-white/8 bg-[#0c0f14] p-1.5 shadow-[0_20px_48px_-32px_rgba(0,0,0,0.95)]',
+          'w-[calc(var(--radix-dropdown-menu-trigger-width)-0px)] min-w-[12.5rem] rounded-2xl border border-white/10 bg-[#0c1018]/95 p-1.5 shadow-[0_24px_56px_-32px_rgba(0,0,0,0.95)] backdrop-blur-md',
         userMenuItemClass:
-          'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-zinc-100 focus:bg-[#10141b] focus:text-white data-[highlighted]:bg-[#10141b] data-[highlighted]:text-white [&_svg]:text-zinc-400',
+          'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-zinc-300 focus:bg-white/[0.06] focus:text-white data-[highlighted]:bg-white/[0.06] data-[highlighted]:text-white [&_svg]:text-zinc-500',
         userMenuItemDestructiveClass:
-          'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-red-400 focus:bg-red-500/10 focus:text-red-300 data-[highlighted]:bg-red-500/10 data-[highlighted]:text-red-300 [&_svg]:!text-red-400',
-        userMenuSeparatorClass: 'my-1 bg-white/8',
+          'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-red-400 focus:bg-red-500/10 focus:text-red-300 data-[highlighted]:bg-red-500/10 data-[highlighted]:text-red-300 [&_svg]:!text-red-400',
+        userMenuSeparatorClass: 'my-1 bg-white/[0.08]',
       }
 
   // Verifica se o usuário é admin
@@ -305,13 +551,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       const sidebarTranslations = i18n.getResourceBundle(currentLang, 'sidebar')
 
       if (sidebarTranslations && Object.keys(sidebarTranslations).length > 0) {
-        setTranslationsReady(true)
+        return
       } else {
         const { loadTranslationsFromDatabase } = await import('../../i18n/config')
         const companiesId = localStorage.getItem('companies_id') || undefined
         await loadTranslationsFromDatabase(currentLang, companiesId)
         i18n.emit('loaded')
-        setTranslationsReady(true)
       }
     }
     
@@ -322,36 +567,38 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     const handleLanguageChanged = () => { 
       checkTranslations() 
     }
-    const handleLoaded = () => {
-      const currentLang = i18n.language || 'pt-BR'
-      const translations = i18n.getResourceBundle(currentLang, 'sidebar')
-      if (translations && Object.keys(translations).length > 0) {
-        setTranslationsReady(true)
-      }
-    }
-    const handleAdded = () => { 
-      handleLoaded() 
-    }
     
     i18n.on('languageChanged', handleLanguageChanged)
-    i18n.on('loaded', handleLoaded)
-    i18n.on('added', handleAdded)
     
     return () => {
       i18n.off('languageChanged', handleLanguageChanged)
-      i18n.off('loaded', handleLoaded)
-      i18n.off('added', handleAdded)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
+  const navGroups = React.useMemo(() => {
+    const adminItems =
+      isAdmin === true
+        ? [{ id: 'platform-health' as const, nameKey: 'menuItems.platformHealth', icon: Activity }]
+        : []
+    return SIDEBAR_NAV_GROUPS.map((group) =>
+      group.labelKey === 'groups.admin'
+        ? { ...group, items: [...group.items, ...adminItems] }
+        : group
+    )
+  }, [isAdmin])
+
   return (
     <>
-      <style>{energyAnimationStyle}</style>
+      <style>{appSidebarStyles}</style>
       <Sidebar 
         collapsible="icon" 
         {...props}
-        className={cn("sticky top-0 h-screen !bg-transparent", sidebarPalette.edgeClass)}
+        className={cn(
+          "app-sidebar-shell sticky top-0 h-screen !bg-transparent backdrop-blur-xl",
+          sidebarPalette.edgeClass,
+        )}
+        data-theme-mode={isLight ? 'light' : 'dark'}
         style={{
           backgroundColor: sidebarPalette.shell,
           "--sidebar-background": sidebarPalette.shellHsl,
@@ -364,74 +611,58 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           "--sidebar-ring": sidebarPalette.ringHsl,
         } as React.CSSProperties}
       >
-      {/* HEADER: LOGO */}
       <SidebarHeader
         className={cn(
-          "h-16 shrink-0 items-stretch justify-center border-b px-4 transition-[height,width] ease-linear group-data-[collapsible=icon]:h-12 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-0",
+          "h-[4.25rem] shrink-0 items-stretch justify-center border-b px-3 transition-[height,padding] duration-[var(--sidebar-collapse-duration,420ms)] ease-[var(--sidebar-collapse-ease,cubic-bezier(0.22,1,0.36,1))] group-data-[collapsible=icon]:h-14 group-data-[collapsible=icon]:px-2",
           sidebarPalette.headerBorderClass,
         )}
         style={{ backgroundColor: sidebarPalette.shell }}
       >
           <div 
-            className="group flex h-full min-h-0 w-full cursor-pointer items-center gap-3 justify-start pl-0.5 group-data-[collapsible=icon]:justify-center"
-            onClick={() => navigate('home')}
+            className="group flex h-full min-h-0 w-full cursor-pointer items-center gap-3 justify-start pl-0.5 transition-transform duration-300 hover:opacity-95 group-data-[collapsible=icon]:justify-center"
+            onClick={() => handleNavigate('home')}
           >
             <div className={cn(
-              "flex aspect-square size-10 items-center justify-center rounded-xl border shadow-lg backdrop-blur-sm shrink-0",
+              "app-sidebar-logo-badge flex aspect-square size-10 items-center justify-center rounded-xl border shrink-0",
               sidebarPalette.logoBadgeClass
             )}>
-              <Command className={cn("size-5", isLight ? "text-slate-900" : "text-white")} strokeWidth={2.5} />
+              <Command className={cn("size-5 transition-transform duration-300 group-hover:scale-105", isLight ? "text-slate-900" : "text-blue-400")} strokeWidth={2.25} />
             </div>
-            <div className="grid flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
-              <span className={cn("truncate font-black text-xl tracking-tighter uppercase", isLight ? "!text-slate-900" : "!text-white")}>SONIA</span>
-              <span className={cn("truncate text-[10px] font-black uppercase tracking-[0.2em]", sidebarPalette.subLabelClass)}>Platform Pro</span>
+            <div className="app-sidebar-brand-copy grid flex-1 text-left leading-tight">
+              <span className={cn("truncate text-lg font-bold tracking-tight uppercase", isLight ? "!text-slate-900" : "!text-white")}>SONIA</span>
+              <span className={cn("truncate text-[10px] font-semibold uppercase tracking-[0.22em]", sidebarPalette.subLabelClass)}>Platform Pro</span>
             </div>
           </div>
       </SidebarHeader>
 
-      {/* CONTEÚDO DA NAVEGAÇÃO */}
       <SidebarContent
-        className={cn('space-y-7 px-2.5 custom-scrollbar', isLight && 'light-scrollbar')}
+        className="app-sidebar-scroll space-y-6 px-2 py-2"
         style={{ backgroundColor: sidebarPalette.shell }}
       >
-        {[
-          { labelKey: "groups.operations", items: [
-            { id: 'home', nameKey: 'menuItems.home', icon: Home },
-            { id: 'cockpit', nameKey: 'menuItems.cockpit', icon: LayoutDashboard },
-            { id: 'inbox', nameKey: 'menuItems.inbox', icon: MessageSquare },
-            { id: 'playground', nameKey: 'menuItems.playground', icon: Terminal },
-          ]},
-          { labelKey: "groups.aiStrategy", items: [
-            { id: 'agents', nameKey: 'menuItems.agents', icon: Bot },
-            { id: 'flows', nameKey: 'menuItems.flows', icon: GitBranch },
-            { id: 'governance', nameKey: 'menuItems.governance', icon: ShieldCheck },
-          ]},
-          { labelKey: "groups.intelligence", items: [
-            { id: 'knowledge', nameKey: 'menuItems.knowledge', icon: Database },
-            { id: 'insights', nameKey: 'menuItems.insights', icon: PieChart },
-          ]},
-          { labelKey: "groups.admin", items: [
-            { id: 'integrations', nameKey: 'menuItems.integrations', icon: Plug },
-            { id: 'configuration', nameKey: 'menuItems.configuration', icon: Settings2 },
-            ...(isAdmin === true
-              ? [{ id: 'platform-health' as const, nameKey: 'menuItems.platformHealth', icon: Activity }]
-              : []),
-          ]}
-        ].map((group, groupIndex) => (
-          <SidebarGroup key={group.labelKey || groupIndex}>
-            <SidebarGroupLabel className={cn("mb-2 pl-1 pr-2 text-[10px] font-black uppercase tracking-[0.35em] group-data-[collapsible=icon]:hidden", sidebarPalette.groupLabelClass)}>
+        {navGroups.map((group, groupIndex) => (
+          <SidebarGroup
+            key={group.labelKey || groupIndex}
+            className="app-sidebar-group p-0"
+            style={{ animationDelay: `${groupIndex * 55}ms` }}
+          >
+            <SidebarGroupLabel className={cn(
+              "app-sidebar-group-label-text mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-[0.28em]",
+              sidebarPalette.groupLabelClass
+            )}>
               {t(group.labelKey, { defaultValue: SIDEBAR_FALLBACK[group.labelKey] ?? group.labelKey })}
             </SidebarGroupLabel>
-            <SidebarMenu className="space-y-1.5">
+            <SidebarMenu className="gap-1">
               {group.items.map((item) => {
                 const isActive = currentRoute === item.id;
+                const label = t(item.nameKey, { defaultValue: SIDEBAR_FALLBACK[item.nameKey] ?? item.nameKey })
                 return (
                   <SidebarMenuItem key={item.id}>
                     <SidebarMenuButton
-                      onClick={() => navigate(item.id)}
+                      tooltip={label}
+                      onClick={() => handleNavigate(item.id)}
                       isActive={isActive}
                       className={cn(
-                        "app-sidebar-nav-btn flex w-full min-h-10 justify-start gap-2 rounded-xl border py-2 pl-2 pr-2 !transition-all !duration-300",
+                        "app-sidebar-nav-btn flex w-full justify-start gap-2.5 rounded-xl border py-2.5 pl-2.5 pr-2.5",
                         "[&>span:last-child]:!ml-0 [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1 [&>span:last-child]:!whitespace-normal [&>span:last-child]:break-words [&>span:last-child]:leading-snug [&>span:last-child]:text-left",
                         isActive 
                           ? sidebarPalette.activeButtonClass
@@ -439,16 +670,19 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       )}
                     >
                       <item.icon 
-                        className="shrink-0"
-                        size={20} 
-                        strokeWidth={isActive ? 3 : 2.5}
+                        className={cn(
+                          "shrink-0 transition-transform duration-300",
+                          isActive && "scale-105"
+                        )}
+                        size={18} 
+                        strokeWidth={isActive ? 2.5 : 2}
                         style={{ color: isActive ? sidebarPalette.activeIcon : sidebarPalette.idleIcon }} 
                       />
                       <span className={cn(
-                        "font-black text-sm tracking-tight group-data-[collapsible=icon]:hidden",
+                        "app-sidebar-reveal-text text-[13px] font-medium tracking-tight",
                         isActive ? sidebarPalette.activeTextClass : sidebarPalette.idleTextClass
                       )}>
-                        {t(item.nameKey, { defaultValue: SIDEBAR_FALLBACK[item.nameKey] ?? item.nameKey })}
+                        {label}
                       </span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -459,23 +693,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         ))}
       </SidebarContent>
 
-      {/* RODAPÉ: USER & THEME */}
-      <SidebarFooter className="space-y-3 shrink-0 px-2.5 py-3" style={{ backgroundColor: sidebarPalette.shell }}>
+      <SidebarFooter className="shrink-0 space-y-2.5 border-t px-2 py-3" style={{ backgroundColor: sidebarPalette.shell, borderColor: isLight ? 'rgba(226,232,240,0.9)' : 'rgba(255,255,255,0.06)' }}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <div className={cn("user-menu-trigger flex items-center justify-between rounded-[2rem] border p-4 transition-all cursor-pointer", sidebarPalette.userCardClass)}>
+            <div className={cn(
+              "user-menu-trigger flex cursor-pointer items-center justify-between rounded-2xl border p-3 transition-all duration-300",
+              sidebarPalette.userCardClass
+            )}>
                <div className="flex items-center gap-3">
-                  <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-black text-xs shadow-lg", sidebarPalette.userAvatarClass)}>
+                  <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold shadow-sm", sidebarPalette.userAvatarClass)}>
                     {getUserInitials()}
                   </div>
                   <div className="min-w-0 user-menu-text">
-                    <p className={cn("mb-1 truncate text-xs font-black leading-none", sidebarPalette.userNameClass)}>{getUserFullName()}</p>
-                    <p className={cn("text-[10px] font-bold uppercase truncate", sidebarPalette.userSubtextClass)}>
+                    <p className={cn("mb-0.5 truncate text-xs font-semibold leading-none", sidebarPalette.userNameClass)}>{getUserFullName()}</p>
+                    <p className={cn("truncate text-[10px] font-medium uppercase tracking-wide", sidebarPalette.userSubtextClass)}>
                       {planCaps.loading ? '…' : planCaps.planTitle}
                     </p>
                   </div>
                </div>
-               <ChevronsUpDown size={14} className={cn("user-menu-chevron", sidebarPalette.chevronClass)} />
+               <ChevronsUpDown size={14} className={cn("user-menu-chevron transition-transform duration-300", sidebarPalette.chevronClass)} />
             </div>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -488,7 +724,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             )}
           >
             <DropdownMenuItem
-              onClick={() => navigate('profile')}
+              onClick={() => handleNavigate('profile')}
               className={sidebarPalette.userMenuItemClass}
             >
               <User size={16} strokeWidth={2.25} />
@@ -497,6 +733,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             {isAdmin === true && (
               <DropdownMenuItem
                 onClick={() => {
+                  if (isMobile) setOpenMobile(false)
                   navigate('configuration?tab=billing')
                 }}
                 className={sidebarPalette.userMenuItemClass}
@@ -522,115 +759,34 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div 
-          className={cn("flex items-center justify-between rounded-full border p-2 px-5 group-data-[collapsible=icon]:hidden", sidebarPalette.themeCardClass)} 
-          onClick={(e) => {
-            const newTheme = theme === 'dark' ? 'light' : 'dark';
-            
-            // Captura a posição do ícone para usar como origem da animação
-            let iconX = '50%';
-            let iconY = '50%';
-            
-            if (iconRef.current) {
-              const iconRect = iconRef.current.getBoundingClientRect();
-              const iconCenterX = iconRect.left + iconRect.width / 2;
-              const iconCenterY = iconRect.top + iconRect.height / 2;
-              
-              // Calcula a posição relativa à viewport em porcentagem
-              iconX = `${(iconCenterX / window.innerWidth) * 100}%`;
-              iconY = `${(iconCenterY / window.innerHeight) * 100}%`;
-            }
-            
-            // Anima o ícone com rotação de 360 graus
-            if (iconRef.current) {
-              const iconElement = iconRef.current;
-              iconElement.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
-              iconElement.style.transform = 'rotate(360deg)';
-              
-              // Reseta a rotação após a animação
-              setTimeout(() => {
-                if (iconElement) {
-                  iconElement.style.transition = 'none';
-                  iconElement.style.transform = 'rotate(0deg)';
-                  // Força re-render para resetar
-                  requestAnimationFrame(() => {
-                    if (iconElement) {
-                      iconElement.style.transition = 'transform 0.6s cubic-bezier(0.4, 0, 0.2, 1)';
-                    }
-                  });
-                }
-              }, 600);
-            }
-            
-            // Usar View Transitions API para animação de varredura
-            if (typeof document !== 'undefined' && document.startViewTransition) {
-              const transition = document.startViewTransition(() => {
-                setTheme(newTheme);
-              });
-              
-              transition.ready.then(() => {
-                // Adiciona estilos inline para garantir que a animação funcione
-                const style = document.createElement('style');
-                style.textContent = `
-                  ::view-transition-old(root) {
-                    animation: themeSweepOut 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-                  }
-                  ::view-transition-new(root) {
-                    animation: themeSweepIn 0.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-                  }
-                  @keyframes themeSweepOut {
-                    from {
-                      clip-path: circle(100% at ${iconX} ${iconY});
-                      opacity: 1;
-                    }
-                    to {
-                      clip-path: circle(0% at ${iconX} ${iconY});
-                      opacity: 0;
-                    }
-                  }
-                  @keyframes themeSweepIn {
-                    from {
-                      clip-path: circle(0% at ${iconX} ${iconY});
-                      opacity: 0;
-                    }
-                    to {
-                      clip-path: circle(150% at ${iconX} ${iconY});
-                      opacity: 1;
-                    }
-                  }
-                `;
-                document.head.appendChild(style);
-                
-                // Remove o estilo após a transição
-                transition.finished.finally(() => {
-                  if (document.head.contains(style)) {
-                    document.head.removeChild(style);
-                  }
-                });
-              });
-            } else {
-              // Fallback se a API não estiver disponível
-              setTheme(newTheme);
+        <div
+          role="button"
+          tabIndex={0}
+          className={cn(
+            "app-sidebar-theme-toggle flex cursor-pointer items-center justify-between rounded-2xl border px-4 py-2.5 group-data-[collapsible=icon]:rounded-xl",
+            sidebarPalette.themeCardClass,
+          )}
+          onClick={handleThemeToggle}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              handleThemeToggle()
             }
           }}
         >
-           <div className={cn("flex items-center gap-2 cursor-pointer", sidebarPalette.themeTextClass)}>
-              <div ref={iconRef as React.RefObject<HTMLDivElement>} className="inline-flex">
-                {theme === 'dark' ? (
-                  <Sun 
-                    size={16} 
-                    className={sidebarPalette.themeTextClass} 
-                  />
-                ) : (
-                  <Moon 
-                    size={16} 
-                    className={sidebarPalette.themeTextClass} 
-                  />
-                )}
-              </div>
-              <span className={cn("text-[9px] font-black uppercase tracking-widest", sidebarPalette.themeTextClass)}>{t('theme.label', { defaultValue: 'Tema' })}</span>
-           </div>
-           <Switch checked={theme === 'dark'} className={sidebarPalette.switchClass} />
+          <div className={cn("flex min-w-0 items-center gap-2.5", sidebarPalette.themeTextClass)}>
+            <div id="sidebar-theme-toggle-icon" className="inline-flex shrink-0">
+              {theme === 'dark' ? (
+                <Sun size={16} className={sidebarPalette.themeTextClass} />
+              ) : (
+                <Moon size={16} className={sidebarPalette.themeTextClass} />
+              )}
+            </div>
+            <span className={cn("app-sidebar-reveal-text text-[10px] font-semibold uppercase tracking-[0.18em]", sidebarPalette.themeTextClass)}>
+              {t('theme.label', { defaultValue: 'Tema' })}
+            </span>
+          </div>
+          <Switch checked={theme === 'dark'} className={cn("app-sidebar-reveal-text shrink-0", sidebarPalette.switchClass, "pointer-events-none")} />
         </div>
       </SidebarFooter>
     </Sidebar>

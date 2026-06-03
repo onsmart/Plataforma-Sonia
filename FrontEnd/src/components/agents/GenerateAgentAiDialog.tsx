@@ -26,6 +26,7 @@ import {
   CheckCircle2,
   Loader2,
   Circle,
+  XCircle,
   Wand2,
   Headphones,
   HelpCircle,
@@ -182,42 +183,45 @@ function WizardStepper({
 
   return (
     <nav
-      className="flex flex-wrap items-center gap-1.5 sm:gap-2"
+      className="flex flex-wrap items-center gap-1 sm:gap-1.5"
       aria-label="Etapas do assistente"
     >
       {WIZARD_STEPS.map((step, index) => {
         const done = index < current
         const active = index === current
         return (
-          <div key={step.id} className="flex items-center gap-1.5 sm:gap-2">
+          <div key={step.id} className="flex items-center gap-1 sm:gap-1.5">
             {index > 0 && (
               <span
-                className="hidden h-px w-3 sm:block sm:w-5"
+                className="hidden h-px w-4 sm:block sm:w-6"
                 style={{
-                  background: done || active ? "hsl(var(--primary) / 0.45)" : borderColor,
+                  background: done
+                    ? "hsl(var(--primary) / 0.5)"
+                    : borderColor,
                 }}
                 aria-hidden
               />
             )}
             <span
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors sm:px-3 sm:text-xs",
-                active && "border-primary/40 bg-primary/10 text-foreground",
-                done && !active && "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-                !done && !active && "border-border/80 bg-muted/20 text-muted-foreground"
+                "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-all sm:px-3 sm:text-xs",
+                active && isDark && "border-primary/50 bg-primary/15 text-zinc-100",
+                active && !isDark && "border-primary/35 bg-primary/10 text-slate-900",
+                done && "border-emerald-500/35 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+                !done && !active && "border-border/60 bg-transparent text-muted-foreground"
               )}
             >
-              {done && !active ? (
+              {done ? (
                 <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-500" aria-hidden />
               ) : (
                 <span
                   className={cn(
-                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold tabular-nums",
+                    "flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold tabular-nums",
                     active
                       ? "bg-primary text-primary-foreground"
                       : isDark
-                        ? "bg-zinc-800 text-zinc-400"
-                        : "bg-zinc-200 text-zinc-600"
+                        ? "bg-zinc-800 text-zinc-500"
+                        : "bg-slate-200 text-slate-500"
                   )}
                 >
                   {index + 1}
@@ -248,8 +252,10 @@ function WizardFooter({
   return (
     <DialogFooter
       className={cn(
-        "shrink-0 flex-col-reverse gap-2 border-t px-4 py-4 sm:flex-row sm:justify-end sm:gap-3 sm:px-6",
-        isDark ? "bg-zinc-950/80" : "bg-slate-50/95"
+        "shrink-0 flex-col-reverse gap-2 border-t px-5 py-4 sm:flex-row sm:justify-end sm:gap-2.5 sm:px-6",
+        isDark
+          ? "bg-gradient-to-b from-zinc-950 to-zinc-950/95"
+          : "bg-gradient-to-b from-white to-slate-50/80"
       )}
       style={{ borderColor }}
     >
@@ -584,25 +590,25 @@ export function GenerateAgentAiDialog({
   const statusIcon = (status: string) => {
     if (status === "ok") return <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
     if (status === "warn") return <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
-    return <Circle className="h-4 w-4 shrink-0 text-red-500" />
+    return <XCircle className="h-4 w-4 shrink-0 text-red-500" />
   }
 
   const primaryBtnClass =
-    "h-10 gap-2 rounded-lg px-5 text-sm font-semibold shadow-none bg-primary text-primary-foreground hover:bg-primary/90"
+    "h-10 gap-2 rounded-xl px-5 text-sm font-semibold shadow-sm bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
   const outlineBtnClass = cn(
-    "h-10 gap-2 rounded-lg px-4 text-sm font-medium shadow-none",
+    "h-10 gap-2 rounded-xl px-4 text-sm font-medium shadow-none border transition-colors",
     isDark
-      ? "border-white/15 bg-transparent text-zinc-100 hover:bg-white/5"
-      : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+      ? "border-white/12 bg-zinc-900 text-zinc-200 hover:bg-white/5 hover:border-white/20"
+      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300"
   )
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className={cn(
-          "flex w-[calc(100vw-1.25rem)] max-w-[calc(100vw-1.25rem)] flex-col gap-0 overflow-hidden p-0 sm:w-full sm:max-w-2xl lg:max-w-[720px]",
-          "max-h-[min(92vh,880px)] rounded-xl border shadow-xl",
-          isDark ? "border-white/10 bg-zinc-950" : "border-slate-200/90 bg-white"
+          "flex w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:w-full sm:max-w-2xl lg:max-w-[740px]",
+          "max-h-[min(94vh,900px)] rounded-2xl border shadow-2xl",
+          isDark ? "border-white/8 bg-zinc-950" : "border-slate-200 bg-white"
         )}
         onPointerDownOutside={(e) =>
           (phase === "generating" || refiningDescription) && e.preventDefault()
@@ -611,32 +617,42 @@ export function GenerateAgentAiDialog({
           (phase === "generating" || refiningDescription) && e.preventDefault()
         }
       >
+        {/* Header com gradiente sutil */}
         <div
           className={cn(
-            "shrink-0 space-y-4 border-b px-4 pb-4 pt-5 sm:px-6 sm:pt-6",
-            isDark ? "border-white/10 bg-zinc-950" : "border-slate-100 bg-white"
+            "shrink-0 border-b px-5 pb-4 pt-5 sm:px-6 sm:pt-6",
+            isDark
+              ? "border-white/8 bg-gradient-to-b from-zinc-900 to-zinc-950"
+              : "border-slate-100 bg-gradient-to-b from-slate-50 to-white"
           )}
         >
-          <DialogHeader className="space-y-3 text-left">
-            <div className="flex items-start gap-3">
+          <DialogHeader className="space-y-4 text-left">
+            <div className="flex items-start gap-4">
               <span
                 className={cn(
-                  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border",
-                  isDark
-                    ? "border-cyan-500/25 bg-cyan-500/10"
-                    : "border-cyan-500/20 bg-cyan-500/10"
+                  "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border shadow-sm",
+                  phase === "validation" && validationReport?.ok
+                    ? isDark
+                      ? "border-emerald-500/30 bg-emerald-500/15 shadow-emerald-500/10"
+                      : "border-emerald-500/25 bg-emerald-50 shadow-emerald-500/10"
+                    : isDark
+                      ? "border-cyan-500/25 bg-cyan-500/10 shadow-cyan-500/10"
+                      : "border-cyan-500/20 bg-cyan-50 shadow-cyan-500/10"
                 )}
               >
                 <PhaseIcon
                   className={cn(
-                    "h-5 w-5 text-cyan-500",
+                    "h-5 w-5",
+                    phase === "validation" && validationReport?.ok
+                      ? "text-emerald-500"
+                      : "text-cyan-500",
                     phase === "generating" && "animate-spin"
                   )}
                   aria-hidden
                 />
               </span>
-              <div className="min-w-0 flex-1 space-y-1">
-                <DialogTitle className="text-lg font-semibold tracking-tight sm:text-xl">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <DialogTitle className="text-xl font-bold tracking-tight">
                   {phase === "generating" || phase === "validation"
                     ? phaseTitle
                     : "Criar agente com IA"}
@@ -650,11 +666,11 @@ export function GenerateAgentAiDialog({
                   {phase === "integrations" &&
                     "Selecione contas conectadas e as ferramentas que o agente poderá usar no chat."}
                   {phase === "brief" &&
-                    "Descreva negócio, tom e objetivos. A IA gera template, agente e validação automática."}
+                    "Descreva negócio, tom e objetivos. A IA gera o template, o agente e faz validação automática."}
                   {phase === "generating" &&
-                    "Isso costuma levar alguns segundos. Não feche esta janela."}
+                    "Aguarde enquanto a IA cria o agente. Isso costuma levar alguns segundos."}
                   {phase === "validation" &&
-                    "Revise os testes abaixo antes de colocar o agente em produção."}
+                    "Confira os resultados abaixo e abra a configuração para personalizar o agente."}
                 </DialogDescription>
               </div>
             </div>
@@ -662,65 +678,147 @@ export function GenerateAgentAiDialog({
           </DialogHeader>
         </div>
 
-        <div className="ga-ai-dialog-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+        <div className="ga-ai-dialog-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6 sm:py-6">
           {phase === "archetype" && (
-            <div className="space-y-4">
-              <Label className="text-sm font-semibold">Tipo de agente</Label>
+            <div className="space-y-5">
+              <div>
+                <Label className="text-sm font-semibold">Tipo de agente</Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Selecione o perfil que melhor descreve o objetivo do seu agente.
+                </p>
+              </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {/* FAQ */}
                 <button
                   type="button"
                   onClick={() => setArchetype("faq")}
                   className={cn(
-                    cardSurface,
-                    "p-4 text-left hover:border-primary/30",
-                    archetype === "faq" && "border-violet-500/40 bg-violet-500/10 ring-1 ring-violet-500/20"
+                    "group relative rounded-2xl border p-5 text-left transition-all duration-150",
+                    "hover:shadow-md",
+                    archetype === "faq"
+                      ? isDark
+                        ? "border-violet-500/50 bg-violet-500/10 shadow-sm ring-1 ring-violet-500/25"
+                        : "border-violet-500/40 bg-violet-50 shadow-sm ring-1 ring-violet-500/20"
+                      : isDark
+                        ? "border-white/8 bg-zinc-900/50 hover:border-violet-500/25 hover:bg-violet-500/5"
+                        : "border-slate-200 bg-white hover:border-violet-500/30 hover:bg-violet-50/40"
                   )}
                 >
-                  <div className="mb-2 flex items-center gap-2 font-medium">
-                    <HelpCircle className="h-4 w-4 text-violet-500" />
-                    FAQ
+                  <div
+                    className={cn(
+                      "mb-3.5 flex h-10 w-10 items-center justify-center rounded-xl border transition-colors",
+                      archetype === "faq"
+                        ? isDark
+                          ? "border-violet-500/30 bg-violet-500/20"
+                          : "border-violet-500/25 bg-violet-100"
+                        : isDark
+                          ? "border-white/10 bg-zinc-800"
+                          : "border-slate-200 bg-slate-100"
+                    )}
+                  >
+                    <HelpCircle
+                      className={cn(
+                        "h-5 w-5 transition-colors",
+                        archetype === "faq" ? "text-violet-500" : "text-muted-foreground"
+                      )}
+                    />
                   </div>
+                  <p className="mb-1 font-semibold text-sm">FAQ</p>
                   <p className="text-xs leading-relaxed text-muted-foreground">
-                    Responde dúvidas e orienta o usuário sem fluxo rígido de vendas.
+                    Responde dúvidas, orienta e informa. Ideal para suporte e atendimento consultivo.
                   </p>
+                  {archetype === "faq" && (
+                    <span className="absolute right-3 top-3">
+                      <CheckCircle2 className="h-4 w-4 text-violet-500" />
+                    </span>
+                  )}
                 </button>
 
+                {/* Receptivo */}
                 <button
                   type="button"
                   onClick={() => setArchetype("receptive")}
                   className={cn(
-                    cardSurface,
-                    "p-4 text-left hover:border-primary/30",
-                    archetype === "receptive" &&
-                      "border-cyan-500/40 bg-cyan-500/10 ring-1 ring-cyan-500/20"
+                    "group relative rounded-2xl border p-5 text-left transition-all duration-150",
+                    "hover:shadow-md",
+                    archetype === "receptive"
+                      ? isDark
+                        ? "border-cyan-500/50 bg-cyan-500/10 shadow-sm ring-1 ring-cyan-500/25"
+                        : "border-cyan-500/40 bg-cyan-50 shadow-sm ring-1 ring-cyan-500/20"
+                      : isDark
+                        ? "border-white/8 bg-zinc-900/50 hover:border-cyan-500/25 hover:bg-cyan-500/5"
+                        : "border-slate-200 bg-white hover:border-cyan-500/30 hover:bg-cyan-50/40"
                   )}
                 >
-                  <div className="mb-2 flex items-center gap-2 font-medium">
-                    <Headphones className="h-4 w-4 text-cyan-500" />
-                    Receptivo
+                  <div
+                    className={cn(
+                      "mb-3.5 flex h-10 w-10 items-center justify-center rounded-xl border transition-colors",
+                      archetype === "receptive"
+                        ? isDark
+                          ? "border-cyan-500/30 bg-cyan-500/20"
+                          : "border-cyan-500/25 bg-cyan-100"
+                        : isDark
+                          ? "border-white/10 bg-zinc-800"
+                          : "border-slate-200 bg-slate-100"
+                    )}
+                  >
+                    <Headphones
+                      className={cn(
+                        "h-5 w-5 transition-colors",
+                        archetype === "receptive" ? "text-cyan-500" : "text-muted-foreground"
+                      )}
+                    />
+                  </div>
+                  <div className="mb-1 flex items-center gap-2">
+                    <p className="font-semibold text-sm">Receptivo</p>
+                    <span
+                      className={cn(
+                        "rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                        isDark
+                          ? "bg-cyan-500/20 text-cyan-400"
+                          : "bg-cyan-100 text-cyan-700"
+                      )}
+                    >
+                      Popular
+                    </span>
                   </div>
                   <p className="text-xs leading-relaxed text-muted-foreground">
-                    Atendimento, dados do cliente, agenda Calendly e CRM.
+                    Coleta dados, agenda via Calendly e salva leads no CRM. Atendimento completo.
                   </p>
+                  {archetype === "receptive" && (
+                    <span className="absolute right-3 top-3">
+                      <CheckCircle2 className="h-4 w-4 text-cyan-500" />
+                    </span>
+                  )}
                 </button>
 
+                {/* SDR — em breve */}
                 <button
                   type="button"
                   disabled
                   className={cn(
-                    cardSurface,
-                    "relative border-dashed p-4 text-left opacity-55 sm:col-span-2 lg:col-span-1"
+                    "relative rounded-2xl border border-dashed p-5 text-left opacity-50 sm:col-span-2 lg:col-span-1",
+                    isDark ? "border-white/10 bg-zinc-900/30" : "border-slate-200 bg-slate-50/50"
                   )}
                 >
                   <Lock className="absolute right-3 top-3 h-3.5 w-3.5 text-muted-foreground" />
-                  <div className="mb-2 flex flex-wrap items-center gap-2 font-medium">
-                    <Rocket className="h-4 w-4" />
-                    SDR
-                    <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <div
+                    className={cn(
+                      "mb-3.5 flex h-10 w-10 items-center justify-center rounded-xl border",
+                      isDark ? "border-white/10 bg-zinc-800" : "border-slate-200 bg-slate-100"
+                    )}
+                  >
+                    <Rocket className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div className="mb-1 flex items-center gap-2">
+                    <p className="font-semibold text-sm">SDR</p>
+                    <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Em breve
                     </span>
                   </div>
-                  <p className="text-xs leading-relaxed text-muted-foreground">Em desenvolvimento.</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    Prospecção ativa e qualificação de leads com outbound automatizado.
+                  </p>
                 </button>
               </div>
             </div>
@@ -840,19 +938,24 @@ export function GenerateAgentAiDialog({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="ga-ai-name" className="text-sm font-semibold">
-                    Nome do agente (opcional)
+                    Nome do agente
+                    <span className="ml-1.5 text-xs font-normal text-muted-foreground">(opcional)</span>
                   </Label>
                   <Input
                     id="ga-ai-name"
                     value={agentName}
                     onChange={(e) => setAgentName(e.target.value)}
-                    placeholder="Ex.: Assistente Comercial"
+                    placeholder="Ex.: Assistente Comercial, Atendente Clara..."
                     className={inputClass}
+                    maxLength={80}
                   />
+                  <p className="text-[11px] text-muted-foreground">
+                    Se deixar em branco, a IA sugere um nome baseado na descrição.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="ga-ai-lang" className="text-sm font-semibold">
-                    Idioma
+                    Idioma do agente
                   </Label>
                   <Select
                     value={agentLanguage}
@@ -875,17 +978,23 @@ export function GenerateAgentAiDialog({
               </div>
 
               <div className="space-y-2">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <Label htmlFor="ga-ai-desc" className="text-sm font-semibold">
-                    Tema e finalidade do agente
-                  </Label>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <Label htmlFor="ga-ai-desc" className="text-sm font-semibold">
+                      Descrição do agente
+                    </Label>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      Descreva o negócio, o público, o tom e o que o agente deve fazer.
+                    </p>
+                  </div>
                   <Button
                     type="button"
                     variant="secondary"
                     size="sm"
-                    className={cn("h-9 shrink-0 rounded-lg", outlineBtnClass)}
+                    className={cn("h-9 shrink-0 rounded-xl", outlineBtnClass)}
                     disabled={refiningDescription || !description.trim() || !claudeAvailable}
                     onClick={() => void handleRefineDescription()}
+                    title={!claudeAvailable ? "Requer Claude configurado no servidor" : undefined}
                   >
                     {refiningDescription ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -897,34 +1006,49 @@ export function GenerateAgentAiDialog({
                 </div>
                 <Textarea
                   id="ga-ai-desc"
-                  rows={6}
+                  rows={7}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Descreva o negócio, público, tom de voz e o que o agente deve fazer no atendimento..."
+                  placeholder="Ex.: Clínica odontológica que atende via WhatsApp. O agente deve recepcionar pacientes, tirar dúvidas sobre tratamentos, coletar nome e telefone, e agendar consultas pelo Calendly. Tom amigável e profissional."
                   className={cn(
-                    "min-h-[140px] resize-y rounded-lg border shadow-none",
+                    "min-h-[160px] resize-y rounded-xl border shadow-none",
                     isDark
-                      ? "border-white/10 bg-zinc-900/90 text-zinc-100 placeholder:text-zinc-500"
-                      : "border-slate-200 bg-white"
+                      ? "border-white/10 bg-zinc-900/90 text-zinc-100 placeholder:text-zinc-600"
+                      : "border-slate-200 bg-white placeholder:text-slate-400"
                   )}
                 />
-                {!claudeAvailable && (
-                  <p className="text-xs text-muted-foreground">
-                    Melhorar descrição requer Claude configurado no servidor.
+                <div className="flex items-center justify-between">
+                  {!claudeAvailable ? (
+                    <p className="text-[11px] text-muted-foreground">
+                      "Melhorar com IA" requer Claude configurado no servidor.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      Quanto mais detalhada a descrição, melhor o agente gerado.
+                    </p>
+                  )}
+                  <p
+                    className={cn(
+                      "text-[11px] tabular-nums",
+                      description.length > 1800 ? "text-amber-500" : "text-muted-foreground"
+                    )}
+                  >
+                    {description.length} caracteres
                   </p>
-                )}
+                </div>
               </div>
 
               {generationError && (
                 <div
                   className={cn(
-                    "rounded-lg border px-3 py-2.5 text-sm",
+                    "flex gap-3 items-start rounded-xl border px-4 py-3 text-sm",
                     isDark
                       ? "border-red-500/30 bg-red-500/10 text-red-200"
                       : "border-red-200 bg-red-50 text-red-800"
                   )}
                 >
-                  {generationError}
+                  <XCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{generationError}</span>
                 </div>
               )}
             </div>
@@ -940,9 +1064,11 @@ export function GenerateAgentAiDialog({
                     <li
                       key={step.title}
                       className={cn(
-                        "flex gap-3 rounded-xl border px-3.5 py-3.5 transition-colors",
+                        "flex gap-3.5 rounded-2xl border px-4 py-4 transition-all duration-300",
                         active
-                          ? "border-cyan-500/35 bg-cyan-500/[0.07] shadow-sm"
+                          ? isDark
+                            ? "border-cyan-500/35 bg-cyan-500/[0.08] shadow-sm shadow-cyan-500/5"
+                            : "border-cyan-500/30 bg-cyan-50/80 shadow-sm"
                           : cardSurface
                       )}
                     >
@@ -952,11 +1078,18 @@ export function GenerateAgentAiDialog({
                         ) : active ? (
                           <Loader2 className="h-5 w-5 animate-spin text-cyan-500" aria-hidden />
                         ) : (
-                          <Circle className="h-4 w-4 text-muted-foreground/45" aria-hidden />
+                          <Circle className="h-4 w-4 text-muted-foreground/35" aria-hidden />
                         )}
                       </span>
                       <span className="min-w-0 space-y-0.5">
-                        <span className="block text-sm font-medium">{step.title}</span>
+                        <span
+                          className={cn(
+                            "block text-sm font-semibold",
+                            !done && !active && "text-muted-foreground"
+                          )}
+                        >
+                          {step.title}
+                        </span>
                         <span className="block text-xs leading-snug text-muted-foreground">
                           {step.detail}
                         </span>
@@ -965,16 +1098,16 @@ export function GenerateAgentAiDialog({
                   )
                 })}
               </ol>
-              <div className="flex flex-col items-center gap-2 pt-1">
+              <div className="flex flex-col items-center gap-2.5 pt-1">
                 <div
-                  className="gf-flow-indeterminate-track w-full max-w-sm"
+                  className="gf-flow-indeterminate-track w-full max-w-xs"
                   role="progressbar"
                   aria-valuetext={`Em andamento, ${elapsedSec} segundos`}
                 >
                   <div className="gf-flow-indeterminate-bar" />
                 </div>
                 <p className="text-[11px] tabular-nums text-muted-foreground">
-                  Tempo decorrido: {elapsedSec}s
+                  {elapsedSec}s decorridos
                 </p>
               </div>
             </div>
@@ -982,47 +1115,136 @@ export function GenerateAgentAiDialog({
 
           {phase === "validation" && validationReport && (
             <div className="space-y-4">
+              {/* Banner de status — compacto */}
               <div
                 className={cn(
-                  "rounded-xl border p-4 sm:p-5",
+                  "flex items-start gap-3 rounded-xl border px-4 py-3.5",
                   validationReport.ok
                     ? "border-emerald-500/30 bg-emerald-500/10"
                     : "border-amber-500/30 bg-amber-500/10"
                 )}
               >
-                <p className="font-semibold">
-                  {validationReport.ok
-                    ? "Agente validado com sucesso"
-                    : "Agente criado com avisos"}
-                </p>
-                <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">
-                  Revise os testes abaixo antes de colocar em produção.
-                </p>
-              </div>
-              <ul
-                className={cn(
-                  "ga-ai-dialog-scroll max-h-[min(220px,35vh)] space-y-2.5 overflow-y-auto rounded-xl border p-3 sm:p-4",
-                  cardSurface
+                {validationReport.ok ? (
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
+                ) : (
+                  <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
                 )}
-              >
-                {validationReport.checks.map((c) => (
-                  <li key={c.id} className="flex gap-2.5 text-sm items-start leading-relaxed">
-                    {statusIcon(c.status)}
-                    <span className="min-w-0">
-                      <strong className="font-medium">{c.label}:</strong> {c.message}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold leading-snug">
+                    {validationReport.ok
+                      ? "Tudo certo — agente pronto para uso"
+                      : "Agente criado com avisos"}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    {validationReport.ok
+                      ? `${validationReport.checks.length} verificações passaram com sucesso.`
+                      : `${validationReport.checks.filter(c => c.status !== "ok").length} ${validationReport.checks.filter(c => c.status !== "ok").length === 1 ? "item precisa" : "itens precisam"} de atenção antes de usar em produção.`}
+                  </p>
+                </div>
+              </div>
+
+              {/* Itens com warn/fail — destaque individual */}
+              {validationReport.checks.some(c => c.status !== "ok") && (
+                <div className="space-y-2">
+                  {validationReport.checks
+                    .filter(c => c.status !== "ok")
+                    .map(c => (
+                      <div
+                        key={c.id}
+                        className={cn(
+                          "flex gap-3 items-start rounded-xl border px-4 py-3",
+                          c.status === "warn"
+                            ? isDark
+                              ? "border-amber-500/25 bg-amber-500/10"
+                              : "border-amber-200 bg-amber-50"
+                            : isDark
+                              ? "border-red-500/25 bg-red-500/10"
+                              : "border-red-200 bg-red-50"
+                        )}
+                      >
+                        {statusIcon(c.status)}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium leading-snug">{c.label}</p>
+                          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                            {c.message}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* Verificações OK — lista compacta */}
+              {validationReport.checks.some(c => c.status === "ok") && (
+                <div className={cn(cardSurface, "px-4 py-3.5")}>
+                  <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    {validationReport.checks.every(c => c.status === "ok")
+                      ? "Verificações"
+                      : "Verificações OK"}
+                  </p>
+                  <ul className="space-y-2">
+                    {validationReport.checks
+                      .filter(c => c.status === "ok")
+                      .map(c => (
+                        <li key={c.id} className="flex items-start gap-2.5 text-sm">
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                          <span className="min-w-0 leading-snug">
+                            <span className="font-medium">{c.label}</span>
+                            {c.message && (
+                              <span className="ml-1 text-muted-foreground">— {c.message}</span>
+                            )}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Chat de teste — bolhas de conversa */}
               {validationReport.chatTurn && (
-                <div className={cn(cardSurface, "p-3.5 text-xs space-y-2")}>
-                  <p>
-                    <strong className="font-medium">Chat teste:</strong>{" "}
-                    {validationReport.chatTurn.userMessage}
-                  </p>
-                  <p className="text-muted-foreground line-clamp-4 leading-relaxed">
-                    {validationReport.chatTurn.replyPreview || "(sem resposta)"}
-                  </p>
+                <div className={cn(cardSurface, "overflow-hidden")}>
+                  <div
+                    className={cn(
+                      "border-b px-4 py-2.5",
+                      isDark ? "border-white/10" : "border-slate-100"
+                    )}
+                  >
+                    <p className="text-xs font-semibold text-muted-foreground">
+                      Conversa de teste
+                    </p>
+                  </div>
+                  <div className="space-y-3 p-4">
+                    <div className="flex justify-end">
+                      <div
+                        className={cn(
+                          "max-w-[82%] rounded-2xl rounded-tr-sm px-3.5 py-2.5 text-sm leading-relaxed",
+                          isDark
+                            ? "bg-primary/25 text-zinc-100"
+                            : "bg-primary/[0.12] text-slate-800"
+                        )}
+                      >
+                        {validationReport.chatTurn.userMessage}
+                      </div>
+                    </div>
+                    {validationReport.chatTurn.replyPreview ? (
+                      <div className="flex justify-start">
+                        <div
+                          className={cn(
+                            "max-w-[85%] rounded-2xl rounded-tl-sm px-3.5 py-2.5 text-sm leading-relaxed",
+                            isDark
+                              ? "bg-zinc-800/90 text-zinc-200"
+                              : "bg-slate-100 text-slate-700"
+                          )}
+                        >
+                          {validationReport.chatTurn.replyPreview}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="py-1 text-center text-xs text-muted-foreground">
+                        (sem resposta de teste)
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1070,7 +1292,14 @@ export function GenerateAgentAiDialog({
         {phase === "validation" && validationReport && (
           <WizardFooter borderColor={panelBorder} isDark={isDark}>
             <Button
-              className={cn(primaryBtnClass, "w-full sm:w-auto")}
+              variant="outline"
+              className={outlineBtnClass}
+              onClick={() => handleOpenChange(false)}
+            >
+              Fechar
+            </Button>
+            <Button
+              className={primaryBtnClass}
               onClick={() => {
                 if (createdAgentId) {
                   onCreated(createdAgentId, { navigateToConfig: true })
@@ -1080,7 +1309,14 @@ export function GenerateAgentAiDialog({
                 }
               }}
             >
-              {createdAgentId ? "Abrir configuração do agente" : "Voltar"}
+              {createdAgentId ? (
+                <>
+                  <Wand2 className="h-4 w-4" />
+                  Abrir configuração
+                </>
+              ) : (
+                "Voltar"
+              )}
             </Button>
           </WizardFooter>
         )}

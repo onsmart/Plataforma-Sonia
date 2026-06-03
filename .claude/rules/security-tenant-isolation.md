@@ -1,0 +1,35 @@
+# Segurança — tenant isolation (Sonia)
+
+Aplicar quando trabalhar em: `BackEnd/src/api/controllers/**/*.ts`, `BackEnd/src/api/routes/**/*.ts`, `BackEnd/src/utils/request-auth.ts`, `BackEnd/src/utils/tenant-ownership.ts`, `BackEnd/src/middleware/auth.middleware.ts`
+
+## Regras obrigatórias
+
+1. **Identidade:** após `requireAuth`, usar somente `req.user.email` / `req.user.companiesId` (`getAuthenticatedEmail`, `getAuthenticatedCompaniesId`). **Proibido** `req.query.email`, `req.body.email`, `x-user-email`.
+
+2. **Service role:** o backend usa Supabase service role — **RLS não protege a API**. Toda query/mutação sensível deve filtrar por `companies_id` ou usar helpers em `tenant-ownership.ts`.
+
+3. **IDOR:** endpoints com `:id` devem validar propriedade do recurso antes de ler/atualizar/deletar. Reutilizar:
+   - `assertResourceOwnedByCompany`
+   - `assertAgentDecisionOwnedByCompany`
+   - `assertWhatsAppMessageOwnedByCompany`
+   - `assertCalendlyIntegrationOwnedByUser`
+   - `assertCRMIntegrationOwnedByUser`
+
+4. **Rotas públicas:** webhooks exigem assinatura (Stripe, Meta, Calendly) + rate limit. `/cache/*` só com admin ou `ENABLE_CACHE_ADMIN=false`.
+
+5. **RBAC:** mutações → `requirePermission('basic.write')` ou `requireAdmin` (billing). Leituras sensíveis → `requirePermission('basic.read')`.
+
+6. **Auditoria:** eventos críticos via `recordSecurityAuditEvent` — nunca logar tokens/senhas.
+
+## Anti-padrões
+
+```typescript
+// ❌ NUNCA
+const email = req.body.email || req.headers['x-user-email']
+await supabase.from('tb_agents').update(payload).eq('id', agentId)
+
+// ✅ SEMPRE
+const email = getAuthenticatedEmail(req)
+const companiesId = getAuthenticatedCompaniesId(req)
+await assertResourceOwnedByCompany('tb_agents', agentId, companiesId)
+```

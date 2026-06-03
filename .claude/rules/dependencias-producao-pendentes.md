@@ -1,8 +1,3 @@
----
-description: Backlog de dependências e itens adiados para produção — consultar antes de implementar infra ou assumir que algo já está pronto
-alwaysApply: true
----
-
 # Dependências pendentes (produção / outro momento)
 
 Registro vivo do que **não está pronto** e foi **explicitamente adiado** para produção, configuração externa ou sprint futura.
@@ -48,7 +43,7 @@ Detalhe operacional (passos SMTP, Stripe, etc.): `docs/prioridades-correcoes-atu
 
 | Status | Item | Onde / como resolver |
 |--------|------|----------------------|
-| `[ ]` | Produtos/preços no Stripe (6 planos REC_* / COM_*) | Valores comerciais ainda não fechados; UI mostra “A definir” / “Sob proposta”. |
+| `[ ]` | Produtos/preços no Stripe (6 planos REC_* / COM_*) | Valores comerciais ainda não fechados; UI mostra "A definir" / "Sob proposta". |
 | `[ ]` | `STRIPE_PRICE_*` no `.env` do backend | Sem IDs reais, checkout falha. |
 | `[ ]` | Webhook Stripe em produção | Handler no repo; falta `STRIPE_WEBHOOK_SECRET` + deploy estável. |
 | `[ ]` | SSO corporativo (SAML / OIDC) | Previsto no catálogo de planos enterprise; não implementado. |
@@ -85,7 +80,7 @@ Detalhe operacional (passos SMTP, Stripe, etc.): `docs/prioridades-correcoes-atu
 
 ## P1 — Criar Agente com IA (wizard)
 
-**Objetivo:** botão **“Criar agente com IA”** no hub de agentes, **análogo** ao **“Criar fluxo com IA”** (`FrontEnd/src/components/flows/GenerateFlowAiDialog.tsx`, `Flows.tsx`). Gera agente + fluxo associado usando **somente blocos e capacidades já existentes** na plataforma.
+**Objetivo:** botão **"Criar agente com IA"** no hub de agentes, **análogo** ao **"Criar fluxo com IA"** (`FrontEnd/src/components/flows/GenerateFlowAiDialog.tsx`, `Flows.tsx`). Gera agente + fluxo associado usando **somente blocos e capacidades já existentes** na plataforma.
 
 | Status | Item | Onde / como resolver |
 |--------|------|----------------------|
@@ -107,12 +102,12 @@ Detalhe operacional (passos SMTP, Stripe, etc.): `docs/prioridades-correcoes-atu
 
 | Status | Item | Onde / como resolver |
 |--------|------|----------------------|
-| `[ ]` | Botão “Reenviar e-mail de confirmação” | `AuthPage.tsx` → `supabase.auth.resend({ type: 'signup', email })`. |
-| `[ ]` | Tela dedicada “Confirme seu e-mail” | Melhor que só toast após signup. |
+| `[ ]` | Botão "Reenviar e-mail de confirmação" | `AuthPage.tsx` → `supabase.auth.resend({ type: 'signup', email })`. |
+| `[ ]` | Tela dedicada "Confirme seu e-mail" | Melhor que só toast após signup. |
 | `[ ]` | CAPTCHA no signup | Supabase Auth → reduz abuso. |
 | `[ ]` | Mensagens i18n para erros de auth | SMTP, 429, e-mail não confirmado. |
 | `[ ]` | `VITE_API_URL` por ambiente | Consolidar localhost vs IP do servidor. |
-| `[ ]` | Integração de voz na UI | `Integrations.tsx` — “em breve”. |
+| `[ ]` | Integração de voz na UI | `Integrations.tsx` — "em breve". |
 | `[ ]` | Gmail OAuth nativo | Hoje Gmail é IMAP/SMTP + app password; OAuth seria frente separada (`docs/HANDOFF_CERTIFICADO_GMAIL.md`). |
 | `[ ]` | CA corporativa para TLS Gmail/IMAP | `BackEnd/certs/` — certificado real do ambiente pendente. |
 
@@ -135,14 +130,14 @@ Detalhe operacional (passos SMTP, Stripe, etc.): `docs/prioridades-correcoes-atu
 - `sp_create_user_with_company` + fix `pgcrypto` / `search_path`.
 - UI login/cadastro (`AuthPage`, `LineWaves`), perfil/nome (`AuthContext`, `user-display.ts`).
 - Catálogo dos 6 planos + `free` (0 atendimentos) no backend; UI conta gratuita + CTA faturamento (`Home.tsx`, `Settings.tsx`).
-- **Criar fluxo com IA** (`GenerateFlowAiDialog.tsx`) — usar como referência de UX/API para o wizard de agente; **não** confundir com “Criar agente com IA” (pendente acima).
+- **Criar fluxo com IA** (`GenerateFlowAiDialog.tsx`) — usar como referência de UX/API para o wizard de agente; **não** confundir com "Criar agente com IA" (pendente acima).
 - Máscara CPF/CNPJ no cadastro (`formatDocument` em `account-types.ts`).
 
 ---
 
 ## Instrução para o agente
 
-1. **Não assumir** que SMTP Auth, Stripe live, OAuth, Termos, matriz de planos testada ou “Criar agente com IA” já existem — checar esta lista.
+1. **Não assumir** que SMTP Auth, Stripe live, OAuth, Termos, matriz de planos testada ou "Criar agente com IA" já existem — checar esta lista.
 2. **Não implementar** itens P0/P1 de infra sem o usuário pedir ou fornecer credenciais/domínio.
 3. Ao gerar fluxos/agentes com IA, **nunca inventar blocos ou integrações** — validar contra catálogo existente antes de persistir.
 4. Ao fechar um item, atualizar **esta rule** e, se relevante, `docs/prioridades-correcoes-atualizacoes.md`.

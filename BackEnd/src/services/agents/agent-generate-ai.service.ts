@@ -226,6 +226,7 @@ export async function generateAgentWithAi(
   const plan = await generateSingleAgentConversationPlanWithOpenAI(refinedBrief, lang, {
     archetypeHint: archetypeHint(params.archetype),
     toolsSummary,
+    rawDescription,
   })
 
   if (!plan) {

@@ -15,6 +15,7 @@ import { Separator } from "./components/ui/separator"
 import {
   SidebarInset,
   SidebarProvider,
+  SidebarRail,
   SidebarTrigger,
 } from "./components/ui/sidebar"
 import { ThemeProvider } from "./components/theme-provider"
@@ -90,11 +91,12 @@ function AppShell({ currentRoute, getPageTitle }: { currentRoute: RoutePath; get
   const CurrentPage = routeComponents[currentRoute]
 
   return (
-    <SidebarProvider className="[--sidebar-width:18rem]">
+    <SidebarProvider className="[--sidebar-width:18rem] [--sidebar-width-icon:4.75rem]">
       <AppSidebar />
+      <SidebarRail className="hidden md:flex" />
       <SidebarInset className="min-h-0 min-w-0 max-w-full overflow-hidden bg-background">
         <header
-          className="sticky top-0 z-50 flex h-16 min-w-0 max-w-full shrink-0 items-center justify-between overflow-hidden border-b border-border bg-background pr-4 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
+          className="sticky top-0 z-50 flex h-16 min-w-0 max-w-full shrink-0 items-center justify-between overflow-hidden border-b border-border bg-background pr-4 transition-[height,padding,margin] duration-[var(--sidebar-transition-duration,420ms)] ease-[var(--sidebar-transition-ease,cubic-bezier(0.22,1,0.36,1))] group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12"
         >
           <div className="flex min-w-0 items-center gap-2 px-4">
             <SidebarTrigger className="-ml-1 text-foreground hover:bg-muted" />
