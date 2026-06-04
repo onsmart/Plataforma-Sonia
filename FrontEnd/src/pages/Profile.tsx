@@ -49,7 +49,7 @@ import {
 } from "../lib/user-display"
 
 const panelClass =
-    "rounded-xl border border-border/80 bg-card/30 shadow-sm transition-shadow hover:shadow-md"
+    "rounded-xl border border-border/60 bg-white/85 backdrop-blur-sm shadow-sm transition-all hover:bg-white/95 hover:shadow-md dark:border-white/[0.07] dark:bg-card/60 dark:hover:bg-card/75"
 
 type BillingUsageDetails = {
     catalog_plan?: string

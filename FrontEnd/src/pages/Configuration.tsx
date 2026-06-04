@@ -225,11 +225,11 @@ function NotificationPreferences() {
             className="border-none overflow-hidden"
             style={{ 
                 borderRadius: '1.5rem',
-                backgroundColor: isDark ? '#18181b' : '#ffffff',
-                border: isDark ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgb(228 228 231)',
-                boxShadow: isDark
-                    ? '0 12px 32px -12px rgba(0, 0, 0, 0.45)'
-                    : '0 10px 25px -5px rgba(0, 0, 0, 0.06), 0 4px 6px -2px rgba(0, 0, 0, 0.04)',
+                backgroundColor: isDark ? 'hsl(var(--card) / 0.6)' : 'rgba(255, 255, 255, 0.85)',
+                backdropFilter: 'blur(8px)',
+                WebkitBackdropFilter: 'blur(8px)',
+                border: isDark ? '1px solid rgba(255,255,255,0.07)' : '1px solid hsl(var(--border) / 0.6)',
+                boxShadow: isDark ? 'none' : '0 4px 12px rgba(0,0,0,0.04)',
             }}
         >
             <CardHeader>
@@ -464,7 +464,7 @@ function Team() {
                             <div className="text-center py-8 text-muted-foreground">{t('team.empty')}</div>
                         ) : (
                             members.map((member, i) => (
-                                <div key={i} className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                                <div key={i} className="flex items-center justify-between p-4 border border-border/60 rounded-lg bg-white/85 backdrop-blur-sm dark:border-white/[0.07] dark:bg-card/60">
                                     <div className="flex items-center gap-4 flex-1">
                                         <Avatar>
                                             <AvatarFallback className="uppercase">
@@ -598,7 +598,7 @@ export function Configuration() {
     }
 
     return (
-        <div className="space-y-6 min-h-screen -m-4 bg-[#F8FAFC] p-8 dark:bg-background">
+        <div className="space-y-6 min-h-screen -m-4 p-8">
             <div>
                 <h2 className="text-2xl font-bold tracking-tight">{t('header.title')}</h2>
                 <p className="text-muted-foreground">{t('header.description')}</p>
@@ -637,7 +637,7 @@ export function Configuration() {
                 <div className="flex-1">
                     {activeTab === "general" && <Settings initialTab={settingsTab} />}
                     {activeTab === "events" && (
-                        <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-8 pb-24 dark:bg-background">
+                        <div className="min-h-screen -m-4 space-y-6 p-8 pb-24">
                             <NotificationPreferences />
                             
                             {/* SYSTEM NOTIFICATIONS CARD */}
@@ -645,11 +645,11 @@ export function Configuration() {
                                 className="border-none overflow-hidden"
                                 style={{ 
                                     borderRadius: '1.5rem',
-                                    backgroundColor: theme === 'dark' ? '#18181b' : '#ffffff',
-                                    border: theme === 'dark' ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgb(228 228 231)',
-                                    boxShadow: theme === 'dark'
-                                        ? '0 12px 32px -12px rgba(0, 0, 0, 0.45)'
-                                        : '0 10px 25px -5px rgba(0, 0, 0, 0.06), 0 4px 6px -2px rgba(0, 0, 0, 0.04)',
+                                    backgroundColor: theme === 'dark' ? 'hsl(var(--card) / 0.6)' : 'rgba(255, 255, 255, 0.85)',
+                                    backdropFilter: 'blur(8px)',
+                                    WebkitBackdropFilter: 'blur(8px)',
+                                    border: theme === 'dark' ? '1px solid rgba(255,255,255,0.07)' : '1px solid hsl(var(--border) / 0.6)',
+                                    boxShadow: theme === 'dark' ? 'none' : '0 4px 12px rgba(0,0,0,0.04)',
                                 }}
                             >
                                 <CardHeader>

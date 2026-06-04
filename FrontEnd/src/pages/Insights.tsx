@@ -57,7 +57,14 @@ import {
     Sparkles,
     Mail,
     Linkedin,
-    AlertCircle
+    AlertCircle,
+    Activity,
+    Bot,
+    Users,
+    CalendarClock,
+    RefreshCw,
+    AlertTriangle,
+    ArrowRight,
 } from "lucide-react"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
 import { Button } from "../components/ui/button"
@@ -71,8 +78,9 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu"
-import { AgentService } from "../services/api"
+import { AgentService, KPIService, DashboardData, type KPIMetrics } from "../services/api"
 import { useAuth } from "../contexts/AuthContext"
+import { useNavigation } from "../contexts/NavigationContext"
 import { cn } from "../components/ui/utils"
 import { toast } from "sonner"
 import ExcelJS from "exceljs"
@@ -284,6 +292,21 @@ export function Insights() {
     const [activeTab, setActiveTab] = useState<string>('overview')
     const [analyticsIssues, setAnalyticsIssues] = useState<string[]>([])
     const { user } = useAuth()
+    const { navigate } = useNavigation()
+
+    // Account summary state (metrics from Home page)
+    const [dashData, setDashData] = useState<DashboardData | null>(null)
+    const [kpiData, setKpiData] = useState<KPIMetrics | null>(null)
+    const [accountUsage, setAccountUsage] = useState<{
+        conversationsUsed: number
+        conversationsLimit: number | null
+        usageLimitReached: boolean
+        planTitle?: string
+        hasPaidAccess?: boolean
+        isFreeAccount?: boolean
+    } | null>(null)
+    const [dashLoading, setDashLoading] = useState(true)
+    const [dashRefreshing, setDashRefreshing] = useState(false)
     
     // Garantir que as traduções estejam carregadas
     useEffect(() => {
@@ -369,6 +392,46 @@ export function Insights() {
         load()
     }, [period, user?.email, t])
 
+    const loadAccountData = async () => {
+        setDashRefreshing(true)
+        try {
+            const [dash, kpiRes, usageRes] = await Promise.all([
+                AgentService.getDashboardStats(),
+                KPIService.getKPIs().catch(() => null),
+                AgentService.getSubscriptionUsage().catch(() => null),
+            ])
+            setDashData(dash)
+            setKpiData(kpiRes)
+            if (usageRes) {
+                const limit = usageRes.conversations_limit ?? usageRes.messages_limit ?? null
+                const used = usageRes.conversations_used ?? usageRes.messages_used ?? 0
+                const hasPaidAccess = Boolean(usageRes.has_paid_access)
+                const isFreeAccount = Boolean(usageRes.is_free_account ?? !hasPaidAccess)
+                setAccountUsage({
+                    conversationsUsed: used,
+                    conversationsLimit: isFreeAccount ? 0 : limit,
+                    usageLimitReached: Boolean(
+                        usageRes.usage_limit_reached ??
+                            (isFreeAccount || (limit != null && used >= limit))
+                    ),
+                    planTitle: usageRes.plan_title,
+                    hasPaidAccess,
+                    isFreeAccount,
+                })
+            } else {
+                setAccountUsage(null)
+            }
+        } finally {
+            setDashLoading(false)
+            setDashRefreshing(false)
+        }
+    }
+
+    useEffect(() => {
+        void loadAccountData()
+    }, [])
+
+
     const overviewData = data?.overview || []
     const overviewChartData = useMemo(
         () =>
@@ -383,12 +446,12 @@ export function Insights() {
 
     const surfaceCard = cn(
         'overflow-hidden rounded-2xl border shadow-sm backdrop-blur-sm',
-        'border-border/70 bg-card/90 dark:border-border/60 dark:bg-card/50'
+        'border-border/60 bg-white/85 dark:border-white/[0.07] dark:bg-card/60'
     )
 
     if (loading) {
         return (
-            <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 bg-gradient-to-b from-slate-50 to-slate-100/80 p-8 dark:from-zinc-950 dark:to-zinc-900">
+            <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-8">
                 <Loader2 className="h-9 w-9 animate-spin text-primary" />
                 <p className="text-sm text-muted-foreground">{t('loading', { defaultValue: 'Carregando analytics…' })}</p>
             </div>
@@ -792,8 +855,54 @@ export function Insights() {
         )
     }
 
+    // Derived account summary values
+    const acStats = dashData?.stats
+    const acAgents = dashData?.agents ?? []
+    const acConnected = acAgents.filter((a) => a.status_id === 1).length
+    const acIsFree = accountUsage?.isFreeAccount === true
+    const acLimit = acIsFree ? 0 : (accountUsage?.conversationsLimit ?? null)
+    const acUsed = accountUsage?.conversationsUsed ?? 0
+    const acRemaining = acIsFree ? 0 : acLimit != null ? Math.max(0, acLimit - acUsed) : null
+    const acPercent =
+        !acIsFree && acLimit != null && acLimit > 0
+            ? Math.min(100, Math.round((acUsed / acLimit) * 100))
+            : 0
+    const acWarning = !acIsFree && acPercent >= 90 && !accountUsage?.usageLimitReached
+    const acBlocked = acIsFree || accountUsage?.usageLimitReached === true
+
+    const acSummaryTiles = [
+        {
+            label: "Interações",
+            hint: "Volume registrado na conta",
+            value: acStats?.totalInteractions ?? 0,
+            icon: MessageSquare,
+            route: "insights" as const,
+        },
+        {
+            label: "Leads ativos",
+            hint: "Contatos em andamento",
+            value: acStats?.activeLeads ?? 0,
+            icon: Users,
+            route: "inbox" as const,
+        },
+        {
+            label: "Agentes",
+            hint: "Configurados para você",
+            value: acAgents.length,
+            icon: Bot,
+            route: "agents" as const,
+        },
+        {
+            label: "Conectados agora",
+            hint: "Agentes em operação",
+            value: acConnected,
+            icon: Activity,
+            route: "cockpit" as const,
+        },
+    ]
+
     return (
-        <div className="min-h-screen -m-4 space-y-8 bg-gradient-to-b from-slate-50 via-white/50 to-slate-100/90 p-4 sm:p-6 lg:p-8 dark:from-zinc-950 dark:via-zinc-950/95 dark:to-zinc-900">
+        <div className="min-h-screen -m-4 space-y-8 p-4 sm:p-6 lg:p-8">
             <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div className="space-y-2">
                     <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-primary">

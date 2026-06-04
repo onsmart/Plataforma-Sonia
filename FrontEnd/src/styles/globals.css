@@ -47,49 +47,54 @@
 
 @layer base {
   :root {
-    /* 
-      LIGHT MODE — contraste reforçado (alinhado à Caixa de Entrada)
-      Fundo da página um passo abaixo do branco dos cards; bordas e muted mais visíveis.
+    /*
+      LIGHT MODE — temperatura de cor azul-lavanda suave, coerente com a Aurora.
+      O fundo absorve o tom da Aurora (azul-violeta) em vez de contrastar com branco puro.
+      Resultado: interface coesa do topo ao rodapé, sem quebra visual entre Aurora e conteúdo.
     */
-    --background: 220 14% 96%;
-    --foreground: 222 47% 11%;
+    --background: 228 55% 97%;       /* #f1f2fd — lavanda-azul muito suave */
+    --foreground: 222 47% 10%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    /* Cards levemente tintados para integrar com o background */
+    --card: 228 40% 99%;             /* #fafaff — quase branco com leve tinte azul */
+    --card-foreground: 222 47% 10%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover: 228 40% 99%;
+    --popover-foreground: 222 47% 10%;
 
     --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 220 13% 92%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 225 25% 93%;
+    --secondary-foreground: 222 47% 10%;
 
-    --muted: 220 13% 92%;
-    --muted-foreground: 215 18% 38%;
+    --muted: 225 25% 93%;
+    --muted-foreground: 222 35% 32%;  /* mais escuro para contraste sobre fundo tintado */
 
-    --accent: 220 13% 92%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 225 25% 93%;
+    --accent-foreground: 222 47% 10%;
 
-    /* Darker red for readable destructive text on white/light surfaces */
+    /* Darker red for readable destructive text on light surfaces */
     --destructive: 0 72% 46%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 215 20% 82%;
-    --input: 215 20% 82%;
+    --border: 228 22% 83%;           /* borda levemente tintada — integra ao fundo */
+    --input: 228 22% 83%;
     --ring: 221 83% 53%;
 
     --radius: 0.75rem;
 
-    /* Sidebar - High Contrast (Dark Navy) */
-    --sidebar-background: 222.2 47.4% 11.2%;
-    --sidebar-foreground: 210 40% 98%;
+    /*
+      Sidebar — light mode usa glass transparente via AppSidebar.tsx.
+      Estes valores são sobrescritos por inline-style no componente, mas servem de fallback.
+    */
+    --sidebar-background: 210 40% 98%;
+    --sidebar-foreground: 222 47% 11%;
     --sidebar-primary: 221.2 83.2% 53.3%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 217.2 32.6% 17.5%;
     --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217.2 32.6% 17.5%;
+    --sidebar-border: 215 20% 84%;
     --sidebar-ring: 221.2 83.2% 53.3%;
   }
 
@@ -156,16 +161,18 @@
     @apply font-semibold text-foreground tracking-tight;
   }
 
-  /* Body text — :where() zera especificidade para não vencer utilities Tailwind nos nós do fluxo (tema claro) */
+  /*
+    Body text — :where() zera especificidade para não vencer utilities Tailwind.
+    Aplica apenas a p e span, não a div (muito agressivo para divs genéricas).
+    Exclui nós do flow editor para não interferir com seus estilos próprios.
+  */
   :where(p:not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))),
-  :where(span:not(.lucide):not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))),
-  :where(div:not([class*="Card"]):not([class*="Button"]):not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))) {
+  :where(span:not(.lucide):not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))) {
     color: hsl(var(--muted-foreground));
   }
 
   .dark :where(p:not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))),
-  .dark :where(span:not(.lucide):not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))),
-  .dark :where(div:not([class*="Card"]):not([class*="Button"]):not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))) {
+  .dark :where(span:not(.lucide):not(:is(.react-flow__node *)):not(:is([data-flow-custom-node] *))) {
     color: #a0aec0;
   }
 
@@ -808,4 +815,79 @@ html:not(.dark) .react-flow__minimap {
   .flow-edge-travel.is-active {
     animation: none !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PLATFORM GLASS SYSTEM — Aurora + Glassmorphism layer
+   Aplica efeitos de vidro no tema claro sem afetar o dark mode nem o Flow.
+   Cards ficam levemente translúcidos para a Aurora aparecer por baixo deles.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/*
+  Cards do tema claro: fundo quase-sólido SEM backdrop-filter.
+  Backdrop-filter nos cards fazia a aurora "vazar" dentro deles (aurora visível
+  como blur borrado dentro do card), criando o efeito de "aurora acima do card".
+  Com fundo opaco, a aurora fica atrás dos cards, não dentro deles.
+*/
+html:not(.dark) .bg-card {
+  background-color: rgba(255, 255, 255, 0.96) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Flow editor: cards escuros intencionais — não alterar */
+html:not(.dark) .react-flow .bg-card,
+html:not(.dark) [data-flow-custom-node] .bg-card,
+html:not(.dark) .flow-editor-drawer .bg-card {
+  background-color: revert !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Popovers e dropdowns: fundo sólido para legibilidade */
+html:not(.dark) [data-slot="popover-content"],
+html:not(.dark) [role="menu"],
+html:not(.dark) [data-radix-popper-content-wrapper] {
+  background-color: rgba(255, 255, 255, 0.97) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+/* ── Scrollbar global — igual à da navbar: 3px, discreta, arredondada ── */
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.22) transparent;
+}
+
+.dark * {
+  scrollbar-color: rgba(255, 255, 255, 0.10) transparent;
+}
+
+/* Webkit (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.22);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.42);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.20);
 }

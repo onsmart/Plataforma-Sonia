@@ -5,7 +5,7 @@ import { Label } from "../ui/label"
 import { Button } from "../ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { toast } from "sonner"
-import { ChevronDown, Loader2, Phone, Save, Server, Plus, Trash2, Clock, Bot, FlaskConical, AlertTriangle, GitBranch } from "lucide-react"
+import { ChevronDown, Loader2, Phone, Save, Server, Plus, Trash2, Clock, Bot, FlaskConical, AlertTriangle, GitBranch, Zap } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert"
 import { IntegrationBrandIcon } from "../integrations/IntegrationBrandIcon"
 import { Badge } from "../ui/badge"
@@ -1876,12 +1876,12 @@ export function Integrations() {
 
     const isDark = theme === 'dark'
     const integrationCardStyle: React.CSSProperties = {
-        borderRadius: '2.5rem',
-        backgroundColor: isDark ? '#18181b' : '#ffffff',
-        border: isDark ? '1px solid rgba(63, 63, 70, 0.5)' : '1px solid rgb(228 228 231)',
-        boxShadow: isDark
-            ? '0 12px 32px -12px rgba(0, 0, 0, 0.45)'
-            : '0 10px 25px -5px rgba(0, 0, 0, 0.06), 0 4px 6px -2px rgba(0, 0, 0, 0.04)',
+        borderRadius: '1rem',
+        backgroundColor: isDark ? 'hsl(var(--card) / 0.6)' : 'rgba(255, 255, 255, 0.85)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        border: isDark ? '1px solid rgba(255,255,255,0.07)' : '1px solid hsl(var(--border) / 0.6)',
+        boxShadow: isDark ? 'none' : '0 2px 8px rgba(0,0,0,0.04)',
     }
     const inputSurface: React.CSSProperties = isDark
         ? { backgroundColor: '#27272a', borderColor: '#3f3f46', color: '#fafafa' }
@@ -2025,14 +2025,16 @@ export function Integrations() {
     )
 
     return (
-        <div className="space-y-10 pb-24 animate-in fade-in duration-500 bg-[#F8FAFC] dark:bg-background min-h-screen -m-4 p-8">
-            
+        <div className="space-y-6 pb-24 animate-in fade-in duration-500 min-h-screen -m-4 p-5 sm:p-6 lg:p-8">
+
             {/* HEADER DA PÁGINA */}
-            <div className="px-4">
-                <div>
-                    <h2 className="text-4xl font-black tracking-tighter leading-none" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.title')}</h2>
-                    <p className="font-medium mt-2 uppercase text-[10px] tracking-[0.3em]" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{t('integrations.subtitle')}</p>
+            <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/8 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-primary dark:bg-primary/12 mb-3">
+                    <Zap className="h-3 w-3" />
+                    Conectividade
                 </div>
+                <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.title')}</h2>
+                <p className="mt-1 text-sm" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{t('integrations.subtitle')}</p>
             </div>
 
             <CRMIntegrationSheet isOpen={isCRMSheetOpen} onClose={() => setIsCRMSheetOpen(false)} onSave={loadCRMIntegrations} />
@@ -2046,45 +2048,38 @@ export function Integrations() {
                 initialIntegration={editingCalendlyIntegration}
             />
 
-            <div className="grid gap-6">
+            <div className="grid gap-4 grid-cols-1 lg:grid-cols-2 xl:grid-cols-3">
                 
-                {/* 1. CARD CRM - ROXO */}
-                <Card 
-                    className="border-none overflow-hidden transition-all hover:shadow-xl hover:shadow-slate-300/40 dark:hover:shadow-black/40"
+                {/* 1. CARD CRM */}
+                <Card
+                    className="border-none overflow-hidden transition-all"
                     style={integrationCardStyle}
                 >
-                    <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
-                        <div className="flex items-center gap-6">
-                            <IntegrationBrandIcon
-                                slug={crmIntegrations[0] ? getCRMSlug(crmIntegrations[0]) : 'hubspot'}
-                                size="xl"
-                                boxed
-                                isDark={isDark}
-                                className="rounded-2xl shadow-md"
-                            />
-                            <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.crm.title')}</h3>
-                                <div className="mb-2">
-                                    {crmIntegrations.length > 0 && getStatusBadge('connected')}
-                                </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{t('integrations.crm.description')}</p>
+                    <div className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'hsl(var(--border)/0.5)' }}>
+                        <IntegrationBrandIcon
+                            slug={crmIntegrations[0] ? getCRMSlug(crmIntegrations[0]) : 'hubspot'}
+                            size="sm"
+                            boxed
+                            isDark={isDark}
+                            className="rounded-xl shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="text-sm font-bold truncate" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.crm.title')}</h3>
+                                {crmIntegrations.length > 0 && getStatusBadge('connected')}
                             </div>
+                            <p className="text-xs truncate mt-0.5" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{t('integrations.crm.description')}</p>
                         </div>
+                        <Button variant="outline" size="sm" onClick={() => setIsCRMSheetOpen(true)} className="shrink-0 h-8 rounded-lg px-3 text-xs font-semibold">
+                            <Plus className="mr-1 h-3.5 w-3.5" />
+                            Adicionar
+                        </Button>
                     </div>
-                    <CardContent className="p-8">
-                        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                                <p className="text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
-                                    {crmIntegrations.length} {crmIntegrations.length === 1 ? 'integracao conectada' : 'integracoes conectadas'}
-                                </p>
-                                <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                    Clique em uma integracao para ver configuracoes, data de conexao e acoes.
-                                </p>
-                            </div>
-                            <Button variant="outline" onClick={() => setIsCRMSheetOpen(true)} className="h-10 rounded-xl px-4 text-xs font-bold">
-                                <Plus className="mr-2 h-4 w-4" />
-                                Adicionar CRM
-                            </Button>
+                    <CardContent className="p-4">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                            <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                <span className="font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#374151' }}>{crmIntegrations.length}</span> {crmIntegrations.length === 1 ? 'integração conectada' : 'integrações conectadas'}
+                            </p>
                         </div>
                         {crmIntegrations.length > 0 ? (
                             <div className="grid grid-cols-1 gap-3">
@@ -2206,44 +2201,38 @@ export function Integrations() {
                 </Card>
 
                 <Card
-                    className="border-none overflow-hidden transition-all hover:shadow-xl hover:shadow-slate-300/40 dark:hover:shadow-black/40"
+                    className="border-none overflow-hidden transition-all"
                     style={integrationCardStyle}
                 >
-                    <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
-                        <div className="flex items-center gap-6">
-                            <IntegrationBrandIcon provider="calendly" size="xl" boxed isDark={isDark} className="rounded-2xl shadow-md" />
-                            <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Calendly</h3>
-                                <div className="mb-2">
-                                    {calendlyIntegrations.length > 0 && getStatusBadge('connected')}
-                                </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                    Conecte sua conta Calendly para liberar disponibilidade, criação de bookings e webhooks nos fluxos automatizados.
-                                </p>
+                    <div className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'hsl(var(--border)/0.5)' }}>
+                        <IntegrationBrandIcon provider="calendly" size="sm" boxed isDark={isDark} className="rounded-xl shrink-0" />
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="text-sm font-bold truncate" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Calendly</h3>
+                                {calendlyIntegrations.length > 0 && getStatusBadge('connected')}
                             </div>
+                            <p className="text-xs truncate mt-0.5" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                Disponibilidade, bookings e webhooks nos fluxos automatizados.
+                            </p>
                         </div>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                                setEditingCalendlyIntegration(null)
+                                setIsCalendlySheetOpen(true)
+                            }}
+                            className="shrink-0 h-8 rounded-lg px-3 text-xs font-semibold"
+                        >
+                            <Plus className="mr-1 h-3.5 w-3.5" />
+                            Adicionar
+                        </Button>
                     </div>
-                    <CardContent className="p-8">
-                        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                                <p className="text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
-                                    {calendlyIntegrations.length} {calendlyIntegrations.length === 1 ? 'integração conectada' : 'integrações conectadas'}
-                                </p>
-                                <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                    Cada integração pode ter seus próprios event types, webhook e regras de roteamento.
-                                </p>
-                            </div>
-                            <Button
-                                variant="outline"
-                                onClick={() => {
-                                    setEditingCalendlyIntegration(null)
-                                    setIsCalendlySheetOpen(true)
-                                }}
-                                className="h-10 rounded-xl px-4 text-xs font-bold"
-                            >
-                                <Plus className="mr-2 h-4 w-4" />
-                                Adicionar Calendly
-                            </Button>
+                    <CardContent className="p-4">
+                        <div className="mb-3 flex items-center gap-2">
+                            <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                <span className="font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#374151' }}>{calendlyIntegrations.length}</span> {calendlyIntegrations.length === 1 ? 'integração conectada' : 'integrações conectadas'}
+                            </p>
                         </div>
                         {calendlyIntegrations.length > 0 ? (
                             <div className="grid grid-cols-1 gap-3">
@@ -2351,31 +2340,24 @@ export function Integrations() {
                     </CardContent>
                 </Card>
 
-                {/* 2. CARD WHATSAPP - VERDE */}
-                <Card 
-                    className="border-none overflow-hidden transition-all hover:shadow-xl hover:shadow-slate-300/40 dark:hover:shadow-black/40"
+                {/* 2. CARD WHATSAPP */}
+                <Card
+                    className="border-none overflow-hidden transition-all lg:col-span-2 xl:col-span-1"
                     style={integrationCardStyle}
                 >
-                    <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
-                        <div className="flex items-center gap-6">
-                            <IntegrationBrandIcon provider="whatsapp" size="xl" boxed isDark={isDark} className="rounded-2xl shadow-md" />
-                            <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.whatsapp.title')}</h3>
-                                <div className="mb-2">
-                                    {getStatusBadge(whatsappStatus)}
-                                </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                    Integre o numero oficial da Meta para testar mensagens reais com os agentes da plataforma.
-                                </p>
-                                {whatsappStatusMessage && (
-                                    <p className="mt-3 text-sm leading-relaxed" style={{ color: whatsappStatus === 'error' ? '#fb7185' : theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                        {whatsappStatusMessage}
-                                    </p>
-                                )}
+                    <div className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'hsl(var(--border)/0.5)' }}>
+                        <IntegrationBrandIcon provider="whatsapp" size="sm" boxed isDark={isDark} className="rounded-xl shrink-0" />
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="text-sm font-bold truncate" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.whatsapp.title')}</h3>
+                                {getStatusBadge(whatsappStatus)}
                             </div>
+                            <p className="text-xs truncate mt-0.5" style={{ color: whatsappStatusMessage && whatsappStatus === 'error' ? '#fb7185' : theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                {whatsappStatusMessage || 'Número oficial Meta para atendimento via agentes.'}
+                            </p>
                         </div>
                     </div>
-                    <CardContent className="p-8">
+                    <CardContent className="p-4">
                         <button
                             type="button"
                             onClick={() => setIsWhatsAppExpanded((value) => !value)}
@@ -2658,30 +2640,28 @@ export function Integrations() {
 
                 {/* 3. CARD EMAIL - oculto até implementação completa */}
                 {isIntegrationSectionVisible('email') && (
-                <Card 
-                    className="border-none overflow-hidden transition-all hover:shadow-xl hover:shadow-slate-300/40 dark:hover:shadow-black/40"
+                <Card
+                    className="border-none overflow-hidden transition-all"
                     style={integrationCardStyle}
                 >
-                    <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
-                        <div className="flex items-center gap-6">
-                            <IntegrationBrandIcon
-                                preset={emailProviderPreset}
-                                provider="email"
-                                size="xl"
-                                boxed
-                                isDark={isDark}
-                                className="rounded-2xl shadow-md"
-                            />
-                            <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Integracoes de email</h3>
-                                <div className="mb-2">
-                                    {getStatusBadge(emailStatus)}
-                                </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Conecte contas para leitura e envio pelos agentes.</p>
+                    <div className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'hsl(var(--border)/0.5)' }}>
+                        <IntegrationBrandIcon
+                            preset={emailProviderPreset}
+                            provider="email"
+                            size="sm"
+                            boxed
+                            isDark={isDark}
+                            className="rounded-xl shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="text-sm font-bold truncate" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Integrações de e-mail</h3>
+                                {getStatusBadge(emailStatus)}
                             </div>
+                            <p className="text-xs truncate mt-0.5" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Conecte contas para leitura e envio pelos agentes.</p>
                         </div>
                     </div>
-                    <CardContent className="p-8 space-y-6">
+                    <CardContent className="p-4 space-y-4">
                         <div>
                             <p className="text-xs font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Integracao padrao de email</p>
                             <p className="text-xs" style={{ color: theme === 'dark' ? '#71717a' : '#94a3b8' }}>Os agentes usam esta conta por padrao para ler e enviar emails.</p>
@@ -3324,34 +3304,27 @@ export function Integrations() {
                         opacity: 0.65,
                     }}
                 >
-                    <div className="p-8 border-b border-zinc-200 dark:border-zinc-700/80">
-                        <div className="flex items-center gap-6">
-                            <div 
-                                className="rounded-2xl flex items-center justify-center shadow-md"
-                                style={{ backgroundColor: isDark ? 'rgba(99, 102, 241, 0.18)' : '#e0e7ff', width: '64px', height: '64px' }}
-                            >
-                                <Phone size={32} color="#6366f1" strokeWidth={2.5} />
+                    <div className="flex items-center gap-3 px-5 py-4 border-b" style={{ borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'hsl(var(--border)/0.5)' }}>
+                        <div
+                            className="rounded-xl flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: isDark ? 'rgba(99, 102, 241, 0.18)' : '#e0e7ff', width: '36px', height: '36px' }}
+                        >
+                            <Phone size={18} color="#6366f1" strokeWidth={2.5} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="text-sm font-bold truncate" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.voice.title')}</h3>
+                                <Badge
+                                    className="border-none font-semibold text-[10px] px-2 py-0.5"
+                                    style={{ background: 'linear-gradient(to right, #a855f7, #6366f1)', color: 'white', border: 'none' }}
+                                >
+                                    {t('integrations.voice.exclusive')}
+                                </Badge>
                             </div>
-                            <div className="flex-1">
-                                <h3 className="text-xl font-black tracking-tight mb-2" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{t('integrations.voice.title')}</h3>
-                                <div className="mb-2">
-                                    <Badge 
-                                        className="border-none font-semibold text-xs px-3 py-1 shadow-lg"
-                                        style={{ 
-                                            background: 'linear-gradient(to right, #a855f7, #6366f1)',
-                                            color: 'white',
-                                            border: 'none'
-                                        }}
-                                    >
-                                        <Server className="h-3 w-3 mr-1.5" style={{ color: 'white' }} />
-                                        {t('integrations.voice.exclusive')}
-                                    </Badge>
-                                </div>
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{t('integrations.voice.description')}</p>
-                            </div>
+                            <p className="text-xs truncate mt-0.5" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{t('integrations.voice.description')}</p>
                         </div>
                     </div>
-                    <CardContent className="p-8">
+                    <CardContent className="p-4">
                         <button
                             type="button"
                             onClick={() => setIsVoiceExpanded((value) => !value)}

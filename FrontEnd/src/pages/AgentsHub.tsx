@@ -441,12 +441,14 @@ export function AgentsHub() {
         pill: '6px'
     }
     const pageShellStyle = {
-        background: 'hsl(var(--background))'
+        background: 'transparent'
     }
     const sectionShellStyle = {
-        background: 'hsl(var(--card))',
-        border: '1px solid hsl(var(--border) / 0.8)',
-        boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)',
+        background: isDark ? 'hsl(var(--card) / 0.6)' : 'rgba(255, 255, 255, 0.85)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        border: isDark ? '1px solid rgba(255,255,255,0.07)' : '1px solid hsl(var(--border) / 0.6)',
+        boxShadow: isDark ? 'none' : '0 1px 4px rgba(15, 23, 42, 0.06)',
         borderRadius: radius.shell
     } as React.CSSProperties
     const elevatedInsetStyle = {
@@ -455,10 +457,12 @@ export function AgentsHub() {
         boxShadow: 'none'
     } as React.CSSProperties
     const contentCardStyle = {
-        background: 'hsl(var(--card))',
-        border: '1px solid hsl(var(--border) / 0.7)',
+        background: isDark ? 'hsl(var(--card) / 0.6)' : 'rgba(255, 255, 255, 0.85)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        border: isDark ? '1px solid rgba(255,255,255,0.07)' : '1px solid hsl(var(--border) / 0.6)',
         borderRadius: radius.shell,
-        boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)'
+        boxShadow: isDark ? 'none' : '0 1px 4px rgba(15, 23, 42, 0.06)'
     } as React.CSSProperties
     const chromeSurfaceStyle = {
         background: 'hsl(var(--muted) / 0.24)',
@@ -466,9 +470,12 @@ export function AgentsHub() {
         borderRadius: radius.card
     } as React.CSSProperties
     const heroShellStyle = {
-        ...sectionShellStyle,
-        background: 'hsl(var(--card))',
-        boxShadow: isDark ? 'none' : '0 1px 2px rgba(15, 23, 42, 0.04)'
+        background: isDark ? 'hsl(var(--card) / 0.6)' : 'rgba(255, 255, 255, 0.85)',
+        backdropFilter: 'blur(8px)',
+        WebkitBackdropFilter: 'blur(8px)',
+        border: isDark ? '1px solid rgba(255,255,255,0.07)' : '1px solid hsl(var(--border) / 0.6)',
+        boxShadow: isDark ? 'none' : '0 1px 4px rgba(15, 23, 42, 0.06)',
+        borderRadius: radius.shell
     } as React.CSSProperties
     const mainButtonStyle = {
         background: 'hsl(var(--primary))',

@@ -338,7 +338,7 @@ export function BillingPlansSection({
 
   const cardShellClass = cn(
     'relative flex h-full flex-col overflow-hidden rounded-[1.5rem] border border-border/80 shadow-soft transition-all duration-200',
-    isDark ? 'bg-[#18181b]' : 'bg-[#F8FAFC]'
+    isDark ? 'bg-card/60 backdrop-blur-sm' : 'bg-white/85 backdrop-blur-sm'
   )
 
   const renderPlanCard = (plan: PlanCatalogEntry, lineTheme: ProductLineTheme) => {

@@ -762,28 +762,28 @@ export function Inbox() {
         : "flex shrink-0 items-center justify-center rounded-xl border border-border bg-muted/50 shadow-sm"
 
     const inboxShellClass = inboxLight
-        ? "overflow-hidden rounded-[1.7rem] border border-slate-300 bg-white text-slate-950 shadow-[0_24px_64px_-40px_rgba(15,23,42,0.22)] backdrop-blur-sm"
-        : "overflow-hidden rounded-[1.7rem] border border-border bg-card text-card-foreground shadow-[0_30px_80px_-38px_rgba(0,0,0,0.78)] backdrop-blur-sm"
+        ? "overflow-hidden rounded-[1.7rem] border border-border/60 bg-white/85 text-slate-950 shadow-[0_24px_64px_-40px_rgba(15,23,42,0.18)] backdrop-blur-sm"
+        : "overflow-hidden rounded-[1.7rem] border border-white/[0.07] bg-card/60 text-card-foreground shadow-[0_30px_80px_-38px_rgba(0,0,0,0.78)] backdrop-blur-sm"
 
     const inboxPanelClass = inboxLight
-        ? "rounded-[1.35rem] border border-slate-300 bg-slate-50 text-slate-950 shadow-[0_1px_3px_rgba(15,23,42,0.08)]"
-        : "rounded-[1.35rem] border border-border bg-card text-card-foreground shadow-sm dark:shadow-[0_18px_40px_-30px_rgba(0,0,0,0.55)]"
+        ? "rounded-[1.35rem] border border-border/50 bg-white/70 backdrop-blur-sm text-slate-950 shadow-[0_1px_3px_rgba(15,23,42,0.06)]"
+        : "rounded-[1.35rem] border border-white/[0.05] bg-white/[0.03] text-card-foreground shadow-sm dark:shadow-[0_18px_40px_-30px_rgba(0,0,0,0.55)]"
 
     const inboxRowClass = inboxLight
-        ? "rounded-[1.15rem] border border-slate-300 bg-slate-100 text-slate-950 shadow-sm transition-all hover:border-slate-400 hover:bg-slate-200/90"
-        : "rounded-[1.15rem] border border-border bg-card text-card-foreground shadow-sm transition-all hover:border-border hover:bg-muted dark:shadow-none"
+        ? "rounded-[1.15rem] border border-border/50 bg-white/70 backdrop-blur-sm text-slate-950 shadow-sm transition-all hover:border-border hover:bg-white/90"
+        : "rounded-[1.15rem] border border-white/[0.05] bg-white/[0.03] text-card-foreground shadow-sm transition-all hover:border-white/[0.08] hover:bg-white/[0.06] dark:shadow-none"
 
     const inboxSidebarClass = inboxLight
-        ? "flex min-h-0 flex-col border-r border-slate-300 bg-slate-200/70"
-        : "flex min-h-0 flex-col border-r border-border bg-muted"
+        ? "flex min-h-0 flex-col border-r border-border/40 bg-white/50 backdrop-blur-sm"
+        : "flex min-h-0 flex-col border-r border-white/[0.05] bg-white/[0.03]"
 
     const inboxSidebarCardClass = inboxLight
-        ? "rounded-[1.35rem] border border-slate-300 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
-        : "rounded-[1.35rem] border border-border bg-card p-3 shadow-[0_16px_34px_-28px_rgba(0,0,0,0.45)]"
+        ? "rounded-[1.35rem] border border-border/50 bg-white/80 backdrop-blur-sm p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        : "rounded-[1.35rem] border border-white/[0.07] bg-card/60 backdrop-blur-sm p-3 shadow-none"
 
     const inboxCanvasClass = inboxLight
-        ? "flex min-h-0 min-w-0 flex-1 flex-col bg-slate-100"
-        : "flex min-h-0 min-w-0 flex-1 flex-col bg-gradient-to-b from-muted to-background"
+        ? "flex min-h-0 min-w-0 flex-1 flex-col bg-white/40 backdrop-blur-sm"
+        : "flex min-h-0 min-w-0 flex-1 flex-col bg-white/[0.02]"
 
     /** Tema claro força aba ativa branca (evita bg-card escuro se variáveis CSS estiverem erradas) */
     const tabsTriggerClass = cn(
@@ -796,12 +796,12 @@ export function Inbox() {
         : "h-4 w-4 shrink-0 text-slate-100 opacity-80"
 
     const tabsBarClass = inboxLight
-        ? "border-b border-slate-300/80 bg-slate-100/95 px-4 py-4 backdrop-blur-sm sm:px-6"
-        : "border-b border-border bg-muted/50 px-4 py-4 backdrop-blur-sm sm:px-6"
+        ? "border-b border-border/40 bg-white/60 backdrop-blur-sm px-4 py-4 sm:px-6"
+        : "border-b border-white/[0.05] bg-white/[0.04] px-4 py-4 backdrop-blur-sm sm:px-6"
 
     const tabsListClass = inboxLight
-        ? "grid h-11 w-full max-w-xl grid-cols-3 gap-0.5 rounded-xl border border-slate-300 bg-slate-200/90 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:inline-flex sm:w-auto sm:grid-cols-none"
-        : "grid h-11 w-full max-w-xl grid-cols-3 gap-0.5 rounded-xl border border-border bg-muted/40 p-1 sm:inline-flex sm:w-auto sm:grid-cols-none"
+        ? "grid h-11 w-full max-w-xl grid-cols-3 gap-0.5 rounded-xl border border-border/50 bg-white/70 backdrop-blur-sm p-1 sm:inline-flex sm:w-auto sm:grid-cols-none"
+        : "grid h-11 w-full max-w-xl grid-cols-3 gap-0.5 rounded-xl border border-white/[0.07] bg-white/[0.06] p-1 sm:inline-flex sm:w-auto sm:grid-cols-none"
 
     /** Fundo transparente: herda o `bg-card` do painel e evita “segundo degradê” (inset) sobreposto ao card. */
     const searchShellClass = inboxLight
@@ -856,7 +856,7 @@ export function Inbox() {
     ]
 
     return (
-        <div className="relative min-h-full w-full min-w-0 overflow-hidden animate-in fade-in duration-500 bg-background text-foreground px-3 pb-4 pt-6 font-sans sm:px-4 sm:pb-6 sm:pt-8 md:px-6 md:pb-8 md:pt-10">
+        <div className="relative min-h-full w-full min-w-0 overflow-hidden animate-in fade-in duration-500 text-foreground px-3 pb-4 pt-6 font-sans sm:px-4 sm:pb-6 sm:pt-8 md:px-6 md:pb-8 md:pt-10">
             <div
                 className="pointer-events-none absolute inset-x-0 top-0 h-[28rem] opacity-100 dark:opacity-90"
                 aria-hidden
@@ -882,8 +882,8 @@ export function Inbox() {
                         className={cn(
                             "relative overflow-hidden rounded-[1.75rem] p-5 pt-6 backdrop-blur-sm sm:p-6 sm:pt-7 md:p-7 md:pt-8",
                             inboxLight
-                                ? "border border-slate-300 bg-slate-50 text-slate-950 shadow-[0_18px_48px_-32px_rgba(15,23,42,0.16)]"
-                                : "border border-border bg-card text-card-foreground shadow-[0_20px_56px_-36px_rgba(15,23,42,0.12)] dark:shadow-[0_24px_70px_-34px_rgba(0,0,0,0.72)]"
+                                ? "border border-border/60 bg-white/85 text-slate-950 shadow-[0_18px_48px_-32px_rgba(15,23,42,0.12)]"
+                                : "border border-white/[0.07] bg-card/60 text-card-foreground dark:shadow-[0_24px_70px_-34px_rgba(0,0,0,0.72)]"
                         )}
                     >
                         <div
@@ -975,8 +975,8 @@ export function Inbox() {
                             className={cn(
                                 "rounded-[1.5rem] border p-4 shadow-sm",
                                 inboxLight
-                                    ? "border-slate-300 bg-white text-slate-950 shadow-[0_1px_3px_rgba(15,23,42,0.06)]"
-                                    : "border-border bg-card text-card-foreground dark:shadow-[0_18px_45px_-32px_rgba(0,0,0,0.5)]"
+                                    ? "border-border/60 bg-white/85 backdrop-blur-sm text-slate-950"
+                                    : "border-white/[0.07] bg-card/60 backdrop-blur-sm text-card-foreground dark:shadow-none"
                             )}
                         >
                             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
@@ -992,8 +992,8 @@ export function Inbox() {
                             className={cn(
                                 "rounded-[1.5rem] border p-4 shadow-sm",
                                 inboxLight
-                                    ? "border-slate-300 bg-white text-slate-950 shadow-[0_1px_3px_rgba(15,23,42,0.06)]"
-                                    : "border-border bg-card text-card-foreground dark:shadow-[0_18px_45px_-32px_rgba(0,0,0,0.5)]"
+                                    ? "border-border/60 bg-white/85 backdrop-blur-sm text-slate-950"
+                                    : "border-white/[0.07] bg-card/60 backdrop-blur-sm text-card-foreground dark:shadow-none"
                             )}
                         >
                             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">

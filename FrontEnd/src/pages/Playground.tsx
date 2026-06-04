@@ -1027,7 +1027,7 @@ export function Playground() {
     }
 
     const panelClass =
-        "rounded-xl border border-border/80 bg-card text-card-foreground shadow-sm dark:border-border dark:shadow-none"
+        "rounded-xl border border-border/60 bg-white/85 backdrop-blur-sm text-card-foreground shadow-sm dark:border-white/[0.07] dark:bg-card/60 dark:shadow-none"
     const rowClass =
         "rounded-lg border border-border/70 bg-muted/20 transition-colors hover:bg-muted/40 dark:border-border dark:bg-muted/30 dark:hover:bg-muted/50"
     const selectedRowClass =
@@ -1039,14 +1039,14 @@ export function Playground() {
     const sectionHeaderClass = "border-b border-border/60 bg-muted/20 dark:bg-muted/20"
     const actionButtonClass =
         "h-9 rounded-lg border-border/80 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] shadow-none"
-    const softPanelClass = "rounded-lg border border-border/70 bg-card shadow-sm dark:border-border dark:shadow-none"
+    const softPanelClass = "rounded-lg border border-border/60 bg-white/80 backdrop-blur-sm shadow-sm dark:border-white/[0.07] dark:bg-card/60 dark:shadow-none"
     const promptButtonClass =
         "rounded-lg border border-border/70 bg-background px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted/50 dark:border-border"
-    const labMetricCardClass = "rounded-lg border border-border/70 bg-card px-3 py-2.5 shadow-sm dark:border-border"
+    const labMetricCardClass = "rounded-lg border border-border/60 bg-white/80 backdrop-blur-sm px-3 py-2.5 shadow-sm dark:border-white/[0.07] dark:bg-card/60"
 
     if (!isLoading && agents.length === 0) {
         return (
-            <div className="flex h-[calc(100vh-2rem)] items-center justify-center bg-background border rounded-lg">
+            <div className="flex h-[calc(100vh-2rem)] items-center justify-center rounded-lg border border-border/60 bg-white/85 backdrop-blur-sm dark:border-white/[0.07] dark:bg-card/60">
                 <div className="text-center space-y-4">
                     <Bot className="h-12 w-12 mx-auto text-primary/40" />
                     <h2 className="text-xl font-semibold">{t('empty.noAgents')}</h2>
@@ -1059,7 +1059,7 @@ export function Playground() {
     return (
         <TooltipProvider>
             <div
-                className="playground-root flex h-[calc(100dvh-6rem)] max-h-[calc(100dvh-6rem)] min-h-0 w-full min-w-0 flex-1 gap-4 overflow-hidden bg-background p-3 font-sans antialiased selection:bg-primary/10 sm:gap-5 sm:p-4 lg:p-5"
+                className="playground-root flex h-[calc(100dvh-6rem)] max-h-[calc(100dvh-6rem)] min-h-0 w-full min-w-0 flex-1 gap-4 overflow-hidden p-3 font-sans antialiased selection:bg-primary/10 sm:gap-5 sm:p-4 lg:p-5"
                 style={{
                     WebkitFontSmoothing: 'antialiased',
                     MozOsxFontSmoothing: 'grayscale',
@@ -1390,7 +1390,7 @@ export function Playground() {
 
                 <div className="flex min-h-0 flex-1 overflow-hidden">
                     {/* ÁREA DE CHAT OU EXECUÇÃO DE FLOW */}
-                    <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+                    <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
                         {/* ÁREA DE MENSAGENS COM SCROLL */}
                         <div className="playground-chat-scroll h-0 min-h-0 flex-1 overflow-y-auto overscroll-contain">
                             {selectedFlow ? (

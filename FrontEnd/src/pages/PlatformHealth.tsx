@@ -56,16 +56,18 @@ export function PlatformHealth() {
     )
   }
 
+  const glassCard = "rounded-xl border border-border/60 bg-white/85 backdrop-blur-sm shadow-sm dark:border-white/[0.07] dark:bg-card/60 dark:shadow-none"
+
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Saúde da plataforma</h1>
+    <div className="mx-auto w-full max-w-4xl animate-in fade-in space-y-6 px-4 py-6 duration-500 sm:px-6 lg:px-8">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">Saúde da plataforma</h1>
         <p className="text-sm text-muted-foreground">
           Ambiente: {data?.environment} · Versão: {data?.version} · Uptime: {data?.uptimeSeconds ?? 0}s
         </p>
       </div>
 
-      <Card>
+      <Card className={glassCard}>
         <CardHeader>
           <CardTitle>Checks</CardTitle>
         </CardHeader>
@@ -79,7 +81,7 @@ export function PlatformHealth() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className={glassCard}>
         <CardHeader>
           <CardTitle>Últimos eventos de auditoria</CardTitle>
         </CardHeader>

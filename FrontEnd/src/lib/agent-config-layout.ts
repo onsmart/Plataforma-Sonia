@@ -1,6 +1,6 @@
 /** Design system da página de configuração de agentes (Sonia). */
 export const agentConfigPageShell =
-  "relative min-h-full w-full overflow-x-hidden bg-background pb-24 lg:pb-10"
+  "relative min-h-full w-full overflow-x-hidden pb-24 lg:pb-10"
 
 export const agentConfigMeshBg =
   "pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border)/0.35)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border)/0.35)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,black_20%,transparent_100%)] opacity-40 dark:opacity-25"
@@ -11,10 +11,10 @@ export const agentConfigGlow =
 export const agentConfigContentWrap = "relative mx-auto w-full max-w-5xl px-4 sm:px-6 lg:px-8"
 
 export const agentConfigTopBar =
-  "sticky top-0 z-40 border-b border-border/60 bg-background/90 backdrop-blur-xl supports-[backdrop-filter]:bg-background/75"
+  "sticky top-0 z-40 border-b border-border/40 bg-white/80 backdrop-blur-xl dark:border-white/[0.06] dark:bg-card/70 supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-card/60"
 
 export const agentConfigPanel =
-  "rounded-2xl border border-border/50 bg-card/90 shadow-sm dark:border-white/[0.06] dark:bg-card/60 dark:shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset]"
+  "rounded-2xl border border-border/60 bg-white/85 backdrop-blur-sm shadow-sm dark:border-white/[0.07] dark:bg-card/60 dark:shadow-none"
 
 export const agentConfigPanelPadding = "p-5 sm:p-6"
 

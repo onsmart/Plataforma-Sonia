@@ -34,7 +34,7 @@ import { toast } from "sonner"
 import { cn } from "../components/ui/utils"
 
 const cardChrome =
-    "rounded-xl border border-border/80 bg-card text-card-foreground shadow-sm transition-colors dark:border-border dark:bg-card dark:shadow-none"
+    "rounded-xl border border-border/60 bg-white/85 backdrop-blur-sm text-card-foreground shadow-sm transition-all hover:bg-white/95 hover:shadow-md dark:border-white/[0.07] dark:bg-card/60 dark:shadow-none dark:hover:bg-card/75"
 
 const BASELINE_ITEMS = [
     { icon: Lock, key: "dlp" },
@@ -871,7 +871,7 @@ export function Governance() {
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent className="space-y-3">
-                                        <div className="rounded-xl border border-border/80 bg-card p-4">
+                                        <div className="rounded-xl border border-border/60 bg-white/70 backdrop-blur-sm p-4 dark:border-white/[0.07] dark:bg-card/60">
                                             <div className="flex items-start gap-3">
                                                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold">
                                                     U
@@ -889,7 +889,7 @@ export function Governance() {
                                                 </div>
                                             </div>
                                         </div>
-                                        <div className="rounded-xl border border-border/80 bg-card p-4">
+                                        <div className="rounded-xl border border-border/60 bg-white/70 backdrop-blur-sm p-4 dark:border-white/[0.07] dark:bg-card/60">
                                             <div className="flex items-start gap-3">
                                                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
                                                     <Shield className="h-4 w-4" />

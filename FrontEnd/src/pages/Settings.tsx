@@ -485,7 +485,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     }, [loadUsageStats])
 
     return (
-        <div className="min-h-screen -m-4 space-y-6 bg-[#F8FAFC] p-8 dark:bg-background">
+        <div className="min-h-screen -m-4 space-y-6 p-8">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                 {/* Pílulas Escuras para Sub-abas */}
                 <style>{`
@@ -728,7 +728,8 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                     {member.created_at ? new Date(member.created_at).toLocaleDateString(i18n.language || 'pt-BR') : 'N/A'}
                                             </div>
 
-                                            {/* Botão de Remover */}
+                                            {/* Botão de Remover — apenas para contas empresariais com permissão de gestão de equipe */}
+                                            {teamWorkspace.account_type !== 'individual' && teamWorkspace.can_manage_team && (
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
@@ -737,6 +738,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                     >
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
+                                            )}
                                         </div>
                                     )
                                 })}

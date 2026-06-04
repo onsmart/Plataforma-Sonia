@@ -311,13 +311,20 @@ const appSidebarStyles = `
     padding: 0.625rem;
   }
 
+  /* Scrollbar discreta no lado ESQUERDO via direction:rtl */
   .app-sidebar-scroll {
+    direction: rtl;
     scrollbar-width: thin;
-    scrollbar-color: var(--sidebar-scrollbar-thumb) var(--sidebar-scrollbar-track);
+    scrollbar-color: rgba(148, 163, 184, 0.18) transparent;
+  }
+
+  /* Inverte o conteúdo de volta para ltr */
+  .app-sidebar-scroll > * {
+    direction: ltr;
   }
 
   .app-sidebar-scroll::-webkit-scrollbar {
-    width: 8px;
+    width: 3px;
   }
 
   .app-sidebar-scroll::-webkit-scrollbar-track {
@@ -325,15 +332,79 @@ const appSidebarStyles = `
   }
 
   .app-sidebar-scroll::-webkit-scrollbar-thumb {
-    background: var(--sidebar-scrollbar-thumb);
+    background: rgba(148, 163, 184, 0.20);
     border-radius: 9999px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
   }
 
   .app-sidebar-scroll::-webkit-scrollbar-thumb:hover {
-    background: var(--sidebar-scrollbar-thumb-hover);
-    background-clip: padding-box;
+    background: rgba(148, 163, 184, 0.38);
+  }
+
+  .app-sidebar-shell[data-theme-mode="dark"] .app-sidebar-scroll {
+    scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
+  }
+
+  .app-sidebar-shell[data-theme-mode="dark"] .app-sidebar-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .app-sidebar-shell[data-theme-mode="dark"] .app-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
+  /* ─── Glass Sidebar System ───────────────────────────────────────────────
+     Sobrescreve o bg-sidebar sólido do shadcn com rgba + backdrop-blur para
+     que a Aurora apareça por trás. O blur fica no [data-sidebar="sidebar"]
+     (o elemento visível) e não no container externo.
+
+     CAMADAS: Aurora (z:0) → Sidebar container (z:10). O backdrop-filter
+     captura a Aurora diretamente por ser posterior na ordem de pintagem.
+  ─────────────────────────────────────────────────────────────────────────── */
+
+  /* Remove a borda direita sólida que divide sidebar do conteúdo */
+  .app-sidebar-shell {
+    border-right: none !important;
+  }
+
+  /*
+    ── Tema claro: quase invisível como painel ──
+    Fundo mínimo (6% branco) para não criar uma "faixa branca".
+    O blur (16px) mostra a Aurora borrada atrás, dando o efeito de vidro
+    sem adicionar uma camada branca opaca por cima da Aurora.
+    Borda muito sutil delimita o painel sem criar separação pesada.
+  */
+  /* ── Sidebar light: fundo 100% transparente ── */
+  .app-sidebar-shell[data-theme-mode="light"] [data-sidebar="sidebar"] {
+    background-color: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-right: none !important;
+  }
+
+  /* Texto escuro com leve halo sutil — contraste alto sobre fundo azul-lavanda */
+  .app-sidebar-shell[data-theme-mode="light"] [data-sidebar="sidebar"] * {
+    color: #1a2540 !important;
+    text-shadow: 0 0 8px rgba(241, 242, 253, 0.7) !important;
+  }
+
+  /* Ícones: azul profundo, sem halo agressivo */
+  .app-sidebar-shell[data-theme-mode="light"] [data-sidebar="sidebar"] svg {
+    color: #1e3a6e !important;
+    text-shadow: none !important;
+    filter: none !important;
+  }
+
+  /*
+    ── Tema escuro: quase invisível como painel ──
+    12% preto-azul para não criar uma "faixa preta" sobre a Aurora.
+    O blur (24px) mostra os blues da Aurora atrás, efeito premium.
+  */
+  /* ── Sidebar dark: fundo 100% transparente ── */
+  .app-sidebar-shell[data-theme-mode="dark"] [data-sidebar="sidebar"] {
+    background-color: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-right: none !important;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -456,35 +527,38 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const getUserFullName = () => buildDisplayName(firstName, lastName, user?.email?.split("@")[0] || "Usuário");
   const sidebarPalette = isLight
     ? {
-        shell: '#f1f5f9',
-        shellHsl: '210 40% 96%',
+        shell: 'transparent',
+        shellHsl: '210 40% 98%',
         foregroundHsl: '222 47% 11%',
-        borderHsl: '214 32% 88%',
+        borderHsl: '214 32% 86%',
         accentHsl: '214 32% 94%',
         accentForegroundHsl: '222 47% 11%',
-        ringHsl: '215 20% 55%',
-        edgeClass: 'border-slate-200/90',
-        headerBorderClass: 'border-slate-200/90',
-        logoBadgeClass: 'border-slate-200/90 bg-white',
-        subLabelClass: '!text-slate-500',
-        groupLabelClass: '!text-slate-400',
-        activeButtonClass: '!bg-white !text-slate-950 shadow-[0_8px_24px_-20px_rgba(15,23,42,0.35)] border-slate-200/90',
-        idleButtonClass: 'border-transparent text-slate-600 hover:!bg-white/70 hover:!text-slate-950 hover:border-slate-200/80 hover:shadow-[0_4px_16px_-18px_rgba(15,23,42,0.25)]',
+        ringHsl: '215 20% 48%',
+        edgeClass: '',
+        headerBorderClass: 'border-slate-200/80',
+        logoBadgeClass: 'border-slate-200/80 bg-white',
+        // slate-600 = contraste 5.8:1 em fundo branco → passa WCAG AA para texto pequeno
+        subLabelClass: '!text-slate-600',
+        groupLabelClass: '!text-slate-600',
+        // item ativo: branco bem opaco para destacar sem deixar o painel sólido
+        activeButtonClass: '!bg-white/80 !text-slate-950 shadow-[0_4px_16px_-12px_rgba(15,23,42,0.22)] border-white/60',
+        // item idle: sem fundo, hover mostra 35% branco — combina com painel 6%
+        idleButtonClass: 'border-transparent text-slate-700 hover:!bg-white/35 hover:!text-slate-950 hover:border-white/40',
         activeIcon: '#1d4ed8',
-        idleIcon: '#64748b',
+        idleIcon: '#475569',
         activeTextClass: '!text-slate-950',
-        idleTextClass: '!text-slate-700',
-        userCardClass: 'border-slate-200/90 bg-white/90 hover:bg-white hover:shadow-[0_8px_24px_-22px_rgba(15,23,42,0.2)]',
-        userAvatarClass: 'bg-slate-900 text-white',
+        idleTextClass: '!text-slate-800',
+        userCardClass: 'border-transparent bg-transparent hover:bg-black/[0.04] transition-colors duration-200',
+        userAvatarClass: 'bg-primary text-white',
         userNameClass: '!text-slate-900',
         userSubtextClass: '!text-slate-500',
         chevronClass: '!text-slate-400',
-        themeCardClass: 'border-slate-200/90 bg-white/90 hover:bg-white',
-        themeCompactClass: 'border-slate-200/90 bg-white/90 hover:bg-white',
+        themeCardClass: 'border-transparent bg-transparent hover:bg-black/[0.04] transition-colors duration-200',
+        themeCompactClass: 'border-transparent bg-transparent hover:bg-black/[0.04] transition-colors duration-200',
         themeTextClass: '!text-slate-700',
-        switchClass: 'scale-[0.82] data-[state=checked]:!bg-slate-900 [&_span]:data-[state=checked]:!bg-white',
+        switchClass: 'scale-[0.82] data-[state=checked]:!bg-primary [&_span]:data-[state=checked]:!bg-white',
         userMenuContentClass:
-          'w-[calc(var(--radix-dropdown-menu-trigger-width)-0px)] min-w-[12.5rem] rounded-2xl border border-slate-200/90 bg-white/95 p-1.5 shadow-[0_20px_48px_-28px_rgba(15,23,42,0.35)] backdrop-blur-md',
+          'w-[calc(var(--radix-dropdown-menu-trigger-width)-0px)] min-w-[12.5rem] rounded-2xl border border-slate-200/80 bg-white/97 p-1.5 shadow-[0_20px_48px_-28px_rgba(15,23,42,0.32)] backdrop-blur-md',
         userMenuItemClass:
           'cursor-pointer gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 focus:bg-slate-100 focus:text-slate-950 data-[highlighted]:bg-slate-100 data-[highlighted]:text-slate-950 [&_svg]:text-slate-500',
         userMenuItemDestructiveClass:
@@ -492,7 +566,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         userMenuSeparatorClass: 'my-1 bg-slate-200',
       }
     : {
-        shell: '#07090e',
+        shell: 'transparent',
         shellHsl: '222 47% 4%',
         foregroundHsl: '210 20% 98%',
         borderHsl: '220 13% 13%',
@@ -504,19 +578,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         logoBadgeClass: 'border-white/10 bg-white/[0.04]',
         subLabelClass: '!text-zinc-500',
         groupLabelClass: '!text-zinc-600',
-        activeButtonClass: '!bg-[#12161f] !text-white shadow-[0_12px_32px_-24px_rgba(0,0,0,0.95)] border-white/10',
-        idleButtonClass: 'border-transparent text-zinc-400 hover:!bg-white/[0.04] hover:!text-zinc-100 hover:border-white/[0.08]',
+        // dark mode: item ativo com 12% branco, visível mas sem criar bloco sólido
+        activeButtonClass: '!bg-white/[0.12] !text-white border-white/[0.10]',
+        idleButtonClass: 'border-transparent text-zinc-400 hover:!bg-white/[0.06] hover:!text-zinc-100 hover:border-white/[0.06]',
         activeIcon: '#60a5fa',
         idleIcon: '#71717a',
         activeTextClass: '!text-white',
         idleTextClass: '!text-zinc-300',
-        userCardClass: 'border-white/[0.08] bg-[#0c1018]/90 hover:bg-[#101622] hover:border-white/12',
+        userCardClass: 'border-transparent bg-transparent hover:bg-white/[0.06] transition-colors duration-200',
         userAvatarClass: 'bg-zinc-100 text-black',
         userNameClass: '!text-white',
         userSubtextClass: '!text-zinc-500',
         chevronClass: '!text-zinc-500',
-        themeCardClass: 'border-white/[0.08] bg-[#0c1018]/90 hover:bg-[#101622]',
-        themeCompactClass: 'border-white/[0.08] bg-[#0c1018]/90 hover:bg-[#101622]',
+        themeCardClass: 'border-transparent bg-transparent hover:bg-white/[0.06] transition-colors duration-200',
+        themeCompactClass: 'border-transparent bg-transparent hover:bg-white/[0.06] transition-colors duration-200',
         themeTextClass: '!text-zinc-300',
         switchClass: 'scale-[0.82] data-[state=checked]:!bg-blue-600 [&_span]:data-[state=checked]:!bg-white',
         userMenuContentClass:
@@ -591,11 +666,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <>
       <style>{appSidebarStyles}</style>
-      <Sidebar 
-        collapsible="icon" 
+      <Sidebar
+        collapsible="icon"
         {...props}
         className={cn(
-          "app-sidebar-shell sticky top-0 h-screen !bg-transparent backdrop-blur-xl",
+          "app-sidebar-shell sticky top-0 h-screen",
           sidebarPalette.edgeClass,
         )}
         data-theme-mode={isLight ? 'light' : 'dark'}
@@ -612,11 +687,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         } as React.CSSProperties}
       >
       <SidebarHeader
-        className={cn(
-          "h-[4.25rem] shrink-0 items-stretch justify-center border-b px-3 transition-[height,padding] duration-[var(--sidebar-collapse-duration,420ms)] ease-[var(--sidebar-collapse-ease,cubic-bezier(0.22,1,0.36,1))] group-data-[collapsible=icon]:h-14 group-data-[collapsible=icon]:px-2",
-          sidebarPalette.headerBorderClass,
-        )}
-        style={{ backgroundColor: sidebarPalette.shell }}
+        className="h-[4.25rem] shrink-0 items-stretch justify-center bg-transparent px-3 transition-[height,padding] duration-[var(--sidebar-collapse-duration,420ms)] ease-[var(--sidebar-collapse-ease,cubic-bezier(0.22,1,0.36,1))] group-data-[collapsible=icon]:h-14 group-data-[collapsible=icon]:px-2"
       >
           <div 
             className="group flex h-full min-h-0 w-full cursor-pointer items-center gap-3 justify-start pl-0.5 transition-transform duration-300 hover:opacity-95 group-data-[collapsible=icon]:justify-center"
@@ -636,8 +707,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
 
       <SidebarContent
-        className="app-sidebar-scroll space-y-6 px-2 py-2"
-        style={{ backgroundColor: sidebarPalette.shell }}
+        className="app-sidebar-scroll space-y-6 bg-transparent px-2 py-2"
       >
         {navGroups.map((group, groupIndex) => (
           <SidebarGroup
@@ -693,7 +763,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="shrink-0 space-y-2.5 border-t px-2 py-3" style={{ backgroundColor: sidebarPalette.shell, borderColor: isLight ? 'rgba(226,232,240,0.9)' : 'rgba(255,255,255,0.06)' }}>
+      <SidebarFooter className="shrink-0 space-y-2.5 bg-transparent px-2 py-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <div className={cn(
