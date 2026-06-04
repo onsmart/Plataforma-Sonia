@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import {
   Sparkles, Check,
   Loader2, Database, Save, ArrowLeft, ChevronDown, X,
-  Plug, BookOpen, Mic2, FileText,
+  Plug, BookOpen, Mic2,
 } from "lucide-react"
 import { Button } from "../components/ui/button"
 import { Input } from "../components/ui/input"
@@ -229,13 +229,6 @@ export function AgentConfig() {
   const [availableWhatsappIntegrations, setAvailableWhatsappIntegrations] = useState<any[]>([])
   const [selectedWhatsappIntegration, setSelectedWhatsappIntegration] = useState("none")
 
-  // Template
-  type TemplateOption = { id: string; name: string; role: string; description: string; isShared?: boolean }
-  const [templates, setTemplates] = useState<TemplateOption[]>([])
-  const [templatesLoading, setTemplatesLoading] = useState(false)
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null)
-  const [templatePopoverOpen, setTemplatePopoverOpen] = useState(false)
-
   const loadAvailableData = useCallback(async () => {
     if (!user?.email || !userId) return
     try {
@@ -250,20 +243,6 @@ export function AgentConfig() {
         setAvailableWhatsappIntegrations(
           await fetchWhatsappIntegrationsForWorkspace({ userId, companiesId })
         )
-      }
-
-      setTemplatesLoading(true)
-      try {
-        const { BASE_URL, getAuthHeaders } = await import('../services/api')
-        const res = await fetch(`${BASE_URL}/templates?email=${encodeURIComponent(user.email)}`, {
-          headers: await getAuthHeaders()
-        })
-        if (res.ok) {
-          const data = await res.json()
-          setTemplates(Array.isArray(data) ? data : [])
-        }
-      } finally {
-        setTemplatesLoading(false)
       }
     } catch (e) { console.error(e) }
   }, [user?.email, userId, companiesId])
@@ -288,7 +267,7 @@ export function AgentConfig() {
       const { data: agentRow, error: agentRowError } = await supabase
         .from('tb_agents')
         .select(
-          'nome, name, primary_language, provider, provider_model, crm_integration_id, integrations_id, temperature, max_tokens, extra_features, role_template_id'
+          'nome, name, primary_language, provider, provider_model, crm_integration_id, integrations_id, temperature, max_tokens, extra_features'
         )
         .eq('id', id)
         .maybeSingle()
@@ -313,7 +292,6 @@ export function AgentConfig() {
             ? Number(agentRow.max_tokens)
             : 1000,
         ])
-        setSelectedTemplateId(agentRow.role_template_id ?? null)
       }
 
       const { data: agentIntegrationsData, error: integrationsError } = await supabase
@@ -443,8 +421,7 @@ export function AgentConfig() {
         primary_language: normalizeAgentLanguageCode(selectedPrimaryLanguage, 'pt-BR'),
         crm_integration_id: selectedCrm === 'none' ? null : selectedCrm,
         integrations_id: selectedWhatsappIntegration === 'none' ? null : selectedWhatsappIntegration,
-        extra_features: mergeWelcomeIntoSerialized(extraFeatures, welcomeMessage).trim() || null,
-        role_template_id: selectedTemplateId ?? null,
+        extra_features: mergeWelcomeIntoSerialized(extraFeatures, welcomeMessage).trim() || null
       }
       
       if (agentId) {
@@ -679,113 +656,6 @@ export function AgentConfig() {
               </div>
             </AgentConfigSection>
 
-            <AgentConfigSection
-              icon={FileText}
-              title="Papel conversacional"
-              description="Template que define as instruções, objetivo e comportamento deste agente."
-            >
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label className={agentConfigFieldLabel}>Template ativo</Label>
-                  <Popover open={templatePopoverOpen} onOpenChange={setTemplatePopoverOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        role="combobox"
-                        className={cn(agentConfigInput, "h-auto min-h-11 w-full justify-between py-2.5 font-normal")}
-                      >
-                        <span className="truncate text-sm">
-                          {selectedTemplateId
-                            ? (templates.find((t) => t.id === selectedTemplateId)?.name ?? "Template selecionado")
-                            : "Selecionar template…"}
-                        </span>
-                        <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] rounded-xl p-0" align="start">
-                      <Command>
-                        <CommandInput placeholder="Buscar template…" className="h-10" />
-                        <CommandList className="max-h-72">
-                          <CommandEmpty>
-                            {templatesLoading ? "Carregando templates…" : "Nenhum template encontrado."}
-                          </CommandEmpty>
-                          <CommandGroup>
-                            {templates.map((tmpl) => {
-                              const isSelected = selectedTemplateId === tmpl.id
-                              const preview = (tmpl.role || tmpl.description || '').slice(0, 90)
-                              return (
-                                <CommandItem
-                                  key={tmpl.id}
-                                  value={`${tmpl.name} ${tmpl.role} ${tmpl.description}`}
-                                  onSelect={() => {
-                                    setSelectedTemplateId(tmpl.id)
-                                    setTemplatePopoverOpen(false)
-                                  }}
-                                  className="rounded-lg"
-                                >
-                                  <div className={cn("mr-2 flex h-4 w-4 shrink-0 items-center justify-center rounded border", isSelected ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40")}>
-                                    {isSelected ? <Check className="h-3 w-3" /> : null}
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="truncate text-sm font-medium">{tmpl.name}</div>
-                                    {preview ? (
-                                      <div className="truncate text-xs text-muted-foreground">
-                                        {preview}{preview.length >= 90 ? '…' : ''}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                </CommandItem>
-                              )
-                            })}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                  <p className={agentConfigFieldHint}>
-                    Altere o template para mudar o papel, tom e objetivos deste agente.{' '}
-                    {selectedTemplateId ? (
-                      <button
-                        type="button"
-                        className="text-primary underline-offset-2 hover:underline"
-                        onClick={() => setSelectedTemplateId(null)}
-                      >
-                        Remover vínculo
-                      </button>
-                    ) : null}
-                  </p>
-                </div>
-
-                {selectedTemplateId ? (() => {
-                  const tmpl = templates.find((t) => t.id === selectedTemplateId)
-                  if (!tmpl) return null
-                  const primaryText = (tmpl.role || tmpl.description || '').trim()
-                  const secondaryText = tmpl.role && tmpl.description && tmpl.description !== tmpl.role
-                    ? tmpl.description.trim()
-                    : ''
-                  if (!primaryText) return null
-                  return (
-                    <div className={cn(agentConfigInnerPanel, "space-y-3")}>
-                      <div className="flex items-center justify-between gap-2">
-                        <Label className={agentConfigFieldLabel}>Instruções do template</Label>
-                        <Badge variant="outline" className="shrink-0 rounded-md text-xs">
-                          {tmpl.isShared ? "Compartilhado" : "Seu template"}
-                        </Badge>
-                      </div>
-                      <p className="line-clamp-6 text-sm leading-relaxed text-muted-foreground">
-                        {primaryText}
-                      </p>
-                      {secondaryText ? (
-                        <p className="line-clamp-2 border-t border-border/50 pt-2 text-xs text-muted-foreground">
-                          {secondaryText}
-                        </p>
-                      ) : null}
-                    </div>
-                  )
-                })() : null}
-              </div>
-            </AgentConfigSection>
           </TabsContent>
 
           <TabsContent value="integracoes" className="mt-0 outline-none">
