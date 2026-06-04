@@ -158,8 +158,8 @@ function defaultToolsForArchetype(
     addProviderTools("whatsapp", RECEPTIVE_DEFAULT_TOOLS.whatsapp, false)
   }
 
-  if (archetype === "faq" && connected.includes("hubspot")) {
-    addProviderTools("hubspot", ["lookup_contact"], true)
+  if (archetype === "faq") {
+    addProviderTools("whatsapp", RECEPTIVE_DEFAULT_TOOLS.whatsapp, false)
   }
 
   return rows
@@ -365,6 +365,12 @@ export function GenerateAgentAiDialog({
     return map
   }, [catalog])
 
+  // FAQ só expõe WhatsApp; outros arquétipos mostram todos os providers
+  const visibleProviders = useMemo(() => {
+    if (archetype === "faq") return setupProviderOrder.filter((p) => p === "whatsapp")
+    return setupProviderOrder
+  }, [archetype, setupProviderOrder])
+
   const selectedMap = useMemo(() => {
     const m = new Map<string, SelectedToolRow>()
     for (const row of selectedTools) m.set(row.toolKey, row)
@@ -448,6 +454,13 @@ export function GenerateAgentAiDialog({
     loadingSteps.length - 1,
     phase === "generating" ? Math.floor(elapsedSec / 8) : 0
   )
+
+  const descriptionPlaceholder = useMemo(() => {
+    if (archetype === "faq") {
+      return "Ex.: Loja de eletrônicos. O agente responde dúvidas sobre produtos, garantias, prazos de entrega e política de trocas. Não agenda nem coleta dados — apenas orienta e informa. Tom direto e prestativo."
+    }
+    return "Ex.: Clínica odontológica que atende via WhatsApp. O agente recepciona pacientes, tira dúvidas sobre tratamentos, coleta nome e telefone, e agenda consultas pelo Calendly. Tom amigável e profissional."
+  }, [archetype])
 
   const phaseTitle = useMemo(() => {
     switch (phase) {
@@ -826,7 +839,23 @@ export function GenerateAgentAiDialog({
 
           {phase === "integrations" && (
             <div className="space-y-4">
-              {setupProviderOrder.map((provider) => {
+              {archetype === "faq" && (
+                <div
+                  className={cn(
+                    "flex items-start gap-3 rounded-xl border px-4 py-3",
+                    isDark
+                      ? "border-violet-500/25 bg-violet-500/10"
+                      : "border-violet-200 bg-violet-50"
+                  )}
+                >
+                  <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-violet-500" aria-hidden />
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    <span className="font-semibold text-foreground">Agente FAQ</span> — responde dúvidas sem executar ações externas. Calendly e CRM não estão disponíveis neste perfil.
+                    O WhatsApp é opcional e permite que o agente opere nesse canal.
+                  </p>
+                </div>
+              )}
+              {visibleProviders.map((provider) => {
                 const tools = toolsByProvider.get(provider) || []
                 const accounts = catalog?.integrationsByProvider?.[provider] || []
                 const hasAccounts = accounts.length > 0
@@ -1009,7 +1038,7 @@ export function GenerateAgentAiDialog({
                   rows={7}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Ex.: Clínica odontológica que atende via WhatsApp. O agente deve recepcionar pacientes, tirar dúvidas sobre tratamentos, coletar nome e telefone, e agendar consultas pelo Calendly. Tom amigável e profissional."
+                  placeholder={descriptionPlaceholder}
                   className={cn(
                     "min-h-[160px] resize-y rounded-xl border shadow-none",
                     isDark
