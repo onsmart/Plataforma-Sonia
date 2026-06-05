@@ -46,6 +46,52 @@ export async function copilotChatController(req: Request, res: Response) {
 }
 
 /**
+ * GET /copilot/voice-session
+ * Gera uma signed URL temporária do ElevenLabs Conversational AI.
+ * Mantém o agentId no backend — nunca exposto ao frontend.
+ */
+export async function copilotVoiceSessionController(req: Request, res: Response) {
+  try {
+    const agentId = process.env.ELEVENLABS_COPILOT_AGENT_ID?.trim()
+    const apiKey  = process.env.ELEVENLABS_API_KEY?.trim()
+
+    if (!agentId) {
+      return res.status(503).json({
+        error: 'Agente de voz não configurado',
+        details: 'Defina ELEVENLABS_COPILOT_AGENT_ID no .env do backend.',
+      })
+    }
+    if (!apiKey) {
+      return res.status(503).json({ error: 'ElevenLabs API key não configurada.' })
+    }
+
+    const response = await fetch(
+      `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${encodeURIComponent(agentId)}`,
+      { method: 'GET', headers: { 'xi-api-key': apiKey } }
+    )
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => '')
+      logger.error('[copilotVoiceSession] ElevenLabs erro:', response.status, body.slice(0, 200))
+      return res.status(502).json({ error: 'Erro ao obter sessão de voz do ElevenLabs.' })
+    }
+
+    const data = (await response.json()) as { signed_url?: string }
+    if (!data.signed_url) {
+      return res.status(502).json({ error: 'ElevenLabs não retornou signed_url.' })
+    }
+
+    return res.json({ signedUrl: data.signed_url })
+  } catch (error: unknown) {
+    logger.error('[copilotVoiceSession] Erro:', error)
+    return res.status(500).json({
+      error: 'Erro ao iniciar sessão de voz',
+      details: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+/**
  * POST /copilot/tts
  * Sintetiza o texto com a voz Fernanda (ElevenLabs) e retorna áudio MP3.
  */
