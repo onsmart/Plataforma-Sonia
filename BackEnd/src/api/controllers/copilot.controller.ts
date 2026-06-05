@@ -66,7 +66,7 @@ export async function copilotVoiceSessionController(req: Request, res: Response)
     }
 
     const response = await fetch(
-      `https://api.elevenlabs.io/v1/convai/conversation/token?agent_id=${encodeURIComponent(agentId)}`,
+      `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${encodeURIComponent(agentId)}`,
       { method: 'GET', headers: { 'xi-api-key': apiKey } }
     )
 
