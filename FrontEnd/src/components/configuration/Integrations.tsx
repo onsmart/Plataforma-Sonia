@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from "react"
+﻿import React, { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card"
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
 import { Button } from "../ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
 import { toast } from "sonner"
-import { ChevronDown, Loader2, Phone, Save, Server, Plus, Trash2, Clock, Bot, FlaskConical, AlertTriangle, GitBranch, Zap } from "lucide-react"
+import { ChevronDown, ChevronRight, Loader2, Phone, Save, Server, Plus, Trash2, Clock, Bot, FlaskConical, AlertTriangle, GitBranch, Zap } from "lucide-react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog"
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert"
 import { IntegrationBrandIcon } from "../integrations/IntegrationBrandIcon"
 import { Badge } from "../ui/badge"
@@ -397,11 +398,10 @@ export function Integrations() {
     const [isCalendlySheetOpen, setIsCalendlySheetOpen] = useState(false)
     const [crmIntegrations, setCrmIntegrations] = useState<any[]>([])
     const [calendlyIntegrations, setCalendlyIntegrations] = useState<CalendlyIntegrationRow[]>([])
-    const [expandedCRMIntegrationId, setExpandedCRMIntegrationId] = useState<string | null>(null)
+    const [crmDetailIntegration, setCrmDetailIntegration] = useState<any | null>(null)
     const [testingCrmId, setTestingCrmId] = useState<string | null>(null)
-    const [expandedCalendlyIntegrationId, setExpandedCalendlyIntegrationId] = useState<string | null>(null)
     const [editingCalendlyIntegration, setEditingCalendlyIntegration] = useState<CalendlyIntegrationRow | null>(null)
-    const [isWhatsAppExpanded, setIsWhatsAppExpanded] = useState(false)
+    const [isWhatsAppSheetOpen, setIsWhatsAppSheetOpen] = useState(false)
     const [isEmailExpanded, setIsEmailExpanded] = useState(false)
     const [isVoiceExpanded, setIsVoiceExpanded] = useState(false)
     const [isAddingWhatsApp, setIsAddingWhatsApp] = useState(false)
@@ -1182,7 +1182,7 @@ export function Integrations() {
             setWhatsappConfig({ phoneNumberId: "", accessToken: "", verifyToken: "", appSecret: "", phoneNumber: "" })
             setWhatsappStatus('unknown')
             setWhatsappStatusMessage('')
-            setIsWhatsAppExpanded(true)
+            setIsWhatsAppSheetOpen(false)
             setIsAddingWhatsApp(false)
             toast.success('Integracao WhatsApp removida.')
             await loadConfig()
@@ -2084,92 +2084,32 @@ export function Integrations() {
                         {crmIntegrations.length > 0 ? (
                             <div className="grid grid-cols-1 gap-3">
                                 {crmIntegrations.map((integration) => {
-                                    const isExpanded = expandedCRMIntegrationId === integration.id
                                     const crmName = getCRMName(integration)
                                     return (
-                                        <div
+                                        <button
                                             key={integration.id}
-                                            className="overflow-hidden border shadow-sm transition-colors duration-150"
+                                            type="button"
+                                            onClick={() => setCrmDetailIntegration(integration)}
+                                            className="flex w-full items-center justify-between gap-4 rounded-[1.25rem] border p-5 text-left shadow-sm transition-colors duration-150 hover:border-violet-500/40"
                                             style={{
-                                                borderRadius: '1.25rem',
                                                 backgroundColor: isDark ? '#27272a' : '#ffffff',
-                                                borderColor: isExpanded ? (isDark ? 'rgba(168, 85, 247, 0.45)' : 'rgba(147, 51, 234, 0.28)') : (isDark ? '#3f3f46' : '#e2e8f0')
+                                                borderColor: isDark ? '#3f3f46' : '#e2e8f0',
                                             }}
                                         >
-                                            <button
-                                                type="button"
-                                                onClick={() => setExpandedCRMIntegrationId(isExpanded ? null : integration.id)}
-                                                className="flex w-full items-center justify-between gap-4 p-5 text-left"
-                                            >
-                                                <div className="flex min-w-0 items-center gap-4">
-                                                    <IntegrationBrandIcon slug={getCRMSlug(integration)} size="sm" boxed isDark={isDark} />
-                                                    <div className="min-w-0">
-                                                        <div className="flex flex-wrap items-center gap-2">
-                                                            <span className="truncate font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#1e293b' }}>{crmName}</span>
-                                                            {getStatusBadge('connected')}
-                                                        </div>
-                                                        <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                                            {integration.tb_crms?.description || integration.config?.provider_name || `Provedor ${getCRMSlug(integration)} conectado ao workspace.`}
-                                                        </p>
+                                            <div className="flex min-w-0 items-center gap-4">
+                                                <IntegrationBrandIcon slug={getCRMSlug(integration)} size="sm" boxed isDark={isDark} />
+                                                <div className="min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span className="truncate font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#1e293b' }}>{crmName}</span>
+                                                        {getStatusBadge('connected')}
                                                     </div>
+                                                    <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                                        {integration.tb_crms?.description || integration.config?.provider_name || `Provedor ${getCRMSlug(integration)} conectado ao workspace.`}
+                                                    </p>
                                                 </div>
-                                                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`} />
-                                            </button>
-                                            {isExpanded && (
-                                                <div className="border-t p-5" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
-                                                    <div className="grid gap-3 md:grid-cols-3">
-                                                        <div className="rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
-                                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Provedor</p>
-                                                            <p className="mt-2 text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{getCRMSlug(integration)}</p>
-                                                        </div>
-                                                        <div className="rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
-                                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Autenticacao</p>
-                                                            <p className="mt-2 text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{getAuthModeLabel(integration)}</p>
-                                                        </div>
-                                                        <div className="rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
-                                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Conectado em</p>
-                                                            <p className="mt-2 text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{formatIntegrationDate(integration.created_at)}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
-                                                        <div className="min-w-0 space-y-1">
-                                                            <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>{getCRMStatusNote(integration)} Credenciais ficam ocultas por seguranca.</p>
-                                                            <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                                                Ultimo teste: {integration.config?.last_test_at ? formatIntegrationDateTime(integration.config.last_test_at) : 'ainda nao testado'}
-                                                                {integration.config?.last_test_message ? ` · ${integration.config.last_test_message}` : ''}
-                                                            </p>
-                                                        </div>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {getCRMSlug(integration) === 'hubspot' && (
-                                                                <Button
-                                                                    variant="outline"
-                                                                    size="sm"
-                                                                    onClick={() => handleTestCRMIntegration(integration.id, crmName)}
-                                                                    disabled={testingCrmId === integration.id || saving}
-                                                                    className="rounded-xl"
-                                                                >
-                                                                    {testingCrmId === integration.id ? (
-                                                                        <>
-                                                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                                            Testando...
-                                                                        </>
-                                                                    ) : (
-                                                                        <>
-                                                                            <FlaskConical className="mr-2 h-4 w-4" />
-                                                                            Testar conexao
-                                                                        </>
-                                                                    )}
-                                                                </Button>
-                                                            )}
-                                                            <Button variant="ghost" size="sm" onClick={() => handleDeleteCRM(integration.id, crmName)} className="rounded-xl text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40">
-                                                                <Trash2 className="mr-2 h-4 w-4" />
-                                                                Remover
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
+                                            </div>
+                                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                        </button>
                                     )
                                 })}
                                 <button
@@ -2194,7 +2134,7 @@ export function Integrations() {
                                     backgroundColor: isDark ? 'rgba(39, 39, 42, 0.35)' : 'rgba(248, 250, 252, 0.5)'
                                 }}
                             >
-                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#94a3b8' }}>Nenhum cérebro de dados conectado</p>
+                                <p className="text-sm font-medium" style={{ color: theme === 'dark' ? '#a1a1aa' : '#94a3b8' }}>Nenhuma integração conectada</p>
                             </div>
                         )}
                     </CardContent>
@@ -2236,93 +2176,38 @@ export function Integrations() {
                         </div>
                         {calendlyIntegrations.length > 0 ? (
                             <div className="grid grid-cols-1 gap-3">
-                                {calendlyIntegrations.map((integration) => {
-                                    const isExpanded = expandedCalendlyIntegrationId === integration.id
-                                    return (
-                                        <div
-                                            key={integration.id}
-                                            className="overflow-hidden border shadow-sm transition-colors duration-150"
-                                            style={{
-                                                borderRadius: '1.25rem',
-                                                backgroundColor: isDark ? '#27272a' : '#ffffff',
-                                                borderColor: isExpanded ? (isDark ? 'rgba(14, 165, 233, 0.45)' : 'rgba(14, 165, 233, 0.28)') : (isDark ? '#3f3f46' : '#e2e8f0')
-                                            }}
-                                        >
-                                            <button
-                                                type="button"
-                                                onClick={() => setExpandedCalendlyIntegrationId(isExpanded ? null : integration.id)}
-                                                className="flex w-full items-center justify-between gap-4 p-5 text-left"
-                                            >
-                                                <div className="flex min-w-0 items-center gap-4">
-                                                    <IntegrationBrandIcon provider="calendly" size="sm" boxed isDark={isDark} />
-                                                    <div className="min-w-0">
-                                                        <div className="flex flex-wrap items-center gap-2">
-                                                            <span className="truncate font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#1e293b' }}>
-                                                                {integration.email_address || 'Conta Calendly'}
-                                                            </span>
-                                                            {integration.is_default && <Badge variant="outline" className="rounded-full border-sky-400/20 bg-sky-400/10 text-sky-200">Padrão</Badge>}
-                                                            {getStatusBadge(integration.is_active === false ? 'pending' : 'connected')}
-                                                        </div>
-                                                        <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                                            {integration.event_type_mappings?.length || 0} regras de roteamento · webhook {integration.webhook_subscription_uri ? 'registrado' : 'pendente'}
-                                                        </p>
-                                                    </div>
+                                {calendlyIntegrations.map((integration) => (
+                                    <button
+                                        key={integration.id}
+                                        type="button"
+                                        onClick={() => {
+                                            setEditingCalendlyIntegration(integration)
+                                            setIsCalendlySheetOpen(true)
+                                        }}
+                                        className="flex w-full items-center justify-between gap-4 rounded-[1.25rem] border p-5 text-left shadow-sm transition-colors duration-150 hover:border-sky-500/40"
+                                        style={{
+                                            backgroundColor: isDark ? '#27272a' : '#ffffff',
+                                            borderColor: isDark ? '#3f3f46' : '#e2e8f0',
+                                        }}
+                                    >
+                                        <div className="flex min-w-0 items-center gap-4">
+                                            <IntegrationBrandIcon provider="calendly" size="sm" boxed isDark={isDark} />
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className="truncate font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#1e293b' }}>
+                                                        {integration.email_address || 'Conta Calendly'}
+                                                    </span>
+                                                    {integration.is_default && <Badge variant="outline" className="rounded-full border-sky-400/20 bg-sky-400/10 text-sky-200">Padrão</Badge>}
+                                                    {getStatusBadge(integration.is_active === false ? 'pending' : 'connected')}
                                                 </div>
-                                                <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`} />
-                                            </button>
-                                            {isExpanded && (
-                                                <div className="border-t p-5" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
-                                                    <div className="grid gap-3 md:grid-cols-3">
-                                                        <div className="rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
-                                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Provider</p>
-                                                            <p className="mt-2 text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{integration.provider}</p>
-                                                        </div>
-                                                        <div className="rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
-                                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Timezone</p>
-                                                            <p className="mt-2 text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{integration.default_timezone || 'America/Sao_Paulo'}</p>
-                                                        </div>
-                                                        <div className="rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
-                                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Webhook</p>
-                                                            <p className="mt-2 text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{integration.webhook_subscription_uri ? 'Ativo' : 'Pendente'}</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
-                                                        <div className="space-y-1">
-                                                            <p className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#e4e4e7' : '#334155' }}>
-                                                                Último teste: {integration.last_test_at ? formatIntegrationDate(integration.last_test_at) : 'ainda não testado'}
-                                                            </p>
-                                                            <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                                                Selecione esta integração em blocos ou ferramentas de agenda para usar o Calendly real nos fluxos.
-                                                            </p>
-                                                        </div>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                onClick={() => {
-                                                                    setEditingCalendlyIntegration(integration)
-                                                                    setIsCalendlySheetOpen(true)
-                                                                }}
-                                                                className="rounded-xl"
-                                                            >
-                                                                Editar
-                                                            </Button>
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                onClick={() => handleDeleteCalendly(integration.id)}
-                                                                className="rounded-xl text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40"
-                                                            >
-                                                                <Trash2 className="mr-2 h-4 w-4" />
-                                                                Remover
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
+                                                <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                                    {integration.event_type_mappings?.length || 0} regras de roteamento · webhook {integration.webhook_subscription_uri ? 'registrado' : 'pendente'}
+                                                </p>
+                                            </div>
                                         </div>
-                                    )
-                                })}
+                                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                    </button>
+                                ))}
                             </div>
                         ) : (
                             <div
@@ -2358,45 +2243,67 @@ export function Integrations() {
                         </div>
                     </div>
                     <CardContent className="p-4">
+                        {whatsappIntegrationId ? (
                         <button
                             type="button"
-                            onClick={() => setIsWhatsAppExpanded((value) => !value)}
-                            className="mb-5 flex w-full items-center justify-between gap-4 rounded-2xl border p-5 text-left transition-colors duration-150"
+                            onClick={() => setIsWhatsAppSheetOpen(true)}
+                            className="flex w-full items-center justify-between gap-4 rounded-2xl border p-5 text-left shadow-sm transition-colors duration-150 hover:border-emerald-500/40"
                             style={{
                                 backgroundColor: isDark ? '#27272a' : '#ffffff',
-                                borderColor: isWhatsAppExpanded ? (isDark ? 'rgba(16, 185, 129, 0.45)' : 'rgba(16, 185, 129, 0.28)') : (isDark ? '#3f3f46' : '#e2e8f0')
+                                borderColor: isDark ? '#3f3f46' : '#e2e8f0',
                             }}
                         >
                             <div className="flex min-w-0 items-center gap-4">
                                 <IntegrationBrandIcon provider="whatsapp" size="sm" boxed isDark={isDark} />
                                 <div className="min-w-0">
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <span className="font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
-                                        {whatsappIsLocked
-                                            ? (whatsappLockedSummary?.phoneMasked || 'WhatsApp conectado')
-                                            : whatsappIntegrationId
-                                              ? 'Integracao WhatsApp'
-                                              : 'WhatsApp Business'}
-                                    </span>
-                                    {getStatusBadge(whatsappStatus)}
-                                </div>
-                                <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
-                                    {whatsappIntegrationId
-                                        ? `${whatsappRoutingCaption}${!whatsappHasMetaAppSecret ? ' • App Secret pendente' : ''}`
-                                        : 'Configure credenciais Meta, App Secret e quem atende (agente ou flow).'}
-                                </p>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
+                                            {whatsappLockedSummary?.phoneMasked || 'WhatsApp Business'}
+                                        </span>
+                                        {getStatusBadge(whatsappStatus)}
+                                    </div>
+                                    <p className="mt-1 truncate text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
+                                        {whatsappRoutingCaption}{!whatsappHasMetaAppSecret ? ' · App Secret pendente' : ''}
+                                    </p>
                                 </div>
                             </div>
-                            <ChevronDown className={`h-4 w-4 shrink-0 transition-transform duration-150 ${isWhatsAppExpanded ? 'rotate-180' : ''}`} />
+                            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                         </button>
-                        {isWhatsAppExpanded && whatsappIsLocked && (
-                            <div
-                                className="space-y-5 rounded-2xl border p-6"
-                                style={{
-                                    backgroundColor: isDark ? '#27272a' : 'rgba(248, 250, 252, 0.85)',
-                                    borderColor: isDark ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.25)',
-                                }}
-                            >
+                        ) : (
+                        <button
+                            type="button"
+                            onClick={() => setIsWhatsAppSheetOpen(true)}
+                            className="flex w-full items-center justify-center gap-3 rounded-2xl border border-dashed p-6 text-sm font-bold transition-colors duration-150 hover:border-emerald-500/40"
+                            style={{
+                                borderColor: isDark ? '#3f3f46' : '#cbd5e1',
+                                backgroundColor: isDark ? 'rgba(39, 39, 42, 0.35)' : 'rgba(248, 250, 252, 0.7)',
+                                color: theme === 'dark' ? '#d4d4d8' : '#475569',
+                            }}
+                        >
+                            <Plus className="h-5 w-5" />
+                            Adicionar integração WhatsApp
+                        </button>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* DIALOG: Configuração WhatsApp */}
+                <Dialog open={isWhatsAppSheetOpen} onOpenChange={setIsWhatsAppSheetOpen}>
+                    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto gap-0 p-0" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                        <DialogHeader className="px-6 pt-6 pb-4 border-b" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                            <div className="flex items-center gap-3">
+                                <IntegrationBrandIcon provider="whatsapp" size="sm" boxed isDark={isDark} />
+                                <div>
+                                    <DialogTitle className="text-base font-bold">WhatsApp Business</DialogTitle>
+                                    <p className="mt-0.5 text-xs" style={{ color: isDark ? '#a1a1aa' : '#64748b' }}>
+                                        {whatsappIntegrationId ? 'Gerencie credenciais, roteamento e App Secret.' : 'Configure as credenciais do número oficial Meta.'}
+                                    </p>
+                                </div>
+                            </div>
+                        </DialogHeader>
+                        <div className="space-y-5 p-6">
+                        {whatsappIntegrationId && whatsappIsLocked ? (
+                            <>
                                 <p className="text-sm leading-relaxed" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>
                                     Credenciais da Meta estao bloqueadas apos validacao. Voce ainda pode definir{' '}
                                     <strong>quem atende</strong> (agente ou flow) e o <strong>App Secret</strong> do webhook.
@@ -2411,26 +2318,9 @@ export function Integrations() {
                                         type="password"
                                         value={whatsappConfig.appSecret}
                                         onFocus={(event) => event.currentTarget.select()}
-                                        onChange={(e) =>
-                                            setWhatsappConfig((current) => ({
-                                                ...current,
-                                                appSecret: normalizeSecretInput(e.target.value, current.appSecret),
-                                            }))
-                                        }
-                                        onBlur={() =>
-                                            setWhatsappConfig((current) => ({
-                                                ...current,
-                                                appSecret:
-                                                    whatsappIntegrationId && !current.appSecret.trim()
-                                                        ? MASKED_SECRET_VALUE
-                                                        : current.appSecret,
-                                            }))
-                                        }
-                                        placeholder={
-                                            whatsappHasMetaAppSecret
-                                                ? 'App Secret salvo — digite para rotacionar'
-                                                : 'Cole o App Secret do app Meta'
-                                        }
+                                        onChange={(e) => setWhatsappConfig((current) => ({ ...current, appSecret: normalizeSecretInput(e.target.value, current.appSecret) }))}
+                                        onBlur={() => setWhatsappConfig((current) => ({ ...current, appSecret: whatsappIntegrationId && !current.appSecret.trim() ? MASKED_SECRET_VALUE : current.appSecret }))}
+                                        placeholder={whatsappHasMetaAppSecret ? 'App Secret salvo — digite para rotacionar' : 'Cole o App Secret do app Meta'}
                                         className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
                                         style={inputSurface}
                                     />
@@ -2443,200 +2333,117 @@ export function Integrations() {
                                         { label: 'Verify Token', value: 'Configurado (oculto)' },
                                         { label: 'App Secret', value: whatsappHasMetaAppSecret ? 'Configurado (oculto)' : 'Nao informado' },
                                     ].map((row) => (
-                                        <div
-                                            key={row.label}
-                                            className="rounded-xl border px-4 py-3"
-                                            style={{
-                                                borderColor: isDark ? '#3f3f46' : '#e2e8f0',
-                                                backgroundColor: isDark ? '#18181b' : '#ffffff',
-                                            }}
-                                        >
-                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                                {row.label}
-                                            </p>
-                                            <p className="mt-1 text-sm font-medium" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>
-                                                {row.value}
-                                            </p>
+                                        <div key={row.label} className="rounded-xl border px-4 py-3" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#ffffff' }}>
+                                            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{row.label}</p>
+                                            <p className="mt-1 text-sm font-medium" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>{row.value}</p>
                                         </div>
                                     ))}
                                 </div>
                                 <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>
                                     Configure na Meta o callback GET/POST /whatsapp/webhook apontando para a URL publica do backend.
                                 </p>
-                                <div className="flex flex-wrap justify-end gap-3">
-                                    <Button
-                                        type="button"
-                                        onClick={() => void handleSaveWhatsappIntegration()}
-                                        disabled={saving}
-                                        className="rounded-xl"
-                                        style={{
-                                            background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
-                                            color: 'white',
-                                        }}
-                                    >
+                                <div className="flex flex-wrap justify-end gap-3 border-t pt-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                                    <Button type="button" onClick={() => void handleSaveWhatsappIntegration()} disabled={saving} className="rounded-xl" style={{ background: 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', color: 'white' }}>
                                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                                         Salvar roteamento e App Secret
                                     </Button>
-                                    <Button
-                                        type="button"
-                                        variant="destructive"
-                                        onClick={() => void handleDeleteWhatsappIntegration()}
-                                        disabled={saving}
-                                        className="rounded-xl"
-                                    >
-                                        {saving ? (
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                        ) : (
-                                            <Trash2 className="mr-2 h-4 w-4" />
-                                        )}
-                                        Remover integracao
+                                    <Button type="button" variant="destructive" onClick={() => void handleDeleteWhatsappIntegration()} disabled={saving} className="rounded-xl">
+                                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                                        Remover integração
                                     </Button>
                                 </div>
-                            </div>
-                        )}
-                        {isWhatsAppExpanded && !whatsappIsLocked && (
+                            </>
+                        ) : (
                             <>
-                        {whatsappWebhookAlert}
-                        {whatsappRoutingPanel}
-                        <div className="grid md:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Phone Number ID</Label>
-                                <Input
-                                    value={isMaskedSecretValue(whatsappConfig.phoneNumberId) ? '' : whatsappConfig.phoneNumberId}
-                                    onChange={(e) => updateWhatsappConfig({ phoneNumberId: e.target.value })}
-                                    placeholder={whatsappIntegrationId ? 'Phone Number ID salvo — informe novamente para alterar' : 'Phone Number ID da Meta'}
-                                    className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                                    style={inputSurface}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Access Token</Label>
-	                                <Input type="password" value={whatsappConfig.accessToken} onFocus={(event) => event.currentTarget.select()} onChange={(e) => setWhatsappConfig((current) => ({ ...current, accessToken: normalizeSecretInput(e.target.value, current.accessToken) }))} onBlur={() => setWhatsappConfig((current) => ({ ...current, accessToken: whatsappIntegrationId && !current.accessToken.trim() ? MASKED_SECRET_VALUE : current.accessToken }))} placeholder={whatsappIntegrationId ? 'Token salvo - digite para rotacionar' : 'Access Token'} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Verify Token</Label>
-	                                <Input type="password" value={whatsappConfig.verifyToken} onFocus={(event) => event.currentTarget.select()} onChange={(e) => setWhatsappConfig((current) => ({ ...current, verifyToken: normalizeSecretInput(e.target.value, current.verifyToken) }))} onBlur={() => setWhatsappConfig((current) => ({ ...current, verifyToken: whatsappIntegrationId && !current.verifyToken.trim() ? MASKED_SECRET_VALUE : current.verifyToken }))} placeholder={whatsappIntegrationId ? 'Verify token salvo - digite para rotacionar' : 'Verify Token'} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
-                                <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
-                                    Esse valor pode ser criado por voce e deve ser o mesmo usado na verificacao do webhook da Meta.
-                                </p>
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>App Secret (Meta)</Label>
-	                                <Input type="password" value={whatsappConfig.appSecret} onFocus={(event) => event.currentTarget.select()} onChange={(e) => setWhatsappConfig((current) => ({ ...current, appSecret: normalizeSecretInput(e.target.value, current.appSecret) }))} onBlur={() => setWhatsappConfig((current) => ({ ...current, appSecret: whatsappIntegrationId && !current.appSecret.trim() ? MASKED_SECRET_VALUE : current.appSecret }))} placeholder={whatsappIntegrationId ? 'App Secret salvo - digite para rotacionar' : 'App Secret do app Meta'} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
-                                <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
-                                    App Secret do seu app em Meta for Developers. Usado para validar webhooks recebidos (por integracao). Fallback opcional: WHATSAPP_META_APP_SECRET no backend.
-                                </p>
-                            </div>
-                            <div className="space-y-2 md:col-span-2 max-w-md">
-                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Numero oficial da Meta</Label>
-                                <Input
-                                    placeholder={WHATSAPP_PHONE_PLACEHOLDER}
-                                    value={isMaskedSecretValue(whatsappConfig.phoneNumber) ? '' : whatsappConfig.phoneNumber}
-                                    onChange={(e) => updateWhatsappConfig({ phoneNumber: e.target.value })}
-                                    className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
-                                    style={inputSurface}
-                                />
-                                {isMaskedSecretValue(whatsappConfig.phoneNumber) ? (
-                                    <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
-                                        Numero ja configurado. Informe novamente apenas se for alterar.
-                                    </p>
-                                ) : null}
-                                <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
-                                    Configure na Meta o callback GET/POST /whatsapp/webhook para este numero oficial.
-                                </p>
-                            </div>
-                            {false && (
-                            <div className="space-y-2 md:col-span-2">
-                                <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Agente alocado a este numero</Label>
-                                <Select value={selectedLinkedAgentId} onValueChange={setSelectedLinkedAgentId}>
-                                    <SelectTrigger
-                                        className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-emerald-500/20"
-                                        style={inputSurface}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <Bot className="h-4 w-4 shrink-0 text-emerald-500" />
-                                            <SelectValue placeholder="Selecione o agente que atendera este numero" />
-                                        </div>
-                                    </SelectTrigger>
-                                    <SelectContent className="rounded-xl">
-                                        <SelectItem value="none">Nenhum agente alocado</SelectItem>
-                                        {assignableAgents.map((agent) => (
-                                            <SelectItem key={agent.id} value={agent.id}>
-                                                {agent.nome}
-                                                {agent.status_id === 1 ? ' • ativo' : agent.status_id === 3 || agent.status_id === 4 ? ' • pausado' : agent.status_id === 2 ? ' • cancelado' : ''}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>
-                                    O agente escolhido passa a atender automaticamente este numero oficial no WhatsApp. Se nenhum agente for selecionado, as mensagens continuam entrando, mas ficam sem atendimento automatico.
-                                </p>
-                            </div>
-                            )}
-                        </div>
-                        <div className="mt-8 flex justify-end">
-                            <Button
-                                onClick={() => void handleSaveWhatsappIntegration()}
-                                disabled={saving}
-                                className="rounded-2xl px-6 h-11 font-black uppercase text-[10px] tracking-widest shadow-xl transition-all"
-                                style={{
-                                    background: saving
-                                        ? "linear-gradient(135deg, #67e8f9 0%, #06b6d4 100%)"
-                                        : "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
-                                    color: "white",
-                                    border: "none"
-                                }}
-                            >
-                                {saving ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: "white" }} /> : <Save className="h-4 w-4 mr-2" style={{ color: "white" }} />}
-                                Salvar integracao
-                            </Button>
-                        </div>
+                                {whatsappWebhookAlert}
+                                {whatsappRoutingPanel}
+                                <div className="grid md:grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Phone Number ID</Label>
+                                        <Input value={isMaskedSecretValue(whatsappConfig.phoneNumberId) ? '' : whatsappConfig.phoneNumberId} onChange={(e) => updateWhatsappConfig({ phoneNumberId: e.target.value })} placeholder={whatsappIntegrationId ? 'Phone Number ID salvo — informe novamente para alterar' : 'Phone Number ID da Meta'} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Access Token</Label>
+                                        <Input type="password" value={whatsappConfig.accessToken} onFocus={(event) => event.currentTarget.select()} onChange={(e) => setWhatsappConfig((current) => ({ ...current, accessToken: normalizeSecretInput(e.target.value, current.accessToken) }))} onBlur={() => setWhatsappConfig((current) => ({ ...current, accessToken: whatsappIntegrationId && !current.accessToken.trim() ? MASKED_SECRET_VALUE : current.accessToken }))} placeholder={whatsappIntegrationId ? 'Token salvo - digite para rotacionar' : 'Access Token'} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Verify Token</Label>
+                                        <Input type="password" value={whatsappConfig.verifyToken} onFocus={(event) => event.currentTarget.select()} onChange={(e) => setWhatsappConfig((current) => ({ ...current, verifyToken: normalizeSecretInput(e.target.value, current.verifyToken) }))} onBlur={() => setWhatsappConfig((current) => ({ ...current, verifyToken: whatsappIntegrationId && !current.verifyToken.trim() ? MASKED_SECRET_VALUE : current.verifyToken }))} placeholder={whatsappIntegrationId ? 'Verify token salvo - digite para rotacionar' : 'Verify Token'} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
+                                        <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>Esse valor pode ser criado por voce e deve ser o mesmo usado na verificacao do webhook da Meta.</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>App Secret (Meta)</Label>
+                                        <Input type="password" value={whatsappConfig.appSecret} onFocus={(event) => event.currentTarget.select()} onChange={(e) => setWhatsappConfig((current) => ({ ...current, appSecret: normalizeSecretInput(e.target.value, current.appSecret) }))} onBlur={() => setWhatsappConfig((current) => ({ ...current, appSecret: whatsappIntegrationId && !current.appSecret.trim() ? MASKED_SECRET_VALUE : current.appSecret }))} placeholder={whatsappIntegrationId ? 'App Secret salvo - digite para rotacionar' : 'App Secret do app Meta'} className="h-12 rounded-xl border px-4 font-mono text-sm focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
+                                        <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>App Secret do seu app em Meta for Developers. Usado para validar webhooks. Fallback opcional: WHATSAPP_META_APP_SECRET no backend.</p>
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2 max-w-md">
+                                        <Label className="text-xs font-semibold" style={{ color: theme === "dark" ? "#d4d4d8" : "#475569" }}>Numero oficial da Meta</Label>
+                                        <Input placeholder={WHATSAPP_PHONE_PLACEHOLDER} value={isMaskedSecretValue(whatsappConfig.phoneNumber) ? '' : whatsappConfig.phoneNumber} onChange={(e) => updateWhatsappConfig({ phoneNumber: e.target.value })} className="h-12 rounded-xl border px-4 font-semibold focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" style={inputSurface} />
+                                        {isMaskedSecretValue(whatsappConfig.phoneNumber) && <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>Numero ja configurado. Informe novamente apenas se for alterar.</p>}
+                                        <p className="text-xs" style={{ color: theme === "dark" ? "#a1a1aa" : "#64748b" }}>Configure na Meta o callback GET/POST /whatsapp/webhook para este numero oficial.</p>
+                                    </div>
+                                </div>
+                                <div className="flex justify-end border-t pt-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                                    <Button onClick={() => void handleSaveWhatsappIntegration()} disabled={saving} className="rounded-2xl px-6 h-11 font-black uppercase text-[10px] tracking-widest shadow-xl transition-all" style={{ background: saving ? 'linear-gradient(135deg, #67e8f9 0%, #06b6d4 100%)' : 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)', color: 'white', border: 'none' }}>
+                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'white' }} /> : <Save className="h-4 w-4 mr-2" style={{ color: 'white' }} />}
+                                        Salvar integração
+                                    </Button>
+                                </div>
                             </>
                         )}
-                        {!whatsappIntegrationId && (
-                        <button
-                            type="button"
-                            onClick={() => {
-                                setIsAddingWhatsApp(true)
-                                setIsWhatsAppExpanded(false)
-                            }}
-                            className="mt-5 flex w-full items-center justify-center gap-3 rounded-2xl border border-dashed p-6 text-sm font-bold transition-colors duration-150"
-                            style={{
-                                borderColor: isDark ? '#3f3f46' : '#cbd5e1',
-                                backgroundColor: isDark ? 'rgba(39, 39, 42, 0.35)' : 'rgba(248, 250, 252, 0.7)',
-                                color: theme === 'dark' ? '#d4d4d8' : '#475569'
-                            }}
-                        >
-                            <Plus className="h-5 w-5" />
-                            Adicionar integracao WhatsApp
-                        </button>
-                        )}
-                        {isAddingWhatsApp && !whatsappIntegrationId && (
-                            <div className="mt-5 rounded-2xl border p-5" style={{ backgroundColor: isDark ? '#27272a' : '#ffffff', borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
-                                <div className="mb-5 flex items-center justify-between gap-4">
-                                    <div>
-                                        <p className="text-sm font-bold" style={{ color: theme === 'dark' ? '#fafafa' : '#0f172a' }}>Nova integracao WhatsApp</p>
-                                        <p className="text-xs" style={{ color: theme === 'dark' ? '#a1a1aa' : '#64748b' }}>Preencha outro numero oficial sem alterar a integracao atual.</p>
-                                    </div>
-                                    <Button variant="ghost" size="sm" onClick={() => setIsAddingWhatsApp(false)} className="rounded-xl">Cancelar</Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+
+                {/* DIALOG: Detalhes da integração CRM */}
+                <Dialog open={!!crmDetailIntegration} onOpenChange={(open) => { if (!open) setCrmDetailIntegration(null) }}>
+                    <DialogContent className="max-w-lg gap-0 p-0" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                        <DialogHeader className="px-6 pt-6 pb-4 border-b" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                            <div className="flex items-center gap-3">
+                                {crmDetailIntegration && <IntegrationBrandIcon slug={getCRMSlug(crmDetailIntegration)} size="sm" boxed isDark={isDark} />}
+                                <div>
+                                    <DialogTitle className="text-base font-bold">{crmDetailIntegration ? getCRMName(crmDetailIntegration) : ''}</DialogTitle>
+                                    <p className="mt-0.5 text-xs" style={{ color: isDark ? '#a1a1aa' : '#64748b' }}>Detalhes e ações da integração CRM.</p>
                                 </div>
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    <Input placeholder="Phone Number ID" value={newWhatsappConfig.phoneNumberId} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, phoneNumberId: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
-                                    <Input type="password" placeholder="Access Token" value={newWhatsappConfig.accessToken} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, accessToken: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
-                                    <Input placeholder="Verify Token" value={newWhatsappConfig.verifyToken} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, verifyToken: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
-                                    <Input type="password" placeholder="App Secret (Meta)" value={newWhatsappConfig.appSecret} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, appSecret: e.target.value }))} className="h-12 rounded-xl" style={inputSurface} />
-                                    <Input placeholder={WHATSAPP_PHONE_PLACEHOLDER} value={newWhatsappConfig.phoneNumber} onChange={(e) => setNewWhatsappConfig((p) => ({ ...p, phoneNumber: e.target.value }))} className="h-12 rounded-xl md:col-span-2" style={inputSurface} />
+                            </div>
+                        </DialogHeader>
+                        {crmDetailIntegration && (
+                            <div className="space-y-4 p-6">
+                                <div className="grid gap-3 sm:grid-cols-3">
+                                    {[
+                                        { label: 'Provedor', value: getCRMSlug(crmDetailIntegration) },
+                                        { label: 'Autenticação', value: getAuthModeLabel(crmDetailIntegration) },
+                                        { label: 'Conectado em', value: formatIntegrationDate(crmDetailIntegration.created_at) },
+                                    ].map((row) => (
+                                        <div key={row.label} className="rounded-xl border px-4 py-3" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
+                                            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: isDark ? '#a1a1aa' : '#64748b' }}>{row.label}</p>
+                                            <p className="mt-2 text-sm font-bold" style={{ color: isDark ? '#fafafa' : '#0f172a' }}>{row.value}</p>
+                                        </div>
+                                    ))}
                                 </div>
-                                <div className="mt-5 flex justify-end">
-                                    <Button onClick={handleAddWhatsAppIntegration} disabled={saving} className="rounded-xl">
-                                        {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
-                                        Salvar nova integracao
+                                <div className="rounded-xl border px-4 py-3 space-y-1" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0', backgroundColor: isDark ? '#18181b' : '#f8fafc' }}>
+                                    <p className="text-xs" style={{ color: isDark ? '#a1a1aa' : '#64748b' }}>{getCRMStatusNote(crmDetailIntegration)} Credenciais ficam ocultas por seguranca.</p>
+                                    <p className="text-xs" style={{ color: isDark ? '#a1a1aa' : '#64748b' }}>
+                                        Último teste: {crmDetailIntegration.config?.last_test_at ? formatIntegrationDateTime(crmDetailIntegration.config.last_test_at) : 'ainda não testado'}
+                                        {crmDetailIntegration.config?.last_test_message ? ` · ${crmDetailIntegration.config.last_test_message}` : ''}
+                                    </p>
+                                </div>
+                                <div className="flex flex-wrap justify-end gap-2 border-t pt-4" style={{ borderColor: isDark ? '#3f3f46' : '#e2e8f0' }}>
+                                    {getCRMSlug(crmDetailIntegration) === 'hubspot' && (
+                                        <Button variant="outline" size="sm" onClick={() => handleTestCRMIntegration(crmDetailIntegration.id, getCRMName(crmDetailIntegration))} disabled={testingCrmId === crmDetailIntegration.id || saving} className="rounded-xl">
+                                            {testingCrmId === crmDetailIntegration.id ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Testando...</> : <><FlaskConical className="mr-2 h-4 w-4" />Testar conexão</>}
+                                        </Button>
+                                    )}
+                                    <Button variant="ghost" size="sm" onClick={() => { handleDeleteCRM(crmDetailIntegration.id, getCRMName(crmDetailIntegration)); setCrmDetailIntegration(null) }} className="rounded-xl text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40">
+                                        <Trash2 className="mr-2 h-4 w-4" />
+                                        Remover
                                     </Button>
                                 </div>
                             </div>
                         )}
-                    </CardContent>
-                </Card>
+                    </DialogContent>
+                </Dialog>
+
 
                 {/* 3. CARD EMAIL - oculto até implementação completa */}
                 {isIntegrationSectionVisible('email') && (

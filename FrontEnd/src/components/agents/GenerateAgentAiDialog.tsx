@@ -119,11 +119,35 @@ const RECEPTIVE_DEFAULT_TOOLS: Record<string, string[]> = {
   whatsapp: ["send_session_message"],
 }
 
+// ─── PRINCÍPIO GERAL ────────────────────────────────────────────────────────
+// Toda integração adicionada à plataforma segue o mesmo contrato:
+//   • ATIVADA  → incluída no prompt/hint gerado pela IA.
+//   • DESATIVADA → completamente ignorada pelo gerador.
+//
+// Para adicionar uma nova integração:
+//   1. Inclua as toolNames padrão em RECEPTIVE_DEFAULT_TOOLS (ou equivalente SDR)
+//   2. Adicione o `addProviderTools(...)` no arquétipo correspondente abaixo
+//   3. Atualize `archetypeHint` e `appendArchetypeRules` no backend
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Ferramentas padrão do SDR — espelho do Receptivo + foco em pipeline/outbound.
+// Preparado para quando o arquétipo for desbloqueado na plataforma.
+const SDR_DEFAULT_TOOLS: Record<string, string[]> = {
+  calendly: [
+    "check_availability",
+    "book_appointment",
+    "list_upcoming_appointments",
+    "cancel_appointment",
+  ],
+  hubspot: ["lookup_contact", "create_contact", "update_contact"],
+  whatsapp: ["send_session_message"],
+}
+
 function defaultToolsForArchetype(
   archetype: AgentAiArchetype,
   catalog: CatalogResponse | null
 ): SelectedToolRow[] {
-  if (!catalog || archetype === "sdr") return []
+  if (!catalog) return []
   const connected = catalog.availableProviders || []
   const rows: SelectedToolRow[] = []
 
@@ -159,7 +183,19 @@ function defaultToolsForArchetype(
   }
 
   if (archetype === "faq") {
+    // FAQ: apenas WhatsApp — sem agendamento nem CRM
     addProviderTools("whatsapp", RECEPTIVE_DEFAULT_TOOLS.whatsapp, false)
+  }
+
+  // SDR: pré-seleciona todas as integrações disponíveis por padrão.
+  // O usuário pode desativar as que não quiser — cada uma desativada é
+  // ignorada completamente pelo gerador de prompt.
+  if (archetype === "sdr") {
+    addProviderTools("calendly", SDR_DEFAULT_TOOLS.calendly, false)
+    addProviderTools("hubspot", SDR_DEFAULT_TOOLS.hubspot, true)
+    addProviderTools("whatsapp", SDR_DEFAULT_TOOLS.whatsapp, false)
+    // Futuras integrações do SDR serão adicionadas aqui:
+    // addProviderTools("gmail", SDR_DEFAULT_TOOLS.gmail, false)
   }
 
   return rows
@@ -365,9 +401,15 @@ export function GenerateAgentAiDialog({
     return map
   }, [catalog])
 
-  // FAQ só expõe WhatsApp; outros arquétipos mostram todos os providers
+  // Providers visíveis por arquétipo:
+  //   FAQ      → só WhatsApp (sem agendamento nem CRM)
+  //   Receptivo → todos os providers conectados
+  //   SDR      → todos os providers (funil completo: WhatsApp + Calendly + CRM + futuros)
+  // Princípio: providers aqui = providers que o usuário PODE ativar/desativar.
+  // Providers não listados → não aparecem → não são gerados no prompt.
   const visibleProviders = useMemo(() => {
     if (archetype === "faq") return setupProviderOrder.filter((p) => p === "whatsapp")
+    // Receptivo e SDR: exibem todos os providers disponíveis
     return setupProviderOrder
   }, [archetype, setupProviderOrder])
 
@@ -852,6 +894,66 @@ export function GenerateAgentAiDialog({
                   <p className="text-xs leading-relaxed text-muted-foreground">
                     <span className="font-semibold text-foreground">Agente FAQ</span> — responde dúvidas sem executar ações externas. Calendly e CRM não estão disponíveis neste perfil.
                     O WhatsApp é opcional e permite que o agente opere nesse canal.
+                  </p>
+                </div>
+              )}
+              {archetype === "sdr" && (
+                <div
+                  className={cn(
+                    "rounded-xl border px-4 py-3.5 space-y-2",
+                    isDark
+                      ? "border-amber-500/25 bg-amber-500/8"
+                      : "border-amber-200 bg-amber-50"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <Rocket className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden />
+                    <p className="text-xs font-semibold text-foreground">
+                      Agente SDR — cada integração ativa molda o funil de vendas gerado pela IA
+                    </p>
+                  </div>
+                  <ul className="space-y-1 text-xs leading-relaxed text-muted-foreground">
+                    <li className="flex items-start gap-1.5">
+                      <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <span><span className="font-medium text-foreground">Ativada</span> — a IA cria regras específicas para essa integração no prompt (qualificação, agendamento, CRM).</span>
+                    </li>
+                    <li className="flex items-start gap-1.5">
+                      <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+                      <span><span className="font-medium text-foreground">Desativada</span> — ignorada completamente; o agente opera sem essa integração no fluxo de vendas.</span>
+                    </li>
+                  </ul>
+                  <p className="text-[11px] text-muted-foreground border-t pt-2" style={{ borderColor: isDark ? "rgba(245,158,11,0.2)" : "rgba(245,158,11,0.25)" }}>
+                    Sem Calendly: qualifica por conversa sem agendar. Sem CRM: não registra pipeline. Ative apenas o que já está configurado.
+                  </p>
+                </div>
+              )}
+              {archetype === "receptive" && (
+                <div
+                  className={cn(
+                    "rounded-xl border px-4 py-3.5 space-y-2",
+                    isDark
+                      ? "border-cyan-500/25 bg-cyan-500/8"
+                      : "border-cyan-200 bg-cyan-50"
+                  )}
+                >
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-3.5 w-3.5 shrink-0 text-cyan-500" aria-hidden />
+                    <p className="text-xs font-semibold text-foreground">
+                      As ferramentas ativas definem o que a IA vai gerar no prompt do agente
+                    </p>
+                  </div>
+                  <ul className="space-y-1 text-xs leading-relaxed text-muted-foreground">
+                    <li className="flex items-start gap-1.5">
+                      <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <span><span className="font-medium text-foreground">Ativada</span> — a IA cria regras e fluxo específicos para essa integração no prompt.</span>
+                    </li>
+                    <li className="flex items-start gap-1.5">
+                      <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+                      <span><span className="font-medium text-foreground">Desativada</span> — a IA ignora completamente essa integração; nenhum conteúdo relacionado será gerado.</span>
+                    </li>
+                  </ul>
+                  <p className="text-[11px] text-muted-foreground border-t pt-2" style={{ borderColor: isDark ? "rgba(14,165,233,0.2)" : "rgba(14,165,233,0.25)" }}>
+                    Se não quiser que o agente use Calendly, CRM ou outra ferramenta, mantenha-a desativada.
                   </p>
                 </div>
               )}

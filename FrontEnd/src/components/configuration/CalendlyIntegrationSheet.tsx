@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react"
-import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "../ui/sheet"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
 import { Label } from "../ui/label"
@@ -461,27 +461,29 @@ export function CalendlyIntegrationSheet({
   }
 
   return (
-    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="w-full max-w-none overflow-y-auto border-l border-border/70 bg-zinc-950/98 px-0 text-zinc-50 backdrop-blur-xl sm:w-[92vw] sm:max-w-[980px]">
-        <SheetHeader className="border-b border-white/10 px-4 pb-6 pt-6 sm:px-6 lg:px-8">
-          <div className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 text-center md:flex-row md:items-start md:text-left">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col gap-0 overflow-hidden border-white/10 bg-zinc-950 p-0 text-zinc-50">
+        <DialogHeader className="shrink-0 border-b border-white/10 px-6 py-5">
+          <div className="flex items-center gap-4">
             <IntegrationBrandIcon
               provider="calendly"
-              size="md"
+              size="sm"
               boxed
-              className="rounded-2xl border border-white/10 shadow-[0_10px_30px_-18px_rgba(56,189,248,0.35)]"
+              className="rounded-xl border border-white/10 shrink-0"
             />
-            <div className="max-w-2xl space-y-1.5">
-              <SheetTitle className="text-xl font-black tracking-tight text-zinc-50 sm:text-2xl">Conectar Calendly</SheetTitle>
-              <SheetDescription className="text-sm leading-6 text-zinc-400 sm:text-[15px]">
-                Configure a conta do usuário no Calendly para liberar as ferramentas de agenda, disponibilidade, booking, remarcação e cancelamento dentro da plataforma.
-              </SheetDescription>
+            <div className="min-w-0">
+              <DialogTitle className="text-base font-bold text-zinc-50">
+                {form.integrationId ? 'Configurar Calendly' : 'Conectar Calendly'}
+              </DialogTitle>
+              <p className="mt-0.5 text-sm leading-5 text-zinc-400">
+                Configure agenda, disponibilidade, booking e cancelamento para usar nos fluxos.
+              </p>
             </div>
           </div>
-        </SheetHeader>
+        </DialogHeader>
 
-        <div className="px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+        <div className="flex-1 overflow-y-auto px-6 py-6">
+          <div className="flex flex-col gap-5">
             <div className="w-full rounded-3xl border border-white/10 bg-white/[0.03] p-4 sm:p-5 lg:p-6">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="space-y-1">
@@ -828,23 +830,21 @@ export function CalendlyIntegrationSheet({
           </div>
         </div>
 
-        <SheetFooter className="border-t border-white/10 px-4 py-5 sm:px-6 lg:px-8">
-          <div className="mx-auto flex w-full max-w-4xl flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p className="max-w-2xl text-center text-xs text-zinc-400 sm:text-left">
+        <div className="shrink-0 border-t border-white/10 px-6 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-zinc-400">
               Depois de salvar, essa integração poderá ser selecionada em blocos, agentes e ferramentas que executam ações de calendário.
             </p>
-            <div className="flex flex-wrap justify-center gap-2 sm:justify-end">
-              <SheetClose asChild>
-                <Button variant="ghost" className="rounded-xl text-zinc-300 hover:bg-white/10 hover:text-zinc-100">Fechar</Button>
-              </SheetClose>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" onClick={onClose} className="rounded-xl text-zinc-300 hover:bg-white/10 hover:text-zinc-100">Fechar</Button>
               <Button onClick={handleSave} disabled={saving} className="rounded-xl bg-sky-500 text-white hover:bg-sky-400">
                 {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                 Salvar integração
               </Button>
             </div>
           </div>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -126,9 +126,9 @@ const appSidebarStyles = `
   }
 
   .app-sidebar-shell[data-theme-mode="light"] {
-    --sidebar-accent-bar: #1d4ed8;
+    --sidebar-accent-bar: linear-gradient(to bottom, #2563eb, #7c3aed);
     --sidebar-logo-shadow-idle: 0 10px 24px -18px rgba(15, 23, 42, 0.18);
-    --sidebar-logo-shadow-active: 0 14px 32px -16px rgba(37, 99, 235, 0.28);
+    --sidebar-logo-shadow-active: 0 14px 32px -16px rgba(109, 40, 217, 0.32);
     --sidebar-scrollbar-track: #e2e8f0;
     --sidebar-scrollbar-thumb: #94a3b8;
     --sidebar-scrollbar-thumb-hover: #64748b;
@@ -252,8 +252,14 @@ const appSidebarStyles = `
 
   [data-collapsible="icon"] [data-sidebar="menu-button"] {
     justify-content: center !important;
-    padding: 0.65rem !important;
-    min-height: 2.75rem;
+    align-items: center !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    min-height: unset !important;
+    margin: 0 auto !important;
+    border-radius: 0.75rem !important;
   }
 
   [data-collapsible="icon"] .user-menu-trigger {
@@ -536,20 +542,20 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         ringHsl: '215 20% 48%',
         edgeClass: '',
         headerBorderClass: 'border-slate-200/80',
-        logoBadgeClass: 'border-slate-200/80 bg-white',
+        logoBadgeClass: 'border-blue-200/60 bg-gradient-to-br from-blue-50 to-violet-50',
         // slate-600 = contraste 5.8:1 em fundo branco → passa WCAG AA para texto pequeno
         subLabelClass: '!text-slate-600',
         groupLabelClass: '!text-slate-600',
-        // item ativo: branco bem opaco para destacar sem deixar o painel sólido
-        activeButtonClass: '!bg-white/80 !text-slate-950 shadow-[0_4px_16px_-12px_rgba(15,23,42,0.22)] border-white/60',
-        // item idle: sem fundo, hover mostra 35% branco — combina com painel 6%
+        // item ativo: gradiente azul→violet suave, integra com o accent bar
+        activeButtonClass: '!bg-gradient-to-r !from-blue-50 !to-violet-50/70 !text-slate-900 border-blue-200/60',
+        // item idle: hover com fundo branco suave, sem sombra/glow no texto
         idleButtonClass: 'border-transparent text-slate-700 hover:!bg-white/35 hover:!text-slate-950 hover:border-white/40',
-        activeIcon: '#1d4ed8',
+        activeIcon: '#6d28d9',
         idleIcon: '#475569',
         activeTextClass: '!text-slate-950',
         idleTextClass: '!text-slate-800',
         userCardClass: 'border-transparent bg-transparent hover:bg-black/[0.04] transition-colors duration-200',
-        userAvatarClass: 'bg-primary text-white',
+        userAvatarClass: 'bg-slate-200 text-slate-700',
         userNameClass: '!text-slate-900',
         userSubtextClass: '!text-slate-500',
         chevronClass: '!text-slate-400',
@@ -739,12 +745,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                           : sidebarPalette.idleButtonClass
                       )}
                     >
-                      <item.icon 
+                      <item.icon
                         className={cn(
                           "shrink-0 transition-transform duration-300",
                           isActive && "scale-105"
                         )}
-                        size={18} 
+                        size={22}
                         strokeWidth={isActive ? 2.5 : 2}
                         style={{ color: isActive ? sidebarPalette.activeIcon : sidebarPalette.idleIcon }} 
                       />

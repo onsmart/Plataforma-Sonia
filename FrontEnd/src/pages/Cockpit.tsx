@@ -832,30 +832,41 @@ export function Cockpit() {
         }
     }
 
-    /** Métricas rápidas: ícone e faixa superior neutros; cor só quando há alerta. */
+    /**
+     * Métricas — iconWell responsivo ao hover do card via group-hover.
+     * Light: azul/violet muito suave. Dark: opacidade elevada para contraste.
+     */
     const metricNeutral = {
-        iconWell: "bg-primary/8 text-primary dark:bg-primary/12 dark:text-primary",
-        stripe: "bg-gradient-to-r from-primary/40 via-primary/20 to-transparent dark:from-primary/30 dark:via-primary/12 dark:to-transparent",
+        iconWell: "border-blue-100 bg-blue-50 text-blue-600 group-hover:border-blue-200 group-hover:bg-blue-100/70 dark:border-blue-400/15 dark:bg-blue-400/10 dark:text-blue-300 dark:group-hover:bg-blue-400/15",
+        stripe: "bg-gradient-to-r from-blue-500/50 via-violet-500/35 to-cyan-400/25 dark:from-blue-400/45 dark:via-violet-400/30 dark:to-cyan-300/20",
     } as const
     const metricAlert = {
-        iconWell: "bg-destructive/10 text-destructive dark:bg-destructive/15 dark:text-destructive",
-        stripe: "bg-gradient-to-r from-destructive/70 via-destructive/35 to-transparent dark:from-destructive/60 dark:via-destructive/25 dark:to-transparent",
+        iconWell: "border-red-100 bg-red-50 text-red-600 group-hover:border-red-200 group-hover:bg-red-100/70 dark:border-red-400/15 dark:bg-red-400/10 dark:text-red-300 dark:group-hover:bg-red-400/15",
+        stripe: "bg-gradient-to-r from-red-500/50 via-amber-400/35 to-orange-400/25 dark:from-red-400/45 dark:via-amber-300/30 dark:to-orange-300/20",
     } as const
 
     const metricIconWell =
-        "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/40 backdrop-blur-sm dark:border-white/[0.07]"
+        "mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border shadow-sm ring-1 ring-white/80 transition-all duration-300 group-hover:scale-[1.04] group-hover:shadow-md dark:ring-white/[0.04]"
 
-    /** Cards: glass refinado — light usa card quase branco, dark usa card/60 */
+    /**
+     * Cards: group para ativar group-hover nos ícones.
+     * Light: branco puro com sombra difusa e ring interno sutil.
+     * Dark: zinc-900 refinado com hover de borda azul.
+     */
     const cockpitCardClass =
-        "rounded-xl border border-border/60 bg-white/85 backdrop-blur-sm text-card-foreground shadow-sm transition-all duration-200 hover:bg-white/95 hover:border-border hover:shadow-md dark:border-white/[0.07] dark:bg-card/60 dark:shadow-none dark:hover:bg-card/75 dark:hover:border-white/[0.12]"
+        "group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_14px_35px_rgba(15,23,42,0.06)] ring-1 ring-white/80 text-card-foreground transition-all duration-300 motion-safe:hover:-translate-y-0.5 hover:border-blue-200/80 hover:shadow-[0_22px_55px_rgba(37,99,235,0.12)] dark:border-white/[0.07] dark:bg-zinc-900/80 dark:ring-white/[0.03] dark:hover:border-blue-400/20 dark:hover:shadow-[0_22px_55px_rgba(37,99,235,0.15)]"
 
-    /** Linhas de lista: light com fundo branco suave, dark com overlay escuro mínimo */
+    /**
+     * Linhas de lista: group/row para hover nos ícones internos.
+     * Light: branco premium com sombra suave e hover azulado.
+     * Dark: overlay mínimo com hover discreto.
+     */
     const cockpitRowClass =
-        "rounded-lg border border-border/50 bg-white/70 backdrop-blur-sm transition-all duration-150 hover:bg-white/90 dark:border-white/[0.05] dark:bg-white/[0.03] dark:hover:bg-white/[0.06]"
+        "group/row relative overflow-hidden rounded-2xl border border-slate-200/75 bg-white shadow-[0_8px_22px_rgba(15,23,42,0.04)] transition-all duration-250 motion-safe:hover:-translate-y-0.5 hover:border-blue-200/80 hover:bg-slate-50/60 hover:shadow-[0_14px_34px_rgba(37,99,235,0.09)] dark:border-white/[0.07] dark:bg-white/[0.035] dark:hover:border-blue-400/20 dark:hover:bg-white/[0.055] dark:hover:shadow-[0_14px_34px_rgba(37,99,235,0.12)]"
 
-    /** Tab trigger — light: ativo fica branco (contraste com tab bar cinza-azul) */
+    /** Tab trigger refinado — ring + borda azul no ativo */
     const tabTriggerClass =
-        "min-h-9 w-full rounded-lg px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground transition-all duration-150 data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm dark:data-[state=active]:bg-white/[0.08] dark:data-[state=active]:text-white min-[480px]:w-auto min-[480px]:grow sm:grow-0 sm:text-[11px]"
+        "min-h-9 w-full rounded-xl px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground transition-all duration-200 hover:text-foreground data-[state=active]:bg-white data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-blue-100/80 data-[state=active]:ring-1 data-[state=active]:ring-blue-100/50 dark:data-[state=active]:bg-white/[0.09] dark:data-[state=active]:text-white dark:data-[state=active]:border-white/[0.06] dark:data-[state=active]:ring-white/[0.04] min-[480px]:w-auto min-[480px]:grow sm:grow-0 sm:text-[11px]"
 
     const scrollH =
         "h-[min(20rem,42svh)] min-[380px]:h-[min(22rem,46svh)] sm:h-[min(26rem,52svh)] md:h-[min(28rem,55svh)] lg:h-[min(31rem,58svh)] lg:max-h-[500px]"
@@ -966,15 +977,15 @@ export function Cockpit() {
                             )}
                             onClick={() => stat.route && navigate(stat.route)}
                         >
-                            <div className={cn("absolute left-0 top-0 h-0.5 w-full", accent.stripe)} />
-                            <CardContent className="flex flex-1 flex-col items-center justify-between gap-2 px-2.5 py-3 text-center sm:gap-2.5 sm:px-3 sm:py-4 md:px-4 md:py-4">
+                            <div className={cn("absolute left-0 top-0 h-1 w-full", accent.stripe)} />
+                            <CardContent className="flex flex-1 flex-col items-center justify-between gap-3 px-3 py-4 text-center sm:gap-3.5 sm:px-3.5 sm:py-5 md:px-4 md:py-5">
                                 <div className={cn(metricIconWell, accent.iconWell)}>
-                                    <stat.icon size={24} strokeWidth={2.25} className="shrink-0" />
+                                    <stat.icon size={20} strokeWidth={1.75} className="shrink-0" />
                                 </div>
                                 <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-1">
-                                    <p className="text-lg font-semibold tabular-nums tracking-tight text-foreground sm:text-xl md:text-2xl">{stat.value}</p>
-                                    <p className="text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground sm:text-[11px]">{stat.title}</p>
-                                    <p className="mx-auto mt-0.5 w-full text-pretty text-[9px] font-normal leading-snug text-muted-foreground/95 sm:text-[10px]">
+                                    <p className="text-[1.65rem] font-bold tabular-nums leading-none tracking-tight text-foreground">{stat.value}</p>
+                                    <p className="mt-1 text-[10px] font-semibold uppercase leading-tight tracking-[0.1em] text-slate-500 sm:text-[11px] dark:text-zinc-400">{stat.title}</p>
+                                    <p className="mx-auto mt-1 w-full text-pretty text-[9px] font-normal leading-snug text-slate-400 sm:text-[10px] dark:text-zinc-500">
                                         {stat.description}
                                     </p>
                                 </div>
@@ -1002,17 +1013,17 @@ export function Cockpit() {
                     </div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 md:grid-cols-3 md:gap-4">
                     <Card className={cn(cockpitCardClass, "relative flex min-h-0 flex-col overflow-hidden")}>
-                        <div className={cn("absolute left-0 top-0 h-0.5 w-full", metricNeutral.stripe)} />
-                        <CardContent className="flex flex-1 flex-col items-center justify-between gap-2 px-2.5 py-3 text-center sm:gap-2.5 sm:px-4 sm:py-4 md:py-5">
+                        <div className={cn("absolute left-0 top-0 h-1 w-full", metricNeutral.stripe)} />
+                        <CardContent className="flex flex-1 flex-col items-center justify-between gap-3 px-4 py-5 text-center sm:gap-3.5 sm:px-5 sm:py-6 md:py-7">
                             <div className={cn(metricIconWell, metricNeutral.iconWell)}>
-                                <CheckCircle2 size={24} strokeWidth={2.25} />
+                                <CheckCircle2 size={22} strokeWidth={1.75} />
                             </div>
-                            <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-1">
-                                <p className="text-lg font-semibold tabular-nums tracking-tight text-foreground sm:text-xl md:text-2xl">
+                            <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-1.5">
+                                <p className="text-3xl font-bold tabular-nums leading-none tracking-tight text-foreground sm:text-4xl md:text-5xl">
                                     {kpis ? kpis.taskSuccessRate.toFixed(1) : '0.0'}%
                                 </p>
-                                <p className="text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground sm:text-[11px]">{t('metrics.taskSuccessRate', { defaultValue: 'Taxa de sucesso' })}</p>
-                                <p className="mx-auto mt-0.5 w-full text-pretty text-[9px] font-normal leading-snug text-muted-foreground/95 sm:text-[10px]">
+                                <p className="mt-1 text-[10px] font-semibold uppercase leading-tight tracking-[0.1em] text-slate-500 sm:text-[11px] dark:text-zinc-400">{t('metrics.taskSuccessRate', { defaultValue: 'Taxa de sucesso' })}</p>
+                                <p className="mx-auto mt-1 w-full text-pretty text-[9px] font-normal leading-snug text-slate-400 sm:text-[10px] dark:text-zinc-500">
                                     {t('metrics.taskSuccessRateDescription', { defaultValue: 'Percentual de tarefas que a assistente concluiu com sucesso.' })}
                                 </p>
                             </div>
@@ -1020,17 +1031,17 @@ export function Cockpit() {
                     </Card>
 
                     <Card className={cn(cockpitCardClass, "relative flex min-h-0 flex-col overflow-hidden")}>
-                        <div className={cn("absolute left-0 top-0 h-0.5 w-full", metricNeutral.stripe)} />
-                        <CardContent className="flex flex-1 flex-col items-center justify-between gap-2 px-2.5 py-3 text-center sm:gap-2.5 sm:px-4 sm:py-4 md:py-5">
+                        <div className={cn("absolute left-0 top-0 h-1 w-full", metricNeutral.stripe)} />
+                        <CardContent className="flex flex-1 flex-col items-center justify-between gap-3 px-4 py-5 text-center sm:gap-3.5 sm:px-5 sm:py-6 md:py-7">
                             <div className={cn(metricIconWell, metricNeutral.iconWell)}>
-                                <Clock size={24} strokeWidth={2.25} />
+                                <Clock size={22} strokeWidth={1.75} />
                             </div>
-                            <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-1">
-                                <p className="text-lg font-semibold tabular-nums tracking-tight text-foreground sm:text-xl md:text-2xl">
+                            <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-1.5">
+                                <p className="text-3xl font-bold tabular-nums leading-none tracking-tight text-foreground sm:text-4xl md:text-5xl">
                                     {kpis && kpis.averageResponseTime > 0 ? (kpis.averageResponseTime / 1000).toFixed(1) : '0.0'}s
                                 </p>
-                                <p className="text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground sm:text-[11px]">{t('metrics.averageResponseTime', { defaultValue: 'Tempo médio resposta' })}</p>
-                                <p className="mx-auto mt-0.5 w-full text-pretty text-[9px] font-normal leading-snug text-muted-foreground/95 sm:text-[10px]">
+                                <p className="mt-1 text-[10px] font-semibold uppercase leading-tight tracking-[0.1em] text-slate-500 sm:text-[11px] dark:text-zinc-400">{t('metrics.averageResponseTime', { defaultValue: 'Tempo médio resposta' })}</p>
+                                <p className="mx-auto mt-1 w-full text-pretty text-[9px] font-normal leading-snug text-slate-400 sm:text-[10px] dark:text-zinc-500">
                                     {t('metrics.averageResponseTimeDescription', { defaultValue: 'Tempo médio até a primeira resposta ao cliente.' })}
                                 </p>
                             </div>
@@ -1038,17 +1049,17 @@ export function Cockpit() {
                     </Card>
 
                     <Card className={cn(cockpitCardClass, "relative flex min-h-0 flex-col overflow-hidden sm:col-span-2 md:col-span-1")}>
-                        <div className={cn("absolute left-0 top-0 h-0.5 w-full", metricNeutral.stripe)} />
-                        <CardContent className="flex flex-1 flex-col items-center justify-between gap-2 px-2.5 py-3 text-center sm:gap-2.5 sm:px-4 sm:py-4 md:py-5">
+                        <div className={cn("absolute left-0 top-0 h-1 w-full", metricNeutral.stripe)} />
+                        <CardContent className="flex flex-1 flex-col items-center justify-between gap-3 px-4 py-5 text-center sm:gap-3.5 sm:px-5 sm:py-6 md:py-7">
                             <div className={cn(metricIconWell, metricNeutral.iconWell)}>
-                                <DollarSign size={24} strokeWidth={2.25} />
+                                <DollarSign size={22} strokeWidth={1.75} />
                             </div>
-                            <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-1">
-                                <p className="break-all text-lg font-semibold tabular-nums tracking-tight text-foreground sm:break-normal sm:text-xl md:text-2xl">
+                            <div className="flex w-full min-w-0 flex-1 flex-col justify-center gap-1.5">
+                                <p className="break-all text-3xl font-bold tabular-nums leading-none tracking-tight text-foreground sm:break-normal sm:text-4xl md:text-5xl">
                                     R$ {kpis && kpis.costPerInteraction > 0 ? kpis.costPerInteraction.toFixed(4) : '0.0000'}
                                 </p>
-                                <p className="text-[10px] font-medium uppercase leading-tight tracking-wide text-muted-foreground sm:text-[11px]">{t('metrics.costPerInteraction', { defaultValue: 'Custo por interação' })}</p>
-                                <p className="mx-auto mt-0.5 w-full text-pretty text-[9px] font-normal leading-snug text-muted-foreground/95 sm:text-[10px]">
+                                <p className="mt-1 text-[10px] font-semibold uppercase leading-tight tracking-[0.1em] text-slate-500 sm:text-[11px] dark:text-zinc-400">{t('metrics.costPerInteraction', { defaultValue: 'Custo por interação' })}</p>
+                                <p className="mx-auto mt-1 w-full text-pretty text-[9px] font-normal leading-snug text-slate-400 sm:text-[10px] dark:text-zinc-500">
                                     {t('metrics.costPerInteractionDescription', { defaultValue: 'Estimativa de custo de uso da IA por interação.' })}
                                 </p>
                             </div>
@@ -1091,13 +1102,13 @@ export function Cockpit() {
                         </CardHeader>
                         <CardContent className="px-4 pb-4 pt-3 md:px-5 md:pb-5 lg:px-6">
                             <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
-                                <TabsList className="mb-3 grid w-full grid-cols-2 gap-1 rounded-xl border border-border/50 bg-muted/70 p-1 backdrop-blur-sm min-[480px]:flex min-[480px]:h-auto min-[480px]:min-h-9 min-[480px]:w-full min-[480px]:flex-wrap min-[480px]:justify-start min-[480px]:gap-0.5 sm:mb-4 dark:border-white/[0.06] dark:bg-white/[0.04] lg:inline-flex lg:w-auto lg:flex-nowrap">
+                                <TabsList className="mb-3 grid w-full grid-cols-2 gap-1 rounded-2xl border border-slate-200/70 bg-slate-50/80 p-1.5 shadow-[0_2px_8px_rgba(15,23,42,0.04)] min-[480px]:flex min-[480px]:h-auto min-[480px]:min-h-9 min-[480px]:w-full min-[480px]:flex-wrap min-[480px]:justify-start min-[480px]:gap-0.5 sm:mb-4 dark:border-white/[0.06] dark:bg-white/[0.04] dark:shadow-none lg:inline-flex lg:w-auto lg:flex-nowrap">
                                     <TabsTrigger value="activity" className={tabTriggerClass}>
                                         {t('activity.tabs.history', { defaultValue: 'Histórico' })}
                                     </TabsTrigger>
                                     <TabsTrigger value="logs" className={tabTriggerClass}>
                                         {t('activity.tabs.logs', { defaultValue: 'Logs' })}
-                                        <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[9px] font-bold tabular-nums dark:bg-white/[0.08]">{systemLogs.length}</span>
+                                        <span className="ml-1.5 rounded-full bg-slate-200/70 px-1.5 py-0.5 text-[9px] font-bold tabular-nums dark:bg-white/8">{systemLogs.length}</span>
                                     </TabsTrigger>
                                     <TabsTrigger value="whatsapp" className={tabTriggerClass}>
                                         {t('activity.tabs.whatsapp', { defaultValue: 'WhatsApp' })}
@@ -1164,10 +1175,10 @@ export function Cockpit() {
                                                     >
                                                         <div
                                                             className={cn(
-                                                                "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/60 sm:h-11 sm:w-11",
+                                                                "mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm sm:h-11 sm:w-11",
                                                                 isError
-                                                                    ? "bg-destructive/15 text-destructive"
-                                                                    : "bg-muted/80 text-foreground"
+                                                                    ? "border-destructive/20 bg-destructive/10 text-destructive"
+                                                                    : "border-slate-200/70 bg-slate-50 text-slate-400 shadow-sm transition-all duration-200 group-hover/row:border-blue-100 group-hover/row:bg-blue-50/60 group-hover/row:text-blue-500 dark:border-white/[0.07] dark:bg-white/4 dark:text-zinc-400 dark:group-hover/row:border-blue-400/20 dark:group-hover/row:text-blue-300"
                                                             )}
                                                         >
                                                             {isError ? <AlertCircle size={20} /> : <Bot size={20} />}
@@ -1231,8 +1242,8 @@ export function Cockpit() {
                                                     )}
                                                 >
                                                     <div className={cn(
-                                                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/60 sm:h-11 sm:w-11",
-                                                        isError ? "bg-destructive/15 text-destructive" : "bg-muted/80 text-foreground"
+                                                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm sm:h-11 sm:w-11",
+                                                        isError ? "border-destructive/20 bg-destructive/10 text-destructive" : "border-slate-200/80 bg-slate-50 text-slate-500 dark:border-white/[0.07] dark:bg-white/4 dark:text-foreground"
                                                     )}>
                                                         {isError ? <AlertCircle size={20} /> : <Activity size={20} />}
                                                     </div>
@@ -1314,7 +1325,7 @@ export function Cockpit() {
                                                                 "flex items-start gap-3 border-l-2 border-l-transparent p-3 sm:gap-4 sm:p-4"
                                                             )}
                                                         >
-                                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/80 text-foreground sm:h-11 sm:w-11">
+                                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-slate-50 text-slate-400 shadow-sm transition-all duration-200 group-hover/row:border-blue-100 group-hover/row:bg-blue-50/60 group-hover/row:text-blue-500 dark:border-white/[0.07] dark:bg-white/4 dark:text-zinc-400 dark:group-hover/row:border-blue-400/20 dark:group-hover/row:text-blue-300 sm:h-11 sm:w-11">
                                                                 <MessageSquare size={20} />
                                                             </div>
                                                             <div className="min-w-0 flex-1">
@@ -1426,17 +1437,19 @@ export function Cockpit() {
 
                     <div ref={workforceCardRef} className="min-h-0 min-w-0 overflow-hidden lg:col-span-4">
                         <Card className={cn(cockpitCardClass, "flex h-full min-h-0 min-w-0 flex-col overflow-hidden")}>
-                            <CardHeader className="border-b border-border/60 px-4 pb-3 pt-4 md:px-5 md:pt-5">
+                            <CardHeader className="border-b border-slate-200/60 px-4 pb-3.5 pt-4 md:px-5 md:pt-5 dark:border-white/[0.06]">
                                 <div className="flex items-center justify-between gap-2">
                                     <CardTitle className="min-w-0 text-base font-semibold tracking-tight text-foreground sm:text-lg md:text-xl">
                                         {t('workforce.title', { defaultValue: 'Equipe de IA' })}
                                     </CardTitle>
-                                    <div
-                                        className="h-2 w-2 shrink-0 rounded-full bg-emerald-500/80"
-                                        title={t('workforce.liveIndicator', { defaultValue: 'Ao vivo' })}
-                                    />
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="relative flex h-2.5 w-2.5 shrink-0">
+                                            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                                            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                                        </span>
+                                    </div>
                                 </div>
-                                <CardDescription className="mt-1 text-xs font-normal normal-case tracking-normal text-muted-foreground">
+                                <CardDescription className="mt-1 text-xs font-normal normal-case tracking-normal text-slate-400 dark:text-zinc-500">
                                     {t('workforce.subtitle', { defaultValue: 'Status dos seus agentes' })}
                                 </CardDescription>
                             </CardHeader>
@@ -1450,22 +1463,22 @@ export function Cockpit() {
                                             onClick={() => navigate('agents')}
                                             className={cn(
                                                 cockpitRowClass,
-                                                "group relative grid min-h-0 w-full max-w-full cursor-pointer grid-cols-[1fr_auto] items-center gap-2 overflow-hidden p-3 pl-4 transition-colors hover:bg-muted/50 active:scale-[0.99] sm:grid-cols-[1fr_auto] sm:gap-3 sm:p-4 sm:pl-5"
+                                                "cursor-pointer grid min-h-0 w-full max-w-full grid-cols-[1fr_auto] items-center gap-2 p-4 pl-5 active:scale-[0.99] sm:gap-3 sm:p-4 sm:pl-5"
                                             )}
                                         >
                                             <div
                                                 className={cn(
-                                                    "pointer-events-none absolute bottom-0 left-0 top-0 w-0.5 rounded-l-lg bg-border",
-                                                    agent.status_id === 1 && "bg-emerald-600/70",
-                                                    (agent.status_id === 3 || agent.status_id === 4) && "bg-amber-600/70",
-                                                    agent.status_id !== 1 && agent.status_id !== 3 && agent.status_id !== 4 && "bg-destructive/80"
+                                                    "pointer-events-none absolute bottom-0 left-0 top-0 w-1 rounded-l-xl bg-border/40",
+                                                    agent.status_id === 1 && "bg-linear-to-b from-emerald-400 to-emerald-600",
+                                                    (agent.status_id === 3 || agent.status_id === 4) && "bg-linear-to-b from-amber-400 to-amber-600",
+                                                    agent.status_id !== 1 && agent.status_id !== 3 && agent.status_id !== 4 && "bg-linear-to-b from-red-400 to-destructive"
                                                 )}
                                             />
 
-                                            <div className="flex min-w-0 items-center gap-3 pl-2 sm:gap-3 sm:pl-3">
+                                            <div className="flex min-w-0 items-center gap-3 pl-3 sm:gap-3 sm:pl-4">
                                                 <div className="relative shrink-0">
-                                                    <Avatar className="h-11 w-11 border border-border sm:h-12 sm:w-12">
-                                                        <AvatarFallback className="bg-primary text-base font-semibold text-primary-foreground sm:text-lg">
+                                                    <Avatar className="h-11 w-11 border-2 border-white shadow-md dark:border-zinc-800 sm:h-12 sm:w-12">
+                                                        <AvatarFallback className="bg-linear-to-br from-blue-500 to-violet-600 text-base font-bold text-white sm:text-lg">
                                                             {agent.nome.substring(0, 2).toUpperCase()}
                                                         </AvatarFallback>
                                                     </Avatar>
@@ -1498,8 +1511,8 @@ export function Cockpit() {
                                                     )}
                                                 </div>
                                             </div>
-                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/60 opacity-0 transition-opacity group-hover:opacity-100 sm:h-9 sm:w-9">
-                                                <ArrowRight size={16} className="text-primary" />
+                                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-transparent bg-transparent opacity-0 transition-all duration-200 group-hover/row:border-blue-100 group-hover/row:bg-blue-50 group-hover/row:opacity-100 dark:group-hover/row:border-blue-400/20 dark:group-hover/row:bg-blue-400/8 sm:h-9 sm:w-9">
+                                                <ArrowRight size={15} className="text-blue-500 dark:text-blue-300" />
                                             </div>
                                         </div>
                                     ))}

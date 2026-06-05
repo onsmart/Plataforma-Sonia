@@ -124,6 +124,31 @@ Detalhe operacional (passos SMTP, Stripe, etc.): `docs/prioridades-correcoes-atu
 
 ---
 
+## P2 — Sonia Copilot (UX e funcionalidades)
+
+> Copilot está **funcionando em produção**. Os itens abaixo são melhorias, não bloqueadores.
+
+**O que já existe (não reimplementar):**
+- Frontend: `FrontEnd/src/components/copilot/SoniaCopilotProvider.tsx` — chat completo, histórico de mensagens, voz (Web Speech API entrada + saída), i18n 8 idiomas.
+- Backend: `POST /copilot/chat` (`requireAuth + requireWorkspace`) → `platform-copilot.service.ts` → `gpt-4o-mini` (temp 0.3, 900 tokens), RAG com 25 chunks de conhecimento da plataforma.
+- **Única ação disponível:** `[NAVIGATE: route_id]` — IA inclui tag na resposta → frontend parseia e navega. Rotas válidas: home, cockpit, inbox, devices, agents, playground, flows, knowledge, governance, insights, configuration, integrations, profile, agent-config.
+- Sistema RAG: busca semântica (embeddings OpenAI) com fallback keyword; boosts por rota atual.
+- System prompt: identidade fixa Sonia Copilot, anti-alucinação, segurança, instruções de idioma, hint de rota atual.
+
+**Pendentes / a melhorar:**
+
+| Status | Item | Onde |
+|--------|------|------|
+| `[ ]` | **UI redesign**: mensagens com markdown, avatar da assistente, chips de ação rápida na tela inicial | `SoniaCopilotProvider.tsx` |
+| `[ ]` | **Sugestões dinâmicas por página**: chips mudam conforme `currentRoute` | Frontend + `system-prompt.ts` |
+| `[ ]` | **Histórico persistente**: ao fechar/abrir o copilot, conversa permanece (ao menos sessão) | Estado no provider ou localStorage |
+| `[ ]` | **Mais ações além de navegação**: ex. abrir dialog de agente, iniciar criação de fluxo, acionar playground | `SoniaCopilotProvider.tsx` (registerAction) |
+| `[ ]` | **Indicador "digitando"** mais rico | UI do provider |
+| `[ ]` | **Timestamps** nas mensagens | UI do provider |
+| `[ ]` | **Contexto mais rico**: enviar rota atual + dados do workspace no contexto | `platform-copilot.service.ts` |
+
+---
+
 ## Já implementado no código (não reimplementar sem pedido)
 
 - `AccountSetupGate` + `requireWorkspace` (workspace obrigatório).
@@ -131,6 +156,7 @@ Detalhe operacional (passos SMTP, Stripe, etc.): `docs/prioridades-correcoes-atu
 - UI login/cadastro (`AuthPage`, `LineWaves`), perfil/nome (`AuthContext`, `user-display.ts`).
 - Catálogo dos 6 planos + `free` (0 atendimentos) no backend; UI conta gratuita + CTA faturamento (`Home.tsx`, `Settings.tsx`).
 - **Criar fluxo com IA** (`GenerateFlowAiDialog.tsx`) — usar como referência de UX/API para o wizard de agente; **não** confundir com "Criar agente com IA" (pendente acima).
+- **Sonia Copilot** (`SoniaCopilotProvider.tsx` + `platform-copilot.service.ts`) — chat com RAG, voz, navegação via `[NAVIGATE:]`. Funcional; melhorias em P2 acima.
 - Máscara CPF/CNPJ no cadastro (`formatDocument` em `account-types.ts`).
 
 ---

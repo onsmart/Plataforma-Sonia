@@ -26,32 +26,32 @@ const featureCards = [
         icon: MessageCircle,
         title: "Atendimento Multicanal",
         desc: "WhatsApp, webchat e e-mail unificados em um único painel. Respostas automáticas com IA e handoff para humanos quando necessário.",
-        accent: "text-emerald-600 dark:text-emerald-400",
-        bg: "bg-emerald-500/10 dark:bg-emerald-500/10",
+        accent: "text-white",
+        bg: "bg-gradient-to-br from-emerald-500 to-emerald-600",
         border: "border-emerald-500/20",
     },
     {
         icon: GitBranch,
         title: "Fluxos Inteligentes",
         desc: "Construa jornadas de atendimento visuais com blocos de decisão, integrações de CRM e ativadores de IA sem escrever código.",
-        accent: "text-blue-600 dark:text-blue-400",
-        bg: "bg-blue-500/10 dark:bg-blue-500/10",
+        accent: "text-white",
+        bg: "bg-gradient-to-br from-blue-500 to-blue-600",
         border: "border-blue-500/20",
     },
     {
         icon: BarChart3,
         title: "Insights em Tempo Real",
         desc: "Acompanhe volume de atendimentos, custo por conversa, desempenho por canal e taxa de sucesso dos seus agentes.",
-        accent: "text-violet-600 dark:text-violet-400",
-        bg: "bg-violet-500/10 dark:bg-violet-500/10",
+        accent: "text-white",
+        bg: "bg-gradient-to-br from-violet-500 to-violet-700",
         border: "border-violet-500/20",
     },
     {
         icon: Shield,
         title: "Agentes Confiáveis",
         desc: "Agentes de IA com personalidade definida, base de conhecimento RAG e governança para garantir respostas precisas e seguras.",
-        accent: "text-amber-600 dark:text-amber-400",
-        bg: "bg-amber-500/10 dark:bg-amber-500/10",
+        accent: "text-white",
+        bg: "bg-gradient-to-br from-amber-500 to-amber-600",
         border: "border-amber-500/20",
     },
 ]
@@ -96,7 +96,7 @@ export function Home() {
 
                 {/* Hero */}
                 <div className="relative space-y-5 pb-2">
-                    <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-primary">
+                    <div className="hero-badge-animated inline-flex items-center gap-2 rounded-full border border-blue-400/30 bg-linear-to-r from-blue-500/12 via-violet-500/10 to-blue-500/12 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-primary dark:border-blue-400/20 dark:from-blue-500/10 dark:via-violet-500/8 dark:to-blue-500/10">
                         <Zap className="h-3 w-3" />
                         Plataforma de Atendimento com IA
                     </div>
@@ -115,6 +115,7 @@ export function Home() {
                     </div>
                     <div className="flex flex-wrap gap-3 pt-1">
                         <Button
+                            variant="gradient"
                             size="lg"
                             className="rounded-xl gap-2"
                             onClick={() => navigate("agents")}
@@ -125,7 +126,7 @@ export function Home() {
                         <Button
                             variant="outline"
                             size="lg"
-                            className="rounded-xl gap-2 bg-background/60 backdrop-blur-sm"
+                            className="rounded-xl gap-2 border-blue-200/60 bg-white/70 backdrop-blur-sm hover:border-blue-300/80 hover:bg-white/90 dark:bg-background/60 dark:border-border"
                             onClick={() => navigate("insights")}
                         >
                             <BarChart3 className="h-4 w-4" />
@@ -147,13 +148,12 @@ export function Home() {
                                 key={feature.title}
                                 className={cn(
                                     cardChrome,
-                                    "border",
-                                    feature.border,
+                                    "card-gradient-border",
                                 )}
                             >
                                 <CardHeader className="pb-3">
                                     <div className={cn(
-                                        "flex h-10 w-10 items-center justify-center rounded-lg",
+                                        "flex h-10 w-10 items-center justify-center rounded-xl shadow-sm",
                                         feature.bg,
                                     )}>
                                         <feature.icon className={cn("h-5 w-5", feature.accent)} strokeWidth={2} />
@@ -188,12 +188,12 @@ export function Home() {
                                 key={item.route}
                                 className={cn(
                                     cardChrome,
-                                    "flex min-h-0 min-w-0 cursor-pointer flex-col hover:bg-muted/25 dark:hover:bg-muted/15"
+                                    "flex min-h-0 min-w-0 cursor-pointer flex-col"
                                 )}
                                 onClick={() => navigate(item.route)}
                             >
                                 <CardHeader className="space-y-3 pb-2">
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-blue-500/10 to-violet-500/10 border border-blue-200/50 text-primary dark:bg-muted/40 dark:border-border/70 dark:text-foreground">
                                         <item.icon className="h-5 w-5" strokeWidth={2.25} />
                                     </div>
                                     <div className="min-w-0 space-y-1">
@@ -217,10 +217,10 @@ export function Home() {
                 </div>
 
                 {/* Lab CTA */}
-                <Card className={cn(cardChrome, "border-dashed")}>
+                <Card className={cn(cardChrome, "card-gradient-border")}>
                     <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
                         <div className="flex min-w-0 items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-blue-500/15 to-violet-500/15 border border-blue-200/50 text-primary dark:bg-primary/10 dark:border-transparent">
                                 <Sparkles className="h-5 w-5" />
                             </div>
                             <div className="min-w-0">

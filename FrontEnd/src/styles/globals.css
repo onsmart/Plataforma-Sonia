@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "reactflow/dist/style.css";
 
+/*
+  Vincula o variant "dark:" do Tailwind à classe .dark do next-themes.
+  Sem isso, dark: usa prefers-color-scheme (sistema), ignorando o toggle da plataforma.
+*/
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-background: hsl(var(--background));
   --color-foreground: hsl(var(--foreground));
@@ -64,6 +70,10 @@
 
     --primary: 221 83% 53%;
     --primary-foreground: 210 40% 98%;
+
+    /* Violet accent — complementar ao azul primário */
+    --violet: 262 83% 58%;            /* #7c3aed — violet-700 */
+    --violet-soft: 262 83% 96%;       /* #f3effe — fundo violet muito suave */
 
     --secondary: 225 25% 93%;
     --secondary-foreground: 222 47% 10%;
@@ -815,6 +825,75 @@ html:not(.dark) .react-flow__minimap {
   .flow-edge-travel.is-active {
     animation: none !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT THEME — Visual refinements: shadows, cards, gradients, animations
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Keyframes ── */
+@keyframes gradient-x {
+  0%, 100% { background-position: 0% 50%; }
+  50%       { background-position: 100% 50%; }
+}
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.5; }
+  50%       { opacity: 1; }
+}
+@keyframes border-glow-shift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ── Botão com gradiente animado ── */
+.btn-gradient-animated {
+  background-size: 200% 200%;
+  animation: gradient-x 5s ease infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-gradient-animated { animation: none; }
+}
+
+
+/* ── Card com borda gradiente (use na classe do card) ── */
+html:not(.dark) .card-gradient-border {
+  position: relative;
+  border: none !important;
+}
+html:not(.dark) .card-gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(37,99,235,0.30), rgba(124,58,237,0.25), rgba(37,99,235,0.15));
+  background-size: 200% 200%;
+  animation: border-glow-shift 6s ease infinite;
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  html:not(.dark) .card-gradient-border::before {
+    animation: none;
+    background-position: 0% 50%;
+  }
+}
+
+/* ── Hero eyebrow badge animado ── */
+.hero-badge-animated {
+  background-size: 200% 200%;
+  animation: gradient-x 6s ease infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-badge-animated { animation: none; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
