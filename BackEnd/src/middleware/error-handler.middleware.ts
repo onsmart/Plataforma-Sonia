@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express'
+import * as Sentry from '@sentry/node'
 import logger from '../lib/logger'
 
 const isProduction = process.env.NODE_ENV === 'production'
@@ -18,6 +19,7 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
 
   if (statusCode >= 500) {
     logger.error('[errorHandler]', err)
+    if (err instanceof Error) Sentry.captureException(err)
   }
 
   if (isProduction) {
