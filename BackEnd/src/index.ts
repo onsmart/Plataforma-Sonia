@@ -1,6 +1,8 @@
 import './lib/env'
 import { logFlowHandoffEmailStartupStatus } from './services/flows/flow-team-notify.config'
 import { logPlatformEmailStartupStatus } from './services/platform-email.service'
+import { register } from './lib/metrics'
+import { metricsMiddleware } from './middleware/metrics.middleware'
 import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
@@ -98,6 +100,22 @@ app.use(
   })
 )
 
+// /health — sem autenticação, sem rate limit (usado por load balancers e uptime monitors)
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() })
+})
+
+// /metrics — protegido por Bearer token, só acessível internamente pelo Prometheus
+app.get('/metrics', async (req, res) => {
+  const token = req.headers.authorization?.replace('Bearer ', '')
+  if (!process.env.METRICS_BEARER_TOKEN || token !== process.env.METRICS_BEARER_TOKEN) {
+    res.status(401).end()
+    return
+  }
+  res.set('Content-Type', register.contentType)
+  res.end(await register.metrics())
+})
+
 app.use(globalRateLimiter)
 
 if (process.env.NODE_ENV !== 'production') {
@@ -139,6 +157,9 @@ app.post(
 // Agora aplicar express.json() para todas as outras rotas
 app.use(express.json({ limit: '12mb' }))
 app.use(express.urlencoded({ limit: '12mb', extended: true }))
+
+// Instrumentação HTTP — registra duração, total e erros de todas as rotas abaixo
+app.use(metricsMiddleware)
 
 // Rotas de agentes (execução direta - mantido para compatibilidade)
 app.use('/agents', agentsRoutes)
@@ -226,6 +247,12 @@ app.listen(3333, '0.0.0.0', async () => {
   logFlowHandoffEmailStartupStatus()
   logPlatformEmailStartupStatus()
   console.log('🚀 Backend rodando em http://0.0.0.0:3333')
+  console.log('📡 GET /health — health check (sem auth)')
+  console.log(
+    process.env.METRICS_BEARER_TOKEN
+      ? '📈 GET /metrics — Prometheus (Bearer token configurado)'
+      : '⚠️  GET /metrics — METRICS_BEARER_TOKEN não definido, endpoint retornará 401'
+  )
   console.log('📊 Flows disponíveis em /flows')
   console.log('🤖 Agentes disponíveis em /agents')
   console.log('📱 WhatsApp disponível em /whatsapp')

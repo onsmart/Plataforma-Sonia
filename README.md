@@ -18,6 +18,7 @@ Este README é o **ponto de entrada técnico** para desenvolvedores e operaçõe
 - [Stack e pré-requisitos](#stack-e-pré-requisitos)
 - [Como rodar localmente](#como-rodar-localmente)
 - [Deploy do backend](#deploy-do-backend)
+- [Observabilidade](#observabilidade)
 - [Documentação complementar](#documentação-complementar)
 - [Manutenção da documentação](#manutenção-da-documentação)
 - [Índice de diagramas Mermaid](#índice-de-diagramas-mermaid)
@@ -48,6 +49,7 @@ Este README é o **ponto de entrada técnico** para desenvolvedores e operaçõe
 | 18 | `flowchart` | [Governança](#governança-planos-com-feature) |
 | 19 | `flowchart` | [Núcleo tenant](#núcleo-tenant-dados) |
 | 20 | `erDiagram` | [ER CRM](#er-satélites-crm-e-eventos) |
+| 21 | `flowchart` | [Stack de observabilidade](#stack-de-observabilidade) |
 
 Todos os blocos abaixo usam **somente** sintaxe [Mermaid](https://mermaid.js.org/). Visualize no GitHub, no preview do VS Code/Cursor (extensão Mermaid) ou em [mermaid.live](https://mermaid.live).
 
@@ -64,11 +66,17 @@ flowchart TB
   ROOT --> SB["supabase/<br/>migrations"]
   ROOT --> DOCS["docs/<br/>guias operacionais"]
   ROOT --> DEPLOY["deploy-backend-server.ps1"]
+  ROOT --> OBS["observabilidade/<br/>Prometheus · Grafana · Loki"]
 
   BE --> API["src/api/<br/>routes + controllers"]
   BE --> SVC["src/services/<br/>domínio"]
   BE --> DB["database/<br/>migrations + schema ref"]
   BE --> BEDOCS["docs/<br/>planos + checklist"]
+
+  OBS --> PROM["prometheus/<br/>prometheus.yml"]
+  OBS --> LOKI["loki/<br/>loki-config.yml"]
+  OBS --> PT["promtail/<br/>promtail-config.yml"]
+  OBS --> GF["grafana/<br/>provisioning"]
 ```
 
 | Pasta | Papel |
@@ -196,6 +204,8 @@ Prefixo base: `http://localhost:3333` (ou `VITE_API_URL` no FrontEnd). Rotas **p
 | `/voice` | Perfis de voz (ElevenLabs) |
 | `/templates` | Templates WhatsApp |
 | `/cache` | Cache operacional interno |
+| `/health` | Health check (sem auth, sem rate limit) |
+| `/metrics` | Métricas Prometheus — Bearer token obrigatório, acesso interno |
 
 ### Mapa de rotas HTTP {#mapa-de-rotas-http}
 
@@ -613,6 +623,8 @@ Ativo em planos que expõem governança avançada; runtime em `BackEnd/src/servi
 | IA | OpenAI, Anthropic (chaves da plataforma no servidor) |
 | Pagamentos | Stripe (assinatura mensal) |
 | E-mail transacional | Resend |
+| Processo (produção) | PM2 — fork mode, autorestart, logs em `BackEnd/logs/` |
+| Observabilidade | Prometheus, Grafana, Loki, Promtail, Node Exporter (Docker Compose) |
 
 Variáveis sensíveis ficam em `BackEnd/.env` e `FrontEnd/.env` — **nunca commitar**. Lista operacional: [BackEnd/docs/CHECKLIST_MVP_RECEPTIVO.md](BackEnd/docs/CHECKLIST_MVP_RECEPTIVO.md).
 
@@ -714,6 +726,123 @@ ELEVENLABS_DEFAULT_MODEL_ID=
 ```
 
 Detalhes: [docs/voice-agent-elevenlabs.md](docs/voice-agent-elevenlabs.md).
+
+---
+
+## Observabilidade
+
+Stack completa de observabilidade, operada via Docker Compose em `observabilidade/`. O backend Node.js continua gerenciado pelo PM2 diretamente no Linux — a stack de observabilidade é complementar e não substitui o PM2.
+
+### Stack de observabilidade {#stack-de-observabilidade}
+
+```mermaid
+flowchart TB
+  subgraph host [Servidor Linux — PM2]
+    BE["Backend Node.js :3333<br/>/metrics · /health"]
+    PE["Node Exporter :9100<br/>CPU · RAM · disco · rede"]
+  end
+
+  subgraph docker [Docker Compose — observabilidade/]
+    PROM["Prometheus :9090<br/>coleta e armazena métricas"]
+    GF["Grafana :3030<br/>dashboards + alertas"]
+    LOKI["Loki :3100<br/>armazenamento de logs"]
+    PT["Promtail<br/>coleta logs do PM2"]
+  end
+
+  subgraph nginx [Nginx — proxy reverso]
+    GFP["grafana.dominio.com → :3030"]
+  end
+
+  BE -->|scrape /metrics| PROM
+  PE -->|scrape :9100| PROM
+  PROM -->|datasource| GF
+  LOKI -->|datasource| GF
+  PT -->|push logs| LOKI
+  PM2["~/.pm2/logs/"] -->|lê arquivos| PT
+  GF --> nginx
+```
+
+| Ferramenta | Papel | Porta (interna) |
+|-----------|-------|-----------------|
+| **Prometheus** | Coleta e armazena métricas da API e do servidor | `127.0.0.1:9090` |
+| **Grafana** | Dashboards, alertas, exploração de logs | `127.0.0.1:3030` |
+| **Node Exporter** | Métricas do servidor Linux (CPU, RAM, disco, rede) | `127.0.0.1:9100` |
+| **Loki** | Armazenamento de logs centralizados | `127.0.0.1:3100` |
+| **Promtail** | Coleta logs do PM2 e envia ao Loki | — |
+
+Todas as portas ficam em `127.0.0.1` — **não expostas publicamente**. Grafana é acessado via Nginx com HTTPS.
+
+### Fases de implementação
+
+| Fase | O que ativa | Status |
+|------|-------------|--------|
+| 1 — Infra | Prometheus + Grafana + Node Exporter (CPU, RAM, disco) | Implementado |
+| 2 — API | `/metrics` e `/health` no backend + prom-client | Implementado |
+| 3 — Logs | Loki + Promtail (logs PM2 no Grafana) | Config pronta |
+| 4 — Alertas | Alertas nativos do Grafana (CPU, 5xx, backend down) | Configurar no Grafana UI |
+| 5 — Erros | Sentry Cloud (stack traces, exceções) | Pendente |
+| 6 — Tracing | OpenTelemetry + Grafana Tempo | Pendente |
+
+### Como iniciar a stack (Fase 1)
+
+No servidor Linux, dentro da pasta `observabilidade/`:
+
+```bash
+# Copiar e preencher segredos
+cp .env.observabilidade.example .env.observabilidade
+nano .env.observabilidade
+
+# Subir Prometheus + Grafana + Node Exporter
+docker compose --env-file .env.observabilidade up -d prometheus grafana node-exporter
+
+# Verificar saúde
+docker compose ps
+curl http://localhost:9090/-/ready    # Prometheus
+curl http://localhost:3030/api/health # Grafana
+curl http://localhost:9100/metrics    # Node Exporter
+```
+
+### Como iniciar a stack de logs (Fase 3)
+
+```bash
+# Ajustar PM2_LOGS_PATH no .env.observabilidade com o path real dos logs PM2
+# Depois subir Loki + Promtail
+docker compose --env-file .env.observabilidade up -d loki promtail
+
+# Descomentar datasource Loki em grafana/provisioning/datasources/datasources.yml
+# e reiniciar o Grafana
+docker compose restart grafana
+```
+
+### Deploy do backend com métricas (Fase 2)
+
+Após o deploy com `prom-client` instalado, adicionar ao `BackEnd/.env` do servidor:
+
+```env
+METRICS_BEARER_TOKEN=TOKEN_ALEATORIO_64_CHARS
+```
+
+Atualizar `observabilidade/prometheus/prometheus.yml` com o mesmo token e reiniciar o Prometheus:
+
+```bash
+docker compose --env-file .env.observabilidade restart prometheus
+```
+
+### Dashboards recomendados (importar pelo ID no Grafana)
+
+| Dashboard | ID | O que mostra |
+|-----------|-----|-------------|
+| Node Exporter Full | `1860` | CPU, RAM, disco, rede, load average |
+| Node.js Application | `11159` | Heap, event loop lag, GC |
+
+### Segurança
+
+- Prometheus, Loki e Node Exporter: `127.0.0.1` — nunca expostos publicamente
+- Grafana: Nginx com SSL termination + `GF_AUTH_ANONYMOUS_ENABLED=false`
+- `/metrics`: Bearer token obrigatório (`METRICS_BEARER_TOKEN` no `.env`)
+- `/health`: sem autenticação, sem rate limit (usado por uptime monitors)
+
+Configurações: [observabilidade/](observabilidade/) · Nginx: bloquear `location /grafana/api/admin/` externamente.
 
 ---
 

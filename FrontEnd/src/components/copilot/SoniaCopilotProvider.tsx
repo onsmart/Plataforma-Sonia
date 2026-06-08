@@ -41,6 +41,7 @@ import { toast } from "sonner";
 import { AgentService } from "../../services/api";
 import { normalizeAgentLanguageCode } from "../../lib/agent-language";
 import { cn } from "../ui/utils";
+import Orb from "./Orb";
 
 /* ── Rotas válidas ── */
 const VALID_COPILOT_ROUTES = [
@@ -53,20 +54,27 @@ type ValidRoute = typeof VALID_COPILOT_ROUTES[number];
 type CopilotMessage = { role: "user" | "assistant"; content: string; timestamp: number };
 type CopilotTab = "chat" | "voice";
 
-/* ── Sugestões contextuais ── */
-const ROUTE_SUGGESTIONS: Partial<Record<ValidRoute, string[]>> = {
-  home:          ["O que é a plataforma Sonia?", "Como criar meu primeiro agente?", "Ir para Hub de Agentes"],
-  cockpit:       ["Como interpreto os KPIs?", "O que é fallback?", "Ir para Caixa de Entrada"],
-  inbox:         ["Como fazer handoff para humano?", "Como aprovar uma mensagem?", "Ir para Cabine de Operações"],
-  agents:        ["Diferença entre FAQ e Receptivo?", "Como criar agente com IA?", "O que é um template?"],
-  flows:         ["Como criar um fluxo visual?", "O que é um bloco de decisão?"],
-  knowledge:     ["O que é RAG?", "Como criar uma base de conhecimento?"],
-  configuration: ["Como configurar meu perfil?", "Ir para Integrações"],
-  integrations:  ["Como conectar WhatsApp?", "Como configurar Calendly?"],
-  insights:      ["Como interpretar os dados?", "O que é custo por interação?"],
-  playground:    ["Como testar o agente?", "O que é o laboratório?"],
+/* ── Sugestões contextuais (chaves i18n copilot) ── */
+const ROUTE_SUGGESTION_ROUTES: Partial<Record<ValidRoute, string>> = {
+  home: "suggestions.routes.home",
+  cockpit: "suggestions.routes.cockpit",
+  inbox: "suggestions.routes.inbox",
+  agents: "suggestions.routes.agents",
+  flows: "suggestions.routes.flows",
+  knowledge: "suggestions.routes.knowledge",
+  configuration: "suggestions.routes.configuration",
+  integrations: "suggestions.routes.integrations",
+  insights: "suggestions.routes.insights",
+  playground: "suggestions.routes.playground",
 };
-const DEFAULT_SUGGESTIONS = ["O que posso fazer aqui?", "Ir para Hub de Agentes", "Como criar um agente?"];
+
+function getCopilotSuggestions(route: string, t: (key: string) => string): string[] {
+  const prefix = ROUTE_SUGGESTION_ROUTES[route as ValidRoute];
+  if (prefix) {
+    return [0, 1, 2].map((i) => t(`${prefix}.${i}`));
+  }
+  return [0, 1, 2].map((i) => t(`suggestions.default.${i}`));
+}
 
 /* ── Session storage ── */
 const SESSION_KEY = "sonia-copilot-messages";
@@ -243,7 +251,7 @@ function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; curren
     setMessages(fresh); saveSessionMessages(fresh);
   };
 
-  const suggestions = useMemo(() => ROUTE_SUGGESTIONS[currentRoute as ValidRoute] ?? DEFAULT_SUGGESTIONS, [currentRoute]);
+  const suggestions = useMemo(() => getCopilotSuggestions(currentRoute, t), [currentRoute, t]);
   const showSuggestions = messages.length <= 1 && !isLoading;
 
   return (
@@ -254,13 +262,13 @@ function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; curren
           className={cn("h-7 w-7 rounded-lg text-muted-foreground transition-colors",
             voiceOutput && !isSpeaking && "bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-blue-300",
             isSpeaking && "bg-violet-50 text-violet-600 dark:bg-violet-400/10 dark:text-violet-300")}
-          title={voiceOutput ? "Desativar voz da Sonia" : "Ativar voz da Sonia"}
-          onClick={() => { const n = !voiceOutput; setVoiceOutput(n); if (!n) stopAudio(); toast.info(n ? "Voz da Sonia ativada" : "Voz desativada"); }}>
+          title={voiceOutput ? t("chat.voiceOff") : t("chat.voiceOn")}
+          onClick={() => { const n = !voiceOutput; setVoiceOutput(n); if (!n) stopAudio(); toast.info(n ? t("chat.voiceActivated") : t("chat.voiceDeactivated")); }}>
           {isSpeaking ? <Volume2 className="h-3.5 w-3.5 animate-pulse" /> : voiceOutput ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
         </Button>
         <Button type="button" variant="ghost" size="icon"
           className="h-7 w-7 rounded-lg text-muted-foreground hover:text-destructive"
-          title="Limpar conversa" onClick={clearMessages}>
+          title={t("chat.clearTitle")} onClick={clearMessages}>
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -271,9 +279,9 @@ function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; curren
           isSpeaking ? "bg-violet-50 text-violet-600 dark:bg-violet-400/10 dark:text-violet-300" : "bg-blue-50 text-blue-600 dark:bg-blue-400/10 dark:text-blue-300")}>
           <Volume2 className={cn("h-3 w-3", isSpeaking && "animate-pulse")} />
           {isSpeaking ? (
-            <><span className="flex-1">Sonia está falando…</span>
-              <button type="button" onClick={stopAudio} className="font-semibold opacity-70 hover:opacity-100">Parar</button></>
-          ) : <span>Voz da Sonia ativada</span>}
+            <><span className="flex-1">{t("chat.speaking")}</span>
+              <button type="button" onClick={stopAudio} className="font-semibold opacity-70 hover:opacity-100">{t("chat.stop")}</button></>
+          ) : <span>{t("chat.voiceActiveLabel")}</span>}
         </div>
       )}
 
@@ -314,7 +322,7 @@ function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; curren
 
         {showSuggestions && (
           <div className="mt-4 space-y-2">
-            <p className="px-1 text-[11px] font-medium text-muted-foreground">Sugestões</p>
+            <p className="px-1 text-[11px] font-medium text-muted-foreground">{t("chat.suggestions")}</p>
             <div className="flex flex-wrap gap-1.5">
               {suggestions.map((s) => (
                 <button key={s} type="button" onClick={() => handleSend(s)}
@@ -333,10 +341,10 @@ function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; curren
           <Button type="button" variant="outline" size="icon"
             className={cn("h-9 w-9 shrink-0 rounded-xl transition-all",
               isListening ? "animate-pulse border-red-200 bg-red-50 text-red-500 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-300" : "text-muted-foreground hover:border-blue-200 hover:bg-blue-50 hover:text-blue-500")}
-            onClick={toggleListening} title={isListening ? "Parar gravação" : "Falar mensagem"}>
+            onClick={toggleListening} title={isListening ? t("chat.recordStop") : t("chat.recordStart")}>
             {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
           </Button>
-          <Input placeholder={isListening ? "Ouvindo…" : "Digite sua mensagem…"}
+          <Input placeholder={isListening ? t("chat.listeningPlaceholder") : t("chat.placeholder")}
             value={input} onChange={(e) => setInput(e.target.value)}
             className="h-9 flex-1 rounded-xl border-slate-200 bg-slate-50/60 text-sm placeholder:text-muted-foreground/50 focus-visible:border-blue-300 focus-visible:ring-blue-200/50 dark:border-white/8 dark:bg-white/4"
             disabled={isLoading} />
@@ -356,41 +364,73 @@ function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; curren
    ABA VOZ — ElevenLabs Conversational AI
    ══════════════════════════════════════════════════════════ */
 function VoiceTab() {
+  const { t } = useTranslation("copilot");
   const [sessionState, setSessionState] = useState<"idle" | "connecting" | "active" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
-  const [transcript, setTranscript] = useState<{ role: "user" | "agent"; text: string }[]>([]);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const activityRef = useRef(0);
 
   const conversation = useConversation({
     onConnect: () => setSessionState("active"),
     onDisconnect: () => setSessionState("idle"),
-    onMessage: ({ message, source }: { message: string; source: "user" | "ai" }) => {
-      if (!message?.trim()) return;
-      setTranscript((p) => [...p, { role: source === "user" ? "user" : "agent", text: message }]);
-    },
     onError: (err: any) => {
       console.error("[ElevenLabs voice]", err);
       setSessionState("error");
-      setErrorMsg(typeof err === "string" ? err : err?.message || "Erro na conexão de voz.");
+      setErrorMsg(typeof err === "string" ? err : err?.message || t("voice.errorConnection"));
     },
   });
 
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [transcript]);
+  useEffect(() => {
+    if (sessionState === "idle" || sessionState === "error") {
+      activityRef.current = 0;
+      return;
+    }
+
+    let rafId = 0;
+    const tick = (t: number) => {
+      let raw = 0;
+
+      if (sessionState === "connecting") {
+        raw = 0.18 + Math.sin(t * 0.004) * 0.12;
+      } else if (sessionState === "active") {
+        const conv = conversation as {
+          getInputVolume?: () => number;
+          getOutputVolume?: () => number;
+          isSpeaking?: boolean;
+        };
+        const input = typeof conv.getInputVolume === "function" ? conv.getInputVolume() : 0;
+        const output = typeof conv.getOutputVolume === "function" ? conv.getOutputVolume() : 0;
+        raw = Math.max(input, output);
+
+        if (raw < 0.05) {
+          raw = conv.isSpeaking
+            ? 0.55 + Math.sin(t * 0.012) * 0.25
+            : 0.2 + Math.sin(t * 0.008) * 0.15;
+        } else {
+          raw = Math.min(1, raw * 1.4);
+        }
+      }
+
+      activityRef.current += (raw - activityRef.current) * 0.14;
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [sessionState, conversation]);
 
   const startSession = async () => {
     setSessionState("connecting");
     setErrorMsg("");
-    setTranscript([]);
     try {
       const { BASE_URL, getAuthHeaders } = await import("../../services/api");
       const res = await fetch(`${BASE_URL}/copilot/voice-session`, { headers: await getAuthHeaders() });
-      if (!res.ok) throw new Error("Não foi possível iniciar a sessão de voz.");
+      if (!res.ok) throw new Error(t("voice.errorStartSession"));
       const { signedUrl } = await res.json();
       await navigator.mediaDevices.getUserMedia({ audio: true });
       await conversation.startSession({ signedUrl });
     } catch (e: any) {
       setSessionState("error");
-      setErrorMsg(e?.message || "Erro ao iniciar conversa por voz.");
+      setErrorMsg(e?.message || t("voice.errorStart"));
     }
   };
 
@@ -403,49 +443,45 @@ function VoiceTab() {
   const isConnecting = sessionState === "connecting";
   const isAgentSpeaking = conversation.isSpeaking;
 
+  const statusLabel = isConnecting
+    ? t("voice.status.connecting")
+    : isActive
+      ? isAgentSpeaking
+        ? t("voice.status.speaking")
+        : t("voice.status.listening")
+      : t("voice.status.idle");
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Transcript */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        {transcript.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl"
-              style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)" }}>
-              <Radio className="h-6 w-6 text-white" strokeWidth={1.75} />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground">Conversa por voz com Sonia</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {isActive ? "Conversa ativa — fale naturalmente" : "Pressione o botão para iniciar"}
-              </p>
-            </div>
-          </div>
-        )}
-        <div className="flex flex-col gap-2">
-          {transcript.map((m, i) => (
-            <div key={i} className={cn("flex", m.role === "user" ? "justify-end" : "justify-start")}>
-              {m.role === "agent" && (
-                <div className="mr-2 mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)" }}>
-                  <Bot className="h-3 w-3 text-white" strokeWidth={2} />
-                </div>
-              )}
-              <div className={cn("max-w-[78%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
-                m.role === "user"
-                  ? "rounded-br-sm bg-blue-600 text-white dark:bg-blue-500"
-                  : "rounded-bl-sm bg-slate-100 text-slate-800 dark:bg-white/8 dark:text-zinc-200")}>
-                {m.text}
-              </div>
-            </div>
-          ))}
-          <div ref={scrollRef} />
+      <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center px-4 py-6">
+        <div className="relative h-[min(52vw,280px)] w-[min(52vw,280px)] max-h-[280px] max-w-[280px]">
+          <Orb
+            hue={0}
+            activityRef={activityRef}
+            hoverIntensity={0.85}
+            rotateOnHover={sessionState !== "idle"}
+            backgroundColor="transparent"
+          />
+        </div>
+        <div className="mt-4 text-center">
+          <p className="text-sm font-semibold text-foreground">{t("voice.title")}</p>
+          <p className={cn(
+            "mt-1.5 text-xs font-medium transition-colors",
+            isActive && isAgentSpeaking
+              ? "text-violet-600 dark:text-violet-300"
+              : isActive
+                ? "text-emerald-600 dark:text-emerald-300"
+                : "text-muted-foreground",
+          )}>
+            {statusLabel}
+          </p>
         </div>
       </div>
 
       {/* Error */}
       {sessionState === "error" && (
         <div className="mx-4 mb-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs text-red-700 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-300">
-          {errorMsg || "Erro na sessão de voz. Tente novamente."}
+          {errorMsg || t("voice.errorSession")}
         </div>
       )}
 
@@ -456,41 +492,14 @@ function VoiceTab() {
             className="flex w-full items-center justify-center gap-2.5 rounded-2xl py-3.5 text-sm font-semibold text-white shadow-lg transition-all hover:opacity-90 active:scale-95 disabled:opacity-60"
             style={{ background: isConnecting ? "linear-gradient(135deg,#6b7280,#9ca3af)" : "linear-gradient(135deg,#2563eb,#7c3aed)" }}>
             {isConnecting
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> Conectando…</>
-              : <><Phone className="h-4 w-4" /> Iniciar conversa com Sonia</>}
+              ? <><Loader2 className="h-4 w-4 animate-spin" /> {t("voice.status.connecting")}</>
+              : <><Phone className="h-4 w-4" /> {t("voice.start")}</>}
           </button>
         ) : (
-          <div className="space-y-3">
-            {/* Speaking indicator */}
-            <div className="flex items-center justify-center gap-3">
-              <div className={cn("flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold",
-                isAgentSpeaking
-                  ? "bg-violet-100 text-violet-700 dark:bg-violet-400/15 dark:text-violet-300"
-                  : "bg-emerald-100 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300")}>
-                <span className={cn("h-2 w-2 rounded-full", isAgentSpeaking ? "bg-violet-500 animate-pulse" : "bg-emerald-500 animate-pulse")} />
-                {isAgentSpeaking ? "Sonia está falando…" : "Ouvindo você…"}
-              </div>
-            </div>
-            {/* Waveform bars */}
-            <div className="flex items-center justify-center gap-1 h-8">
-              {Array.from({ length: 16 }).map((_, i) => (
-                <span key={i} className={cn("inline-block w-1 rounded-full transition-all duration-150",
-                  isAgentSpeaking ? "bg-violet-400 dark:bg-violet-500" : "bg-emerald-400 dark:bg-emerald-500")}
-                  style={{
-                    height: isAgentSpeaking || !isAgentSpeaking
-                      ? `${8 + Math.abs(Math.sin((i + Date.now() / 200) * 0.8)) * 20}px`
-                      : "8px",
-                    animation: (isActive) ? `voice-bar 0.8s ease-in-out ${i * 0.06}s infinite alternate` : "none",
-                  }} />
-              ))}
-              <style>{`@keyframes voice-bar{from{height:8px}to{height:28px}}`}</style>
-            </div>
-            {/* End button */}
-            <button type="button" onClick={endSession}
-              className="flex w-full items-center justify-center gap-2.5 rounded-2xl border border-red-200 bg-red-50 py-3 text-sm font-semibold text-red-600 transition-all hover:bg-red-100 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-300 dark:hover:bg-red-400/15">
-              <PhoneOff className="h-4 w-4" /> Encerrar conversa
-            </button>
-          </div>
+          <button type="button" onClick={endSession}
+            className="flex w-full items-center justify-center gap-2.5 rounded-2xl border border-red-200 bg-red-50 py-3 text-sm font-semibold text-red-600 transition-all hover:bg-red-100 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-300 dark:hover:bg-red-400/15">
+            <PhoneOff className="h-4 w-4" /> {t("voice.end")}
+          </button>
         )}
       </div>
     </div>
@@ -501,7 +510,7 @@ function VoiceTab() {
    UI PRINCIPAL
    ══════════════════════════════════════════════════════════ */
 const SoniaCopilotUI = () => {
-  const { i18n } = useTranslation("copilot");
+  const { t, i18n } = useTranslation("copilot");
   const { session } = useAuth();
   const { currentRoute } = useNavigation();
   const { actions } = useContext(CopilotContext)!;
@@ -515,7 +524,7 @@ const SoniaCopilotUI = () => {
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
-        <Button type="button" aria-label="Sonia Copilot"
+        <Button type="button" aria-label={t("headerTitle")}
           className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full p-0 shadow-xl transition-all duration-300 hover:scale-105"
           style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)", boxShadow: "0 8px 24px rgba(37,99,235,0.38),0 0 20px rgba(124,58,237,0.25)" }}>
           <Sparkles className="h-6 w-6 text-white" />
@@ -534,9 +543,9 @@ const SoniaCopilotUI = () => {
               <Bot className="h-5 w-5 text-white" strokeWidth={2} />
             </div>
             <div className="min-w-0 flex-1">
-              <SheetTitle className="text-sm font-semibold leading-tight">Sonia Copilot</SheetTitle>
+              <SheetTitle className="text-sm font-semibold leading-tight">{t("headerTitle")}</SheetTitle>
               <SheetDescription className="mt-0 text-[11px] leading-tight text-muted-foreground">
-                Sua assistente de plataforma · Chat e Voz
+                {t("headerSubtitle")}
               </SheetDescription>
             </div>
           </div>
@@ -553,7 +562,7 @@ const SoniaCopilotUI = () => {
                 : "text-muted-foreground hover:text-foreground"
             )}>
             <MessageSquare className="h-3.5 w-3.5" />
-            Chat de texto
+            {t("tab.chat")}
           </button>
           <button type="button" onClick={() => setActiveTab("voice")}
             className={cn(
@@ -563,7 +572,7 @@ const SoniaCopilotUI = () => {
                 : "text-muted-foreground hover:text-foreground"
             )}>
             <Radio className="h-3.5 w-3.5" />
-            Conversa por voz
+            {t("tab.voice")}
           </button>
         </div>
 

@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { supabase } from "../../utils/supabase/client";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -59,23 +60,24 @@ const tabTriggerClass =
 const formFieldClass = "space-y-1.5";
 const formStackClass = "space-y-3";
 
-const BRAND_FEATURES = [
-  {
-    icon: MessageSquare,
-    title: "Atendimento omnichannel",
-    description: "WhatsApp, inbox e automações em um só lugar.",
-  },
-  {
-    icon: Bot,
-    title: "Agentes de IA",
-    description: "Fluxos receptivos e operação assistida por IA.",
-  },
-  {
-    icon: GitBranch,
-    title: "Orquestração visual",
-    description: "Construa jornadas sem depender só de código.",
-  },
+const BRAND_FEATURE_KEYS = [
+  { icon: MessageSquare, titleKey: "brand.feature.omnichannel.title", descKey: "brand.feature.omnichannel.desc" },
+  { icon: Bot, titleKey: "brand.feature.agents.title", descKey: "brand.feature.agents.desc" },
+  { icon: GitBranch, titleKey: "brand.feature.orchestration.title", descKey: "brand.feature.orchestration.desc" },
 ] as const;
+
+function mapDocumentError(message: string | null, t: (key: string) => string): string | null {
+  if (!message) return null;
+  const map: Record<string, string> = {
+    "CPF é obrigatório": t("errors.cpfRequired"),
+    "CNPJ é obrigatório": t("errors.cnpjRequired"),
+    "CPF deve ter 11 dígitos": t("errors.cpfDigits"),
+    "CNPJ deve ter 14 dígitos": t("errors.cnpjDigits"),
+    "CPF inválido": t("errors.cpfInvalid"),
+    "CNPJ inválido": t("errors.cnpjInvalid"),
+  };
+  return map[message] ?? message;
+}
 
 function AuthFormHeader({
   eyebrow,
@@ -124,6 +126,7 @@ export function AuthPage({
   entering?: boolean;
   onEnterAnimationEnd?: () => void;
 }) {
+  const { t } = useTranslation("auth");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loginEmail, setLoginEmail] = useState("");
@@ -162,7 +165,7 @@ export function AuthPage({
         throw authError;
       }
 
-      toast.success("Bem-vindo de volta!");
+      toast.success(t("toast.welcomeBack"));
       setIsTransitioning(true);
       setShowGlow(true);
     } catch (err: unknown) {
@@ -171,27 +174,25 @@ export function AuthPage({
         console.error("Login error:", error);
       }
 
-      let message = "Ocorreu um erro ao fazer login.";
+      let message = t("errors.loginGeneric");
 
       if (
         error.message?.includes("Invalid login credentials") ||
         error.message?.includes("credenciais inv")
       ) {
-        message = "E-mail ou senha incorretos. Verifique suas credenciais e tente novamente.";
+        message = t("errors.invalidCredentials");
       } else if (
         error.message?.includes("Email not confirmed") ||
         error.message?.includes("email not confirmed")
       ) {
-        message =
-          "Seu e-mail ainda não foi confirmado. Verifique a caixa de entrada e o spam.";
+        message = t("errors.emailNotConfirmed");
       } else if (
         error.message?.includes("Email address not authorized") ||
         error.message?.includes("not authorized")
       ) {
-        message =
-          "O Supabase não enviou o e-mail: configure SMTP customizado no painel (Resend) ou use um e-mail da equipe do projeto.";
+        message = t("errors.emailNotAuthorized");
       } else if (error.message?.includes("Too many requests")) {
-        message = "Muitas tentativas. Aguarde alguns instantes antes de tentar novamente.";
+        message = t("errors.tooManyRequests");
       } else if (error.message) {
         message = error.message;
       }
@@ -210,18 +211,18 @@ export function AuthPage({
 
     try {
       if (!firstName.trim()) {
-        throw new Error("O nome é obrigatório.");
+        throw new Error(t("errors.firstNameRequired"));
       }
       if (!lastName.trim()) {
-        throw new Error("O sobrenome é obrigatório.");
+        throw new Error(t("errors.lastNameRequired"));
       }
       if (registerPassword.length < 6) {
-        throw new Error("A senha deve ter no mínimo 6 caracteres.");
+        throw new Error(t("errors.passwordMin"));
       }
       if (accountType === "company" && !companyName.trim()) {
-        throw new Error("Informe o nome da empresa para pessoa jurídica.");
+        throw new Error(t("errors.companyRequired"));
       }
-      const docError = validateDocument(accountType, document);
+      const docError = mapDocumentError(validateDocument(accountType, document), t);
       if (docError) {
         throw new Error(docError);
       }
@@ -246,7 +247,7 @@ export function AuthPage({
       }
 
       if (!authData.user) {
-        throw new Error("Falha ao criar usuário no sistema de autenticação.");
+        throw new Error(t("errors.authUserFailed"));
       }
 
       const encryptedPassword = await encryptPassword(registerPassword);
@@ -272,14 +273,12 @@ export function AuthPage({
       }
 
       if (data && typeof data === "object" && data.success === false) {
-        throw new Error(data.error || "Não foi possível criar o workspace.");
+        throw new Error(data.error || t("errors.workspaceFailed"));
       }
 
       if (data && data.success !== false) {
         if (!authData.session) {
-          toast.success(
-            "Conta criada! Enviamos um e-mail de confirmação. Abra o link na mensagem e depois faça login."
-          );
+          toast.success(t("toast.accountCreatedConfirm"));
           setFirstName("");
           setLastName("");
           setRegisterEmail("");
@@ -296,14 +295,14 @@ export function AuthPage({
 
         if (signInError) {
           console.warn("Usuario criado mas login automatico falhou:", signInError);
-          toast.success("Conta criada com sucesso! Por favor, faça login.");
+          toast.success(t("toast.accountCreatedLogin"));
           setFirstName("");
           setLastName("");
           setRegisterEmail("");
           setRegisterPassword("");
           setCompanyName("");
         } else {
-          toast.success("Conta criada com sucesso!");
+          toast.success(t("toast.accountCreated"));
           setIsTransitioning(true);
           setShowGlow(true);
         }
@@ -316,7 +315,7 @@ export function AuthPage({
         console.error("Register error:", error);
       }
 
-      let message = error.message || "Erro ao registrar.";
+      let message = error.message || t("errors.registerGeneric");
 
       if (
         message.includes("User already registered") ||
@@ -324,15 +323,15 @@ export function AuthPage({
         message.includes("ja existe") ||
         message.includes("already registered")
       ) {
-        message = "Este e-mail já está cadastrado. Tente fazer login.";
+        message = t("errors.emailAlreadyRegistered");
       } else if (message.includes("Password should be at least") || message.includes("minimo 6")) {
-        message = "A senha deve ter no mínimo 6 caracteres.";
+        message = t("errors.passwordMin");
       } else if (
         message.includes("valid email") ||
         message.includes("e-mail valido") ||
         message.includes("Invalid email")
       ) {
-        message = "Por favor, insira um e-mail válido.";
+        message = t("errors.invalidEmail");
       }
 
       setError(message);
@@ -420,7 +419,7 @@ export function AuthPage({
             <div className="space-y-6 pr-2 xl:pr-4">
               <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-300">
                 <Sparkles className="h-3.5 w-3.5 text-blue-400" />
-                Plataforma Sonia · Onsmart.ai
+                {t("brand.badge")}
               </div>
 
               <div className="space-y-3">
@@ -429,31 +428,30 @@ export function AuthPage({
                 </div>
                 <div className="space-y-1.5">
                   <p className="text-xs font-semibold uppercase tracking-[0.28em] text-zinc-500">
-                    Orquestração inteligente
+                    {t("brand.eyebrow")}
                   </p>
                   <h1 className="auth-headline text-3xl font-bold !tracking-normal leading-[1.35] text-zinc-50 xl:text-4xl">
-                    Atendimento com IA,
-                    <span className="auth-headline-gradient">do jeito da sua operação.</span>
+                    {t("brand.headline")}
+                    <span className="auth-headline-gradient">{t("brand.headlineAccent")}</span>
                   </h1>
                   <p className="max-w-md text-base leading-relaxed text-zinc-400">
-                    Centralize agentes, fluxos e canais em uma plataforma pensada para times que
-                    precisam escalar com qualidade.
+                    {t("brand.description")}
                   </p>
                 </div>
               </div>
 
               <ul className="space-y-2">
-                {BRAND_FEATURES.map(({ icon: Icon, title, description }) => (
+                {BRAND_FEATURE_KEYS.map(({ icon: Icon, titleKey, descKey }) => (
                   <li
-                    key={title}
+                    key={titleKey}
                     className="flex gap-2.5 rounded-xl border border-zinc-800/80 bg-zinc-900/75 p-3 backdrop-blur-sm"
                   >
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-950/90 text-blue-400 ring-1 ring-zinc-800">
                       <Icon className="h-4 w-4" />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold leading-snug text-zinc-100">{title}</p>
-                      <p className="mt-0.5 text-xs leading-snug text-zinc-500">{description}</p>
+                      <p className="text-sm font-semibold leading-snug text-zinc-100">{t(titleKey)}</p>
+                      <p className="mt-0.5 text-xs leading-snug text-zinc-500">{t(descKey)}</p>
                     </div>
                   </li>
                 ))}
@@ -475,7 +473,7 @@ export function AuthPage({
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                      Plataforma Sonia
+                      {t("brand.mobileTitle")}
                     </p>
                     <h2 className="mt-0.5 text-xl font-bold tracking-[0.1em] text-zinc-50">SONIA</h2>
                   </div>
@@ -483,13 +481,13 @@ export function AuthPage({
 
                 <div className="mb-3 hidden text-center lg:block">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                    Acesso à plataforma
+                    {t("access.eyebrow")}
                   </p>
                   <h2 className="mt-0.5 text-lg font-semibold leading-snug text-zinc-50">
-                    Entrar ou criar conta
+                    {t("access.title")}
                   </h2>
                   <p className="mt-0.5 text-xs text-zinc-400">
-                    Use seu e-mail corporativo para continuar.
+                    {t("access.description")}
                   </p>
                 </div>
 
@@ -498,7 +496,7 @@ export function AuthPage({
                     <div className="flex items-start gap-3">
                       <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
                       <div className="text-left">
-                        <p className="text-sm font-semibold">Erro de autenticação</p>
+                        <p className="text-sm font-semibold">{t("error.title")}</p>
                         <p className="mt-0.5 text-sm leading-relaxed text-red-100/90">{error}</p>
                       </div>
                     </div>
@@ -508,30 +506,30 @@ export function AuthPage({
                 <Tabs defaultValue="login" className="w-full">
                   <TabsList className="grid h-9 w-full grid-cols-2 gap-1 rounded-lg border border-zinc-800 bg-zinc-950/80 p-0.5">
                     <TabsTrigger value="login" className={tabTriggerClass}>
-                      Login
+                      {t("tabs.login")}
                     </TabsTrigger>
                     <TabsTrigger value="register" className={tabTriggerClass}>
-                      Cadastro
+                      {t("tabs.register")}
                     </TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="login" className="mt-3 focus-visible:outline-none">
                     <div className={formPanelClass}>
                       <AuthFormHeader
-                        eyebrow="Login seguro"
-                        title="Acesse sua conta"
-                        description="Use suas credenciais para entrar na plataforma."
+                        eyebrow={t("login.eyebrow")}
+                        title={t("login.title")}
+                        description={t("login.description")}
                       />
 
                       <form onSubmit={handleLogin} autoComplete="off" className={formStackClass}>
                         <div className={formFieldClass}>
                           <AuthFieldLabel htmlFor="email" icon={Mail}>
-                            E-mail
+                            {t("login.email")}
                           </AuthFieldLabel>
                           <Input
                             id="email"
                             type="email"
-                            placeholder="nome@empresa.com"
+                            placeholder={t("login.emailPlaceholder")}
                             required
                             name="login_email"
                             autoComplete="off"
@@ -546,13 +544,13 @@ export function AuthPage({
 
                         <div className={formFieldClass}>
                           <AuthFieldLabel htmlFor="password" icon={Lock}>
-                            Senha
+                            {t("login.password")}
                           </AuthFieldLabel>
                           <div className="relative">
                             <Input
                               id="password"
                               type={showPassword ? "text" : "password"}
-                              placeholder="Digite sua senha"
+                              placeholder={t("login.passwordPlaceholder")}
                               required
                               name="login_password"
                               autoComplete="new-password"
@@ -567,7 +565,7 @@ export function AuthPage({
                               type="button"
                               onClick={() => setShowPassword(!showPassword)}
                               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 transition-colors hover:text-zinc-200"
-                              aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                              aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
                             >
                               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                             </button>
@@ -580,14 +578,14 @@ export function AuthPage({
                           ) : (
                             <ArrowRight className="mr-2 h-4 w-4" />
                           )}
-                          Entrar
+                          {loading ? t("login.submitting") : t("login.submit")}
                         </Button>
                       </form>
 
                       <div className="my-3 flex items-center gap-2">
                         <div className="h-px flex-1 bg-zinc-800" />
                         <span className="text-[10px] font-medium uppercase tracking-[0.2em] text-zinc-500">
-                          ou continue com
+                          {t("login.orContinue")}
                         </span>
                         <div className="h-px flex-1 bg-zinc-800" />
                       </div>
@@ -597,7 +595,7 @@ export function AuthPage({
                           type="button"
                           variant="outline"
                           className={socialButtonClass}
-                          onClick={() => toast.info("Login com Google em breve")}
+                          onClick={() => toast.info(t("oauth.googleSoon"))}
                         >
                           <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" aria-hidden>
                             <path
@@ -617,13 +615,13 @@ export function AuthPage({
                               d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                             />
                           </svg>
-                          Google
+                          {t("oauth.google")}
                         </Button>
                         <Button
                           type="button"
                           variant="outline"
                           className={socialButtonClass}
-                          onClick={() => toast.info("Login com Microsoft em breve")}
+                          onClick={() => toast.info(t("oauth.microsoftSoon"))}
                         >
                           <svg className="mr-2 h-4 w-4" viewBox="0 0 23 23" fill="none" aria-hidden>
                             <path fill="#F25022" d="M0 0h11v11H0z" />
@@ -631,7 +629,7 @@ export function AuthPage({
                             <path fill="#7FBA00" d="M0 12h11v11H0z" />
                             <path fill="#FFB900" d="M12 12h11v11H12z" />
                           </svg>
-                          Microsoft
+                          {t("oauth.microsoft")}
                         </Button>
                       </div>
                     </div>
@@ -640,9 +638,9 @@ export function AuthPage({
                   <TabsContent value="register" className="mt-3 focus-visible:outline-none">
                     <div className={`${formPanelClass} max-h-[min(62vh,560px)] overflow-y-auto sm:max-h-[min(68vh,600px)]`}>
                       <AuthFormHeader
-                        eyebrow="Nova conta"
-                        title="Criar acesso"
-                        description="Cadastre seus dados para começar na plataforma."
+                        eyebrow={t("register.eyebrow")}
+                        title={t("register.title")}
+                        description={t("register.description")}
                       />
 
                       <form onSubmit={handleRegister} autoComplete="off" className={formStackClass}>

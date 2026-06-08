@@ -36,6 +36,7 @@ import { Toaster } from "./components/ui/sonner"
 import { cn } from "./components/ui/utils"
 import Aurora from "./components/ui/Aurora"
 import { useTheme } from "next-themes"
+import { useTranslation } from "react-i18next"
 
 const HomePage = lazy(() => import("./pages/Home").then((module) => ({ default: module.Home })))
 const CockpitPage = lazy(() => import("./pages/Cockpit").then((module) => ({ default: module.Cockpit })))
@@ -90,6 +91,7 @@ function PageLoader() {
 }
 
 function AppShell({ currentRoute, getPageTitle }: { currentRoute: RoutePath; getPageTitle: () => string }) {
+  const { t } = useTranslation("common")
   const CurrentPage = routeComponents[currentRoute]
 
   return (
@@ -112,7 +114,7 @@ function AppShell({ currentRoute, getPageTitle }: { currentRoute: RoutePath; get
                     className="font-medium text-foreground/75 hover:text-foreground"
                     style={{ textShadow: "0 0 12px rgba(255,255,255,0.6)" }}
                   >
-                    SONIA Platform
+                    {t("app.platformName")}
                   </BreadcrumbLink>
                 </BreadcrumbItem>
                 <BreadcrumbSeparator className="hidden md:block text-foreground/30" />
@@ -146,6 +148,7 @@ function AppShell({ currentRoute, getPageTitle }: { currentRoute: RoutePath; get
 }
 
 function AppContent() {
+  const { t } = useTranslation("common")
   const { currentRoute, getPageTitle } = useNavigation()
   const { session, loading, signingOut } = useAuth()
   const { isChangingLanguage } = useUserLanguage()
@@ -313,7 +316,7 @@ function AppContent() {
             <div className="flex flex-col items-center gap-4">
               <Loader2 className="h-12 w-12 animate-spin text-primary" />
               <p className="animate-pulse text-sm font-medium text-muted-foreground">
-                Carregando traducoes...
+                {t("app.loadingTranslations")}
               </p>
             </div>
           </div>

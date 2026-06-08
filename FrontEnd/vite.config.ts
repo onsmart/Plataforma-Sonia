@@ -108,6 +108,11 @@ export default defineConfig(({ mode }) => {
       port: 3000,
       open: true,
       host: true,
+      headers: {
+        // frame-ancestors só funciona via HTTP header, não via <meta>
+        'Content-Security-Policy': "frame-ancestors 'none'",
+        'X-Frame-Options': 'DENY',
+      },
     },
   };
 });

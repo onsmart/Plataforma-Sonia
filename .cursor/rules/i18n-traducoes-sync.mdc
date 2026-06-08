@@ -1,0 +1,45 @@
+---
+description: i18n — toda copy de UI nova ou alterada deve ir para traduções (pt-BR, en-US, es-ES)
+alwaysApply: true
+---
+
+# i18n — sincronização de traduções (projeto Sonia)
+
+Stack: **i18next + react-i18next**; runtime em `tb_i18n_translations`; fallback em `FrontEnd/src/i18n/local-seed-resources.ts`; seeds SQL em `BackEnd/traducoes/`.
+
+## Regra obrigatória
+
+Sempre que **adicionar**, **substituir** ou **atualizar** texto visível ao usuário (UI, toasts, placeholders, labels, erros, títulos, botões, aria-label, mensagens de empty state):
+
+1. **Não** deixar string hardcoded em PT/EN no componente — usar `useTranslation('<namespace>')` + `t('chave.aninhada')`.
+2. **Atualizar traduções no mesmo esforço** da mudança de código, nos **três idiomas completos**: `pt-BR`, `en-US`, `es-ES`.
+3. Se a chave for nova ou o valor mudou, incluir/atualizar o seed SQL correspondente em `BackEnd/traducoes/SEED_I18N_<AREA>.sql` (idempotente com `ON CONFLICT`).
+4. Regenerar ou atualizar `FrontEnd/src/i18n/local-seed-resources.ts` quando o projeto exigir fallback offline alinhado aos seeds (mesmas chaves e valores).
+5. **Não** usar `defaultValue` em `t()` como solução permanente para texto novo — a chave deve existir nos seeds/DB.
+6. **Não** duplicar copy inline em `FrontEnd/src/i18n/config.ts` salvo bootstrap mínimo; preferir seeds + DB.
+
+## Escolha de namespace
+
+| Área | Namespace |
+|------|-----------|
+| Menu lateral | `sidebar` |
+| Rotas, breadcrumbs, Home | `navigation` |
+| Login, cadastro, setup | `auth` (criar seed se ainda não existir) |
+| Toasts/erros genéricos, loading | `common` (criar seed se ainda não existir) |
+| Copilot | `copilot` |
+| Página específica | mesmo nome da página (`cockpit`, `flows`, `agentsHub`, etc.) |
+
+Consulte `FrontEnd/src/i18n/config.ts` (`ns`, `I18N_DATABASE_NAMESPACES`) antes de inventar namespace.
+
+## O que conta como “texto de UI”
+
+- JSX/TSX: children de botões, títulos, descrições, tooltips
+- `toast.success/error/info/warning(...)`, mensagens de formulário e validação
+- Strings passadas como prop de label/title/placeholder para componentes compartilhados
+- Copy de billing, planos, integrações e wizards (fluxo/agente)
+
+**Exceções (não traduzir):** logs de dev, comentários, nomes técnicos de API/IDs, dados dinâmicos do usuário (nome, e-mail, valores de métricas).
+
+## Ao encerrar a tarefa
+
+No resumo ao usuário, indique em uma linha: **traduções atualizadas** (namespace + idiomas + arquivo seed) ou **traduções não alteradas** (e por quê — ex.: só refactor CSS sem mudança de copy).

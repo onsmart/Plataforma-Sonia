@@ -1,0 +1,28 @@
+apiVersion: 1
+
+providers:
+  - name: 'Sonia Dashboards'
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+
+# ─── Dashboards recomendados para importar pelo ID no Grafana UI ───────────
+#
+# 1. Node Exporter Full (infraestrutura do servidor)
+#    ID: 1860 — CPU, RAM, disco, rede, filesystem, load average
+#
+# 2. Node.js Application Dashboard
+#    ID: 11159 — heap, event loop lag, GC, handles
+#
+# 3. Express.js / API HTTP Metrics (criar manualmente na Fase 2)
+#    Métricas: sonia_http_requests_total, sonia_http_request_duration_seconds,
+#              sonia_http_errors_total
+#
+# 4. Logs Explorer (após Fase 3 com Loki)
+#    Nativo do Grafana — Explore → Loki
+#
+# Para importar: Grafana → Dashboards → Import → informar o ID acima

@@ -1,0 +1,48 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/promtail-positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # Logs de saída do backend (stdout do PM2)
+  - job_name: pm2-out
+    static_configs:
+      - targets: ['localhost']
+        labels:
+          job: 'sonia-backend'
+          app: 'sonia'
+          env: 'production'
+          log_type: 'stdout'
+          service: 'backend-node'
+          __path__: '/var/log/pm2/pm2-out.log'
+
+  # Logs de erro do backend (stderr do PM2)
+  - job_name: pm2-error
+    static_configs:
+      - targets: ['localhost']
+        labels:
+          job: 'sonia-backend'
+          app: 'sonia'
+          env: 'production'
+          log_type: 'stderr'
+          service: 'backend-node'
+          __path__: '/var/log/pm2/pm2-error.log'
+
+    pipeline_stages:
+      # Tenta extrair campos estruturados se o log for JSON
+      - json:
+          expressions:
+            level: level
+            msg: msg
+            message: message
+      # Promove campo "level" como label (se existir)
+      - labels:
+          level:
+      # Descarta logs vazios
+      - drop:
+          expression: '^\s*$'

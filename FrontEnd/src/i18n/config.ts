@@ -3,6 +3,7 @@ import { initReactI18next } from 'react-i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import { databaseI18nBackend } from '../services/i18n/database-backend';
 import { localSeedResources } from './local-seed-resources';
+import { nestSeedOverrides, seedOverrides } from './seed-overrides';
 
 // Inicializar i18next sem backend customizado (usaremos recursos vazios inicialmente)
 i18n
@@ -19,7 +20,7 @@ i18n
     },
     supportedLngs: ['pt-BR', 'en-US', 'es-ES', 'fr-FR', 'de-DE', 'zh-CN', 'ja-JP', 'ru-RU'],
     defaultNS: 'cockpit',
-    ns: ['cockpit', 'inbox', 'playground', 'agentsHub', 'agentConfig', 'flows', 'governance', 'navigation', 'knowledgeBase', 'insights', 'configuration', 'profile', 'sidebar', 'copilot'],
+    ns: ['cockpit', 'inbox', 'playground', 'agentsHub', 'agentConfig', 'flows', 'governance', 'navigation', 'knowledgeBase', 'insights', 'configuration', 'profile', 'sidebar', 'copilot', 'common', 'auth'],
     resources: {
       'pt-BR': {
         cockpit: {},
@@ -269,10 +270,22 @@ Object.entries(localSeedResources).forEach(([language, namespaces]) => {
   })
 })
 
+Object.entries(seedOverrides).forEach(([language, namespaces]) => {
+  Object.entries(namespaces).forEach(([namespace, flatKeys]) => {
+    const nested = nestSeedOverrides(flatKeys)
+    if (Object.keys(nested).length > 0) {
+      i18n.addResourceBundle(language, namespace, nested, true, false)
+    }
+  })
+})
+
 /** Ordem: UI global (sidebar, navegação) primeiro para evitar flash de chaves após F5; depois o restante em paralelo. */
 export const I18N_DATABASE_NAMESPACES = [
   'sidebar',
   'navigation',
+  'common',
+  'auth',
+  'copilot',
   'profile',
   'cockpit',
   'inbox',

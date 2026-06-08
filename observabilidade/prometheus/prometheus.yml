@@ -1,0 +1,33 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    env: 'production'
+    app: 'sonia'
+
+scrape_configs:
+  # Prometheus auto-monitoramento
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node Exporter — métricas do servidor Linux
+  # node-exporter roda com network_mode: host, então é acessado via host-gateway
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['host-gateway:9100']
+    relabel_configs:
+      - target_label: instance
+        replacement: 'servidor-sonia'
+
+  # Backend Node.js — ativar após deploy com /metrics implementado (Fase 2)
+  # Requer METRICS_BEARER_TOKEN no .env do backend
+  - job_name: 'backend-sonia'
+    static_configs:
+      - targets: ['host-gateway:3333']
+    metrics_path: '/metrics'
+    authorization:
+      credentials: 'SUBSTITUIR_PELO_METRICS_BEARER_TOKEN'
+    relabel_configs:
+      - target_label: instance
+        replacement: 'backend-sonia'

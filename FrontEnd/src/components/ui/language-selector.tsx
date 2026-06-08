@@ -17,6 +17,7 @@ import {
 import { useUserLanguage } from "../../hooks/useUserLanguage"
 import { SUPPORTED_AGENT_LANGUAGES } from "../../lib/agent-language"
 import { cn } from "../../lib/utils"
+import { useTranslation } from "react-i18next"
 
 const NATIVE_LANGUAGE_NAMES: Record<string, string> = {
   'pt-BR': 'Português (Brasil)',
@@ -36,6 +37,7 @@ const languages = SUPPORTED_AGENT_LANGUAGES.map((lang) => ({
 }))
 
 export function LanguageSelector() {
+  const { t } = useTranslation("common")
   const { currentLanguage, changeLanguage, isLoading } = useUserLanguage()
   const [open, setOpen] = useState(false)
 
@@ -64,14 +66,14 @@ export function LanguageSelector() {
           disabled={isLoading}
         >
           <Globe className="h-4 w-4" />
-          <span className="sr-only">Select language</span>
+          <span className="sr-only">{t("language.selectAria")}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[240px] p-0" align="end">
         <Command>
-          <CommandInput placeholder="Search language..." />
+          <CommandInput placeholder={t("language.search")} />
           <CommandList>
-            <CommandEmpty>No language found.</CommandEmpty>
+            <CommandEmpty>{t("language.empty")}</CommandEmpty>
             <CommandGroup>
               {languages.map((language) => (
                 <CommandItem

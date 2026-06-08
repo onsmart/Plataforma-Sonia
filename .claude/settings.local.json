@@ -4,7 +4,8 @@
       "Bash(npm run *)",
       "Bash(npm test *)",
       "Bash(npx tsc *)",
-      "Bash(Get-ChildItem *)"
+      "Bash(Get-ChildItem *)",
+      "Bash(Select-Object Name)"
     ]
   }
 }
