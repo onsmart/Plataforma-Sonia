@@ -1,4 +1,6 @@
 import './lib/env'
+import { initSentry, Sentry } from './lib/sentry'
+initSentry()
 import { logFlowHandoffEmailStartupStatus } from './services/flows/flow-team-notify.config'
 import { logPlatformEmailStartupStatus } from './services/platform-email.service'
 import { register } from './lib/metrics'
@@ -226,6 +228,7 @@ app.post('/notifications/mark-read', requireAuth, requireWorkspace, markNotifica
 app.post('/notifications/test', requireAuth, requireWorkspace, testNotification)
 
 app.use(notFoundHandler)
+Sentry.setupExpressErrorHandler(app)
 app.use(errorHandler)
 
 // Inicia worker de fila para processar respostas do WhatsApp
