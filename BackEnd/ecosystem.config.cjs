@@ -4,6 +4,7 @@ module.exports = {
     {
       name: 'backend',
       script: 'dist/index.js',
+      node_args: '--require ./dist/lib/instrument.js',
       cwd: __dirname,
       instances: 1,
       exec_mode: 'fork',
