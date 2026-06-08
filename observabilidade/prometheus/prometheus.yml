@@ -15,7 +15,7 @@ scrape_configs:
   # node-exporter roda com network_mode: host, então é acessado via host-gateway
   - job_name: 'node-exporter'
     static_configs:
-      - targets: ['host-gateway:9100']
+      - targets: ['node-exporter:9100']
     relabel_configs:
       - target_label: instance
         replacement: 'servidor-sonia'

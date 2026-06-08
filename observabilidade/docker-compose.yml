@@ -28,7 +28,7 @@ services:
       - '--web.enable-lifecycle'
       - '--web.listen-address=0.0.0.0:9090'
     extra_hosts:
-      - "host-gateway:host-gateway"
+      - "host-gateway:172.17.0.1"
 
   # ─────────────────────────────────────────────
   # Grafana — dashboards e alertas
@@ -59,22 +59,23 @@ services:
 
   # ─────────────────────────────────────────────
   # Node Exporter — métricas do servidor Linux
-  # Roda com network_mode: host para acessar /proc e /sys
+  # Na mesma rede Docker (obs-net) para evitar problemas de firewall
+  # Acessa métricas do host via volume mounts de /proc e /sys
   # ─────────────────────────────────────────────
   node-exporter:
     image: prom/node-exporter:v1.8.1
     container_name: obs-node-exporter
     restart: unless-stopped
-    network_mode: host
-    pid: host
+    networks: [obs-net]
     command:
       - '--path.rootfs=/host'
       - '--path.procfs=/host/proc'
       - '--path.sysfs=/host/sys'
       - '--collector.filesystem.mount-points-exclude=^/(dev|proc|sys|run|snap)($|/)'
-      - '--web.listen-address=127.0.0.1:9100'
     volumes:
       - /:/host:ro,rslave
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
 
   # ─────────────────────────────────────────────
   # Loki — armazenamento de logs (Fase 3)

@@ -749,17 +749,12 @@ flowchart TB
     PT["Promtail<br/>coleta logs do PM2"]
   end
 
-  subgraph nginx [Nginx — proxy reverso]
-    GFP["grafana.dominio.com → :3030"]
-  end
-
   BE -->|scrape /metrics| PROM
   PE -->|scrape :9100| PROM
   PROM -->|datasource| GF
   LOKI -->|datasource| GF
   PT -->|push logs| LOKI
-  PM2["~/.pm2/logs/"] -->|lê arquivos| PT
-  GF --> nginx
+  PM2["/plataform-backend/BackEnd/logs/"] -->|lê arquivos| PT
 ```
 
 | Ferramenta | Papel | Porta (interna) |
@@ -767,82 +762,224 @@ flowchart TB
 | **Prometheus** | Coleta e armazena métricas da API e do servidor | `127.0.0.1:9090` |
 | **Grafana** | Dashboards, alertas, exploração de logs | `127.0.0.1:3030` |
 | **Node Exporter** | Métricas do servidor Linux (CPU, RAM, disco, rede) | `127.0.0.1:9100` |
-| **Loki** | Armazenamento de logs centralizados | `127.0.0.1:3100` |
-| **Promtail** | Coleta logs do PM2 e envia ao Loki | — |
+| **Loki** | Armazenamento de logs centralizados (Fase 3) | `127.0.0.1:3100` |
+| **Promtail** | Coleta logs do PM2 e envia ao Loki (Fase 3) | — |
 
-Todas as portas ficam em `127.0.0.1` — **não expostas publicamente**. Grafana é acessado via Nginx com HTTPS.
+Todas as portas ficam em `127.0.0.1` — não expostas publicamente. Acesso externo via túnel SSH.
+
+---
+
+### Acesso ao Grafana
+
+**Endereço:** `http://localhost:3030` (após abrir o túnel SSH abaixo)
+
+| Campo | Valor |
+|-------|-------|
+| Usuário | `admin` |
+| Senha | definida em `~/observabilidade/.env` no servidor (`GRAFANA_ADMIN_PASSWORD`) |
+
+**Abrindo o túnel SSH no Windows** (deixar o terminal aberto enquanto usa):
+
+```powershell
+ssh -L 3030:localhost:3030 -L 9090:localhost:9090 servidoronsmart@192.168.15.31
+```
+
+Acesse no navegador: `http://localhost:3030`
+
+---
 
 ### Fases de implementação
 
 | Fase | O que ativa | Status |
 |------|-------------|--------|
-| 1 — Infra | Prometheus + Grafana + Node Exporter (CPU, RAM, disco) | Implementado |
-| 2 — API | `/metrics` e `/health` no backend + prom-client | Implementado |
-| 3 — Logs | Loki + Promtail (logs PM2 no Grafana) | Config pronta |
-| 4 — Alertas | Alertas nativos do Grafana (CPU, 5xx, backend down) | Configurar no Grafana UI |
+| 1 — Infra | Prometheus + Grafana + Node Exporter (CPU, RAM, disco) | ✅ Ativo |
+| 2 — API | `/metrics` e `/health` no backend + prom-client | ✅ Implementado (requer deploy) |
+| 3 — Logs | Loki + Promtail (logs PM2 no Grafana) | Config pronta — subir quando necessário |
+| 4 — Alertas | Alertas nativos do Grafana | Configurar no Grafana UI |
 | 5 — Erros | Sentry Cloud (stack traces, exceções) | Pendente |
 | 6 — Tracing | OpenTelemetry + Grafana Tempo | Pendente |
 
-### Como iniciar a stack (Fase 1)
+---
 
-No servidor Linux, dentro da pasta `observabilidade/`:
+### Comandos operacionais do dia a dia
+
+Todos os comandos abaixo devem ser rodados no servidor, dentro de `~/observabilidade/`.
+
+#### Ver status de todos os serviços
 
 ```bash
-# Copiar e preencher segredos
-cp .env.observabilidade.example .env.observabilidade
-nano .env.observabilidade
-
-# Subir Prometheus + Grafana + Node Exporter
-docker compose --env-file .env.observabilidade up -d prometheus grafana node-exporter
-
-# Verificar saúde
+cd ~/observabilidade
 docker compose ps
-curl http://localhost:9090/-/ready    # Prometheus
-curl http://localhost:3030/api/health # Grafana
-curl http://localhost:9100/metrics    # Node Exporter
 ```
 
-### Como iniciar a stack de logs (Fase 3)
+#### Subir todos os serviços (Fases 1 e 2)
 
 ```bash
-# Ajustar PM2_LOGS_PATH no .env.observabilidade com o path real dos logs PM2
-# Depois subir Loki + Promtail
-docker compose --env-file .env.observabilidade up -d loki promtail
+cd ~/observabilidade
+docker compose up -d prometheus grafana node-exporter
+```
 
-# Descomentar datasource Loki em grafana/provisioning/datasources/datasources.yml
-# e reiniciar o Grafana
+#### Subir serviços de log (Fase 3)
+
+```bash
+cd ~/observabilidade
+docker compose up -d loki promtail
+```
+
+#### Parar todos os serviços
+
+```bash
+cd ~/observabilidade
+docker compose down
+```
+
+> Os dados do Prometheus e Grafana ficam em volumes Docker — não são perdidos ao parar.
+
+#### Reiniciar um serviço específico
+
+```bash
+cd ~/observabilidade
+docker compose restart prometheus
+docker compose restart grafana
+docker compose restart node-exporter
+```
+
+#### Ver logs de um container em tempo real
+
+```bash
+cd ~/observabilidade
+docker compose logs -f prometheus
+docker compose logs -f grafana
+docker compose logs -f node-exporter
+docker compose logs -f loki
+docker compose logs -f promtail
+```
+
+#### Atualizar configuração do Prometheus (ex: token, novo job)
+
+```bash
+nano ~/observabilidade/prometheus/prometheus.yml
+# editar e salvar
+
+cd ~/observabilidade
+docker compose restart prometheus
+
+# Confirmar que recarregou sem erros
+curl http://localhost:9090/-/ready
+```
+
+#### Verificar saúde de cada serviço
+
+```bash
+curl http://localhost:3333/health   # Backend Node.js
+curl http://localhost:9090/-/ready  # Prometheus
+curl http://localhost:9100/metrics | head -5  # Node Exporter
+curl http://localhost:3030/api/health  # Grafana
+```
+
+---
+
+### Situações comuns
+
+#### O servidor foi reiniciado — o que subir?
+
+O PM2 reinicia o backend automaticamente (se configurado com `pm2 startup`). Os containers Docker precisam ser levantados manualmente:
+
+```bash
+cd ~/observabilidade
+docker compose up -d prometheus grafana node-exporter
+# Se Loki e Promtail já estiverem ativos:
+docker compose up -d loki promtail
+```
+
+> Para evitar isso, configure o Docker para iniciar junto com o sistema:
+> ```bash
+> sudo systemctl enable docker
+> ```
+
+#### O Grafana não abre no navegador
+
+1. Confirmar que o túnel SSH está aberto no Windows
+2. Verificar se o container está rodando: `docker compose ps`
+3. Ver logs do Grafana: `docker compose logs grafana`
+
+#### O Prometheus não está coletando métricas do backend
+
+1. Verificar se o backend respondeu após o deploy: `curl http://localhost:3333/health`
+2. Verificar se o `METRICS_BEARER_TOKEN` está definido no `.env` do backend: `pm2 logs backend | head -20`
+3. Verificar se o token no `prometheus.yml` é igual ao do `.env` do backend
+4. No Grafana → **Explore** → **Prometheus** → digitar `up` — o job `backend-sonia` deve aparecer com valor `1`
+
+#### Trocar a senha do Grafana
+
+```bash
+cd ~/observabilidade
+nano .env
+# alterar GRAFANA_ADMIN_PASSWORD
+
+docker compose down grafana
+docker compose up -d grafana
+```
+
+#### Ver quanto espaço os volumes estão usando
+
+```bash
+docker system df -v | grep obs
+```
+
+---
+
+### Importar dashboards no Grafana
+
+#### Dashboard de infraestrutura do servidor (Node Exporter Full)
+
+1. Grafana → **Dashboards** → **Import**
+2. No campo "Import via grafana.com" digitar `1860` → **Load**
+3. Selecionar **Prometheus** como datasource → **Import**
+
+Mostra: CPU, RAM, disco, rede, filesystem, load average.
+
+#### Dashboard de Node.js (heap, event loop, GC)
+
+1. Grafana → **Dashboards** → **Import**
+2. Digitar `11159` → **Load**
+3. Selecionar **Prometheus** → **Import**
+
+> Este dashboard só terá dados após o deploy do backend com `prom-client` (Fase 2).
+
+---
+
+### Ativar logs centralizados (Fase 3)
+
+```bash
+# 1. Subir Loki e Promtail
+cd ~/observabilidade
+docker compose up -d loki promtail
+
+# 2. Verificar que o Loki subiu
+curl http://localhost:3100/ready
+
+# 3. Descomentar o datasource Loki no Grafana
+nano ~/observabilidade/grafana/provisioning/datasources/datasources.yml
+# Remover os '#' das linhas do Loki e salvar
+
+# 4. Reiniciar o Grafana para carregar o novo datasource
 docker compose restart grafana
 ```
 
-### Deploy do backend com métricas (Fase 2)
+No Grafana, acessar **Explore → Loki** e filtrar por `{job="sonia-backend"}` para ver os logs do backend em tempo real.
 
-Após o deploy com `prom-client` instalado, adicionar ao `BackEnd/.env` do servidor:
-
-```env
-METRICS_BEARER_TOKEN=TOKEN_ALEATORIO_64_CHARS
-```
-
-Atualizar `observabilidade/prometheus/prometheus.yml` com o mesmo token e reiniciar o Prometheus:
-
-```bash
-docker compose --env-file .env.observabilidade restart prometheus
-```
-
-### Dashboards recomendados (importar pelo ID no Grafana)
-
-| Dashboard | ID | O que mostra |
-|-----------|-----|-------------|
-| Node Exporter Full | `1860` | CPU, RAM, disco, rede, load average |
-| Node.js Application | `11159` | Heap, event loop lag, GC |
+---
 
 ### Segurança
 
-- Prometheus, Loki e Node Exporter: `127.0.0.1` — nunca expostos publicamente
-- Grafana: Nginx com SSL termination + `GF_AUTH_ANONYMOUS_ENABLED=false`
-- `/metrics`: Bearer token obrigatório (`METRICS_BEARER_TOKEN` no `.env`)
-- `/health`: sem autenticação, sem rate limit (usado por uptime monitors)
+- Todas as portas internas em `127.0.0.1` — nunca expostas na internet
+- Acesso ao Grafana via túnel SSH (sem abrir porta no firewall)
+- `/metrics` protegido por Bearer token (`METRICS_BEARER_TOKEN` no `.env` do backend)
+- `/health` sem autenticação — apenas retorna status, sem dados sensíveis
+- Credenciais em `~/observabilidade/.env` no servidor (não versionado no git)
 
-Configurações: [observabilidade/](observabilidade/) · Nginx: bloquear `location /grafana/api/admin/` externamente.
+Configurações: [observabilidade/](observabilidade/)
 
 ---
 
