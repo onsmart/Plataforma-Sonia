@@ -4,7 +4,6 @@ const register = new client.Registry()
 
 client.collectDefaultMetrics({
   register,
-  prefix: 'sonia_nodejs_',
   labels: {
     app: 'sonia-backend',
     env: process.env.NODE_ENV ?? 'production',
