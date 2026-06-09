@@ -333,8 +333,9 @@ export function BillingPlansSection({
     }
   }, [])
 
-  const recPlans = plans.filter((p) => p.productLine === 'rec')
-  const comPlans = plans.filter((p) => p.productLine === 'com')
+  // Exibir apenas os planos self-serve disponíveis; linha Completa oculta até entrar em produção
+  const recPlans = plans.filter((p) => p.id === 'rec_start' || p.id === 'rec_growth')
+  const comPlans: PlanCatalogEntry[] = []
 
   const cardShellClass = cn(
     'relative flex h-full flex-col overflow-hidden rounded-[1.5rem] border border-border/80 shadow-soft transition-all duration-200',
@@ -705,8 +706,8 @@ export function BillingPlansSection({
 
   return (
     <div id="billing-plans-section" className="space-y-10">
-      {renderLineSection(labels.recLineTitle, labels.recLineDescription, recPlans, 'rec')}
-      {renderLineSection(labels.comLineTitle, labels.comLineDescription, comPlans, 'com')}
+      {recPlans.length > 0 && renderLineSection(labels.recLineTitle, labels.recLineDescription, recPlans, 'rec')}
+      {comPlans.length > 0 && renderLineSection(labels.comLineTitle, labels.comLineDescription, comPlans, 'com')}
     </div>
   )
 }
