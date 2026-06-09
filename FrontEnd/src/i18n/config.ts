@@ -87,7 +87,20 @@ i18n
               partial: 'Parcial',
               disconnected: 'Desconectado'
             }
-          }
+          },
+          button: {
+            createAgentAi: 'Criar Agente com IA',
+          },
+          aiSuggest: {
+            title: 'Criar com IA é mais rápido',
+            description: 'O wizard de IA cria o agente completo em segundos com base no seu objetivo. Quer tentar?',
+            useAi: 'Criar com IA',
+            useManual: 'Criar manualmente',
+            useTemplate: 'Criar template mesmo assim',
+          },
+          agentLimit: {
+            tooltip: 'Limite de {{limit}} agente(s) atingido no plano atual. Faça upgrade para criar mais.',
+          },
         },
         agentConfig: {},
         flows: {},
@@ -110,6 +123,12 @@ i18n
           voiceUnsupported: 'Seu navegador não suporta entrada por voz.',
           voiceBlocked: 'O microfone está bloqueado neste ambiente. Continue conversando por texto.',
           voiceError: 'Erro de voz: {{error}}',
+          bubble: {
+            '0': 'Precisa de ajuda? Estou à sua disposição!',
+            '1': 'Tem alguma dúvida? Pode me perguntar!',
+            '2': 'Posso te guiar pela plataforma!',
+            '3': 'Clique aqui e converse comigo!',
+          },
         }
       },
       'en-US': {
@@ -177,7 +196,20 @@ i18n
               partial: 'Partial',
               disconnected: 'Disconnected'
             }
-          }
+          },
+          button: {
+            createAgentAi: 'Create Agent with AI',
+          },
+          aiSuggest: {
+            title: 'Creating with AI is faster',
+            description: 'The AI wizard creates the complete agent in seconds based on your goal. Want to try?',
+            useAi: 'Create with AI',
+            useManual: 'Create manually',
+            useTemplate: 'Create template anyway',
+          },
+          agentLimit: {
+            tooltip: 'Limit of {{limit}} agent(s) reached on your current plan. Upgrade to create more.',
+          },
         },
         agentConfig: {},
         flows: {},
@@ -200,6 +232,12 @@ i18n
           voiceUnsupported: 'Your browser does not support voice input.',
           voiceBlocked: 'Microphone access is blocked in this environment. Please continue via text.',
           voiceError: 'Voice error: {{error}}',
+          bubble: {
+            '0': 'Need help? I\'m here for you!',
+            '1': 'Have any questions? Just ask!',
+            '2': 'I can guide you through the platform!',
+            '3': 'Click here to chat with me!',
+          },
         }
       },
       'es-ES': {
@@ -222,7 +260,20 @@ i18n
               partial: 'Parcial',
               disconnected: 'Desconectado'
             }
-          }
+          },
+          button: {
+            createAgentAi: 'Crear Agente con IA',
+          },
+          aiSuggest: {
+            title: 'Crear con IA es más rápido',
+            description: 'El wizard de IA crea el agente completo en segundos según tu objetivo. ¿Quieres intentarlo?',
+            useAi: 'Crear con IA',
+            useManual: 'Crear manualmente',
+            useTemplate: 'Crear plantilla de todos modos',
+          },
+          agentLimit: {
+            tooltip: 'Límite de {{limit}} agente(s) alcanzado en tu plan actual. Haz upgrade para crear más.',
+          },
         },
         agentConfig: {},
         flows: {},
@@ -245,6 +296,12 @@ i18n
           voiceUnsupported: 'Tu navegador no admite entrada por voz.',
           voiceBlocked: 'El micrófono está bloqueado en este entorno. Continúa por texto.',
           voiceError: 'Error de voz: {{error}}',
+          bubble: {
+            '0': '¿Necesitas ayuda? ¡Estoy aquí para ti!',
+            '1': '¿Tienes alguna duda? ¡Pregúntame!',
+            '2': '¡Puedo guiarte por la plataforma!',
+            '3': '¡Haz clic aquí y habla conmigo!',
+          },
         }
       }
     },

@@ -65,6 +65,8 @@ import { useNavigation } from "../contexts/NavigationContext"
 import { toast } from "sonner"
 import { SUPPORTED_AGENT_LANGUAGES, getAgentLanguageLabel, normalizeAgentLanguageCode } from "../lib/agent-language"
 import { GenerateAgentAiDialog } from "../components/agents/GenerateAgentAiDialog"
+import { usePlanCapabilities } from "../hooks/usePlanCapabilities"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
 
 const channelsData = [
     { name: "WhatsApp Business", status: "connected", icon: MessageCircle, color: "text-emerald-500" },
@@ -335,6 +337,8 @@ export function AgentsHub() {
     const { userId, user, companiesId } = useAuth()
     const { navigate } = useNavigation()
     const { t } = useTranslation('agentsHub')
+    const { agentsUsed, agentsLimit, isPlatformAdmin } = usePlanCapabilities()
+    const atAgentLimit = !isPlatformAdmin && agentsLimit !== null && agentsUsed >= agentsLimit
 
     const [agents, setAgents] = useState<Agent[]>([])
     const [showCancelledAgents, setShowCancelledAgents] = useState(false)
@@ -349,6 +353,7 @@ export function AgentsHub() {
 
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isGenerateAgentAiOpen, setIsGenerateAgentAiOpen] = useState(false)
+    const [showAiSuggestion, setShowAiSuggestion] = useState<'agent' | 'template' | null>(null)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isCreateTemplateOpen, setIsCreateTemplateOpen] = useState(false)
     const [isSubmittingTemplate, setIsSubmittingTemplate] = useState(false)
@@ -1505,24 +1510,59 @@ export function AgentsHub() {
                             </div>
                         </div>
                         <div className="flex w-full min-w-0 flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-center xl:w-auto xl:max-w-none xl:justify-end">
-                    <Button
-                        type="button"
-                        className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
-                        style={secondaryHeaderButtonStyle}
-                        onClick={() => setIsCreateTemplateOpen(true)}
-                    >
-                        <Sparkles className="h-4 w-4" />
-                        {t('button.createTemplate')}
-                    </Button>
-                    <Button
-                        type="button"
-                        className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
-                        style={secondaryHeaderButtonStyle}
-                        onClick={() => setIsGenerateAgentAiOpen(true)}
-                    >
-                        <Sparkles className="h-4 w-4" />
-                        {t('button.createAgentAi')}
-                    </Button>
+                    <TooltipProvider delayDuration={200}>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <span className="inline-flex">
+                                <Button
+                                    type="button"
+                                    className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
+                                    style={secondaryHeaderButtonStyle}
+                                    disabled={atAgentLimit}
+                                    onClick={() => !atAgentLimit && setShowAiSuggestion('template')}
+                                >
+                                    <Sparkles className="h-4 w-4" />
+                                    {t('button.createTemplate')}
+                                </Button>
+                            </span>
+                        </TooltipTrigger>
+                        {atAgentLimit && <TooltipContent><p>{t('agentLimit.tooltip', { limit: agentsLimit })}</p></TooltipContent>}
+                    </Tooltip>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <span className="inline-flex">
+                                <Button
+                                    type="button"
+                                    className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
+                                    style={secondaryHeaderButtonStyle}
+                                    disabled={atAgentLimit}
+                                    onClick={() => !atAgentLimit && setShowAiSuggestion('agent')}
+                                >
+                                    <Plus className="h-4 w-4" />
+                                    {t('button.deployNewAgent')}
+                                </Button>
+                            </span>
+                        </TooltipTrigger>
+                        {atAgentLimit && <TooltipContent><p>{t('agentLimit.tooltip', { limit: agentsLimit })}</p></TooltipContent>}
+                    </Tooltip>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <span className="inline-flex">
+                                <Button
+                                    type="button"
+                                    className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
+                                    style={mainButtonStyle}
+                                    disabled={atAgentLimit}
+                                    onClick={() => !atAgentLimit && setIsGenerateAgentAiOpen(true)}
+                                >
+                                    <Sparkles className="h-4 w-4" />
+                                    {t('button.createAgentAi')}
+                                </Button>
+                            </span>
+                        </TooltipTrigger>
+                        {atAgentLimit && <TooltipContent><p>{t('agentLimit.tooltip', { limit: agentsLimit })}</p></TooltipContent>}
+                    </Tooltip>
+                    </TooltipProvider>
                     <GenerateAgentAiDialog
                         open={isGenerateAgentAiOpen}
                         onOpenChange={setIsGenerateAgentAiOpen}
@@ -1533,15 +1573,45 @@ export function AgentsHub() {
                             }
                         }}
                     />
+                    {/* AI suggestion interceptor dialog */}
+                    <Dialog open={showAiSuggestion !== null} onOpenChange={(open) => { if (!open) setShowAiSuggestion(null) }}>
+                        <DialogContent className="sm:max-w-[440px] rounded-xl border p-6" style={dialogContentStyle}>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2" style={{ color: panelTone.title }}>
+                                    <Sparkles className="h-5 w-5 text-blue-500" />
+                                    {t('aiSuggest.title')}
+                                </DialogTitle>
+                                <DialogDescription style={{ color: panelTone.muted }}>
+                                    {t('aiSuggest.description')}
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter className="mt-4 flex flex-col gap-2 sm:flex-row">
+                                <Button
+                                    type="button"
+                                    className="flex-1 gap-2"
+                                    style={mainButtonStyle}
+                                    onClick={() => { setShowAiSuggestion(null); setIsGenerateAgentAiOpen(true) }}
+                                >
+                                    <Sparkles className="h-4 w-4" />
+                                    {t('aiSuggest.useAi')}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="flex-1"
+                                    onClick={() => {
+                                        const target = showAiSuggestion
+                                        setShowAiSuggestion(null)
+                                        if (target === 'agent') setIsCreateOpen(true)
+                                        else if (target === 'template') setIsCreateTemplateOpen(true)
+                                    }}
+                                >
+                                    {showAiSuggestion === 'template' ? t('aiSuggest.useTemplate') : t('aiSuggest.useManual')}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                     <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                    <DialogTrigger asChild>
-                        <Button className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
-                        style={mainButtonStyle}
-                        >
-                            <Plus className="h-4 w-4" />
-                            {t('button.deployNewAgent')}
-                        </Button>
-                    </DialogTrigger>
                     <DialogContent 
                         className="sm:max-w-[600px] rounded-xl border p-0"
                         style={dialogContentStyle}

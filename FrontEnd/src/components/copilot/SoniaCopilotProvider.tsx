@@ -516,6 +516,25 @@ const SoniaCopilotUI = () => {
   const { actions } = useContext(CopilotContext)!;
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<CopilotTab>("chat");
+  const [bubbleVisible, setBubbleVisible] = useState(false);
+  const [bubbleIdx, setBubbleIdx] = useState(0);
+
+  useEffect(() => {
+    if (isOpen) { setBubbleVisible(false); return; }
+    let tid: ReturnType<typeof setTimeout>;
+    let idx = 0;
+    const showBubble = () => {
+      setBubbleIdx(idx);
+      setBubbleVisible(true);
+      tid = setTimeout(() => {
+        setBubbleVisible(false);
+        idx = (idx + 1) % 4;
+        tid = setTimeout(showBubble, 12000);
+      }, 5000);
+    };
+    tid = setTimeout(showBubble, 4000);
+    return () => clearTimeout(tid);
+  }, [isOpen]);
 
   const speechLang = useMemo(() => normalizeAgentLanguageCode(i18n.language), [i18n.language]);
 
@@ -523,9 +542,34 @@ const SoniaCopilotUI = () => {
 
   return (
     <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      {/* Animated hint bubble */}
+      {!isOpen && (
+        <div
+          aria-hidden="true"
+          className={cn(
+            "pointer-events-none fixed bottom-8 z-[49] transition-all duration-500",
+            bubbleVisible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-3"
+          )}
+          style={{ right: "88px" }}
+        >
+          <div
+            className="relative max-w-[190px] rounded-2xl rounded-br-sm px-3.5 py-2 text-[13px] font-medium leading-snug text-white shadow-lg"
+            style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)", filter: "drop-shadow(0 4px 16px rgba(37,99,235,0.3))" }}
+          >
+            {t(`bubble.${bubbleIdx}`)}
+            <span
+              className="absolute bottom-2 border-[7px] border-transparent"
+              style={{ right: "-13px", borderLeftColor: "#7c3aed" }}
+            />
+          </div>
+        </div>
+      )}
       <SheetTrigger asChild>
         <Button type="button" aria-label={t("headerTitle")}
-          className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full p-0 shadow-xl transition-all duration-300 hover:scale-105"
+          className={cn(
+            "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full p-0 shadow-xl transition-all duration-300 hover:scale-105",
+            bubbleVisible && !isOpen && "ring-2 ring-blue-400 ring-offset-2 ring-offset-background"
+          )}
           style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)", boxShadow: "0 8px 24px rgba(37,99,235,0.38),0 0 20px rgba(124,58,237,0.25)" }}>
           <Sparkles className="h-6 w-6 text-white" />
         </Button>

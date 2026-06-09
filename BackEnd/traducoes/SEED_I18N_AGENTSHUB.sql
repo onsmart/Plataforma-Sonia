@@ -49,6 +49,38 @@ VALUES
   (NULL, 'es-ES', 'agentsHub', 'button.startFromTemplate', 'Empezar desde una plantilla', 'Texto del botón'),
   (NULL, 'es-ES', 'agentsHub', 'button.startFromScratch', 'Empezar desde cero', 'Texto del botón'),
 
+  (NULL, 'pt-BR', 'agentsHub', 'button.createAgentAi', 'Criar Agente com IA', 'Botão principal de criação de agente via wizard de IA'),
+  (NULL, 'en-US', 'agentsHub', 'button.createAgentAi', 'Create Agent with AI', 'Primary button to create agent via AI wizard'),
+  (NULL, 'es-ES', 'agentsHub', 'button.createAgentAi', 'Crear Agente con IA', 'Botón principal para crear agente con el wizard de IA'),
+
+  -- ============================================
+  -- AI SUGGESTION DIALOG
+  -- ============================================
+  (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.title', 'Criar com IA é mais rápido', 'Título do dialog de sugestão de criação com IA'),
+  (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.description', 'O wizard de IA cria o agente completo em segundos com base no seu objetivo. Quer tentar?', 'Descrição do dialog de sugestão'),
+  (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.useAi', 'Criar com IA', 'Botão confirmar uso do wizard de IA'),
+  (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.useManual', 'Criar manualmente', 'Botão para prosseguir com criação manual de agente'),
+  (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.useTemplate', 'Criar template mesmo assim', 'Botão para prosseguir com criação manual de template'),
+
+  (NULL, 'en-US', 'agentsHub', 'aiSuggest.title', 'Creating with AI is faster', 'AI suggestion dialog title'),
+  (NULL, 'en-US', 'agentsHub', 'aiSuggest.description', 'The AI wizard creates the complete agent in seconds based on your goal. Want to try?', 'AI suggestion dialog description'),
+  (NULL, 'en-US', 'agentsHub', 'aiSuggest.useAi', 'Create with AI', 'Confirm AI wizard button'),
+  (NULL, 'en-US', 'agentsHub', 'aiSuggest.useManual', 'Create manually', 'Proceed with manual agent creation'),
+  (NULL, 'en-US', 'agentsHub', 'aiSuggest.useTemplate', 'Create template anyway', 'Proceed with manual template creation'),
+
+  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.title', 'Crear con IA es más rápido', 'Título del dialog de sugerencia de IA'),
+  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.description', 'El wizard de IA crea el agente completo en segundos según tu objetivo. ¿Quieres intentarlo?', 'Descripción del dialog de sugerencia'),
+  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.useAi', 'Crear con IA', 'Botón confirmar wizard de IA'),
+  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.useManual', 'Crear manualmente', 'Continuar con creación manual de agente'),
+  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.useTemplate', 'Crear plantilla de todos modos', 'Continuar con creación manual de plantilla'),
+
+  -- ============================================
+  -- AGENT LIMIT TOOLTIP
+  -- ============================================
+  (NULL, 'pt-BR', 'agentsHub', 'agentLimit.tooltip', 'Limite de {{limit}} agente(s) atingido no plano atual. Faça upgrade para criar mais.', 'Tooltip exibido quando o usuário atingiu o limite de agentes do plano'),
+  (NULL, 'en-US', 'agentsHub', 'agentLimit.tooltip', 'Limit of {{limit}} agent(s) reached on your current plan. Upgrade to create more.', 'Tooltip shown when user reached agent limit for their plan'),
+  (NULL, 'es-ES', 'agentsHub', 'agentLimit.tooltip', 'Límite de {{limit}} agente(s) alcanzado en tu plan actual. Haz upgrade para crear más.', 'Tooltip mostrado cuando el usuario alcanzó el límite de agentes del plan'),
+
   -- ============================================
   -- TABS
   -- ============================================
