@@ -2959,7 +2959,7 @@ export function AgentsHub() {
                                                                         {t('loading.integrations')}
                                                                     </SelectItem>
                                                                 ) : integrations.length === 0 ? (
-                                                                    <SelectItem value="none" disabled>
+                                                                    <SelectItem value="__empty__" disabled>
                                                                         {t('empty.noIntegrations')}
                                                                     </SelectItem>
                                                                 ) : (
