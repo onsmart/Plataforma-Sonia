@@ -335,8 +335,9 @@ async function updateFlow(req, res) {
                 details: 'Você não pode atualizar flows de outras empresas'
             });
         }
-        // Preparar payload (remover email se vier no body)
-        const { email: _, ...updatePayload } = req.body;
+        // Preparar payload — remover campos que não são colunas de tb_flows
+        // `edges` é campo do frontend mas fica dentro do JSONB `nodes`, não é coluna separada
+        const { email: _, edges: _edges, ...updatePayload } = req.body;
         if (updatePayload.nodes != null) {
             const metaValidation = (0, flow_whatsapp_validation_1.validateMetaWhatsappFlowPayload)(updatePayload.nodes);
             if (metaValidation.errors.length > 0) {

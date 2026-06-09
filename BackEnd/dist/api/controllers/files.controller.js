@@ -55,6 +55,12 @@ class FilesController {
         if (!email) {
             return res.status(401).json({ error: 'User email is required' });
         }
+        const contentType = req.headers['content-type'] || '';
+        if (contentType.includes('multipart/form-data')) {
+            return res.status(400).json({
+                error: 'Este endpoint aceita JSON. Envie o arquivo como { fileName, contentBase64, mimeType }.',
+            });
+        }
         const { fileName, mimeType, contentBase64, purpose = 'rag', } = req.body;
         if (!fileName?.trim() || !contentBase64?.trim()) {
             return res.status(400).json({ error: 'fileName and contentBase64 are required' });
@@ -77,6 +83,20 @@ class FilesController {
         }
         const resolvedMime = mimeType?.trim() || 'application/octet-stream';
         try {
+            const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
+            if (!companiesId) {
+                return res.status(403).json({ error: 'Empresa não encontrada para o usuário' });
+            }
+            if (filePurpose === 'rag' || filePurpose === 'skills') {
+                const ragCheck = await (0, plan_helper_1.canUseRAG)(companiesId);
+                if (!ragCheck.allowed) {
+                    return res.status(403).json({
+                        error: ragCheck.reason || 'Base de conhecimento não disponível no seu plano',
+                        code: 'PLAN_RAG_REQUIRED',
+                        upgradePlan: ragCheck.upgradePlan,
+                    });
+                }
+            }
             try {
                 (0, knowledge_file_formats_1.assertAllowedKnowledgeUploadFile)(fileName, resolvedMime);
             }
@@ -131,20 +151,6 @@ class FilesController {
                     errors: validation.errors,
                 });
                 return res.status(422).json((0, validate_knowledge_file_service_1.formatValidationErrorResponse)(validation));
-            }
-            const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
-            if (!companiesId) {
-                return res.status(403).json({ error: 'Empresa não encontrada para o usuário' });
-            }
-            if (filePurpose === 'rag' || filePurpose === 'skills') {
-                const ragCheck = await (0, plan_helper_1.canUseRAG)(companiesId);
-                if (!ragCheck.allowed) {
-                    return res.status(403).json({
-                        error: ragCheck.reason || 'Base de conhecimento não disponível no seu plano',
-                        code: 'PLAN_RAG_REQUIRED',
-                        upgradePlan: ragCheck.upgradePlan,
-                    });
-                }
             }
             const timestamp = Date.now();
             const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
@@ -221,10 +227,6 @@ class FilesController {
             });
         }
         try {
-            const validation = (0, validate_knowledge_file_service_1.validateKnowledgeFileContent)(textContent, filePurpose);
-            if (!validation.valid) {
-                return res.status(422).json((0, validate_knowledge_file_service_1.formatValidationErrorResponse)(validation));
-            }
             const companiesId = await (0, company_helper_1.getCompanyIdByEmail)(email);
             if (!companiesId) {
                 return res.status(403).json({ error: 'Empresa não encontrada para o usuário' });
@@ -236,6 +238,10 @@ class FilesController {
                     code: 'PLAN_RAG_REQUIRED',
                     upgradePlan: ragCheck.upgradePlan,
                 });
+            }
+            const validation = (0, validate_knowledge_file_service_1.validateKnowledgeFileContent)(textContent, filePurpose);
+            if (!validation.valid) {
+                return res.status(422).json((0, validate_knowledge_file_service_1.formatValidationErrorResponse)(validation));
             }
             const displayTitle = titleValidation.title;
             const timestamp = Date.now();

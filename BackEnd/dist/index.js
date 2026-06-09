@@ -39,6 +39,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 require("./lib/env");
 const flow_team_notify_config_1 = require("./services/flows/flow-team-notify.config");
 const platform_email_service_1 = require("./services/platform-email.service");
+const metrics_1 = require("./lib/metrics");
+const metrics_middleware_1 = require("./middleware/metrics.middleware");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
@@ -115,6 +117,20 @@ app.use((0, cors_1.default)({
     },
     credentials: true,
 }));
+// /health — sem autenticação, sem rate limit (usado por load balancers e uptime monitors)
+app.get('/health', (_req, res) => {
+    res.json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+});
+// /metrics — protegido por Bearer token, só acessível internamente pelo Prometheus
+app.get('/metrics', async (req, res) => {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    if (!process.env.METRICS_BEARER_TOKEN || token !== process.env.METRICS_BEARER_TOKEN) {
+        res.status(401).end();
+        return;
+    }
+    res.set('Content-Type', metrics_1.register.contentType);
+    res.end(await metrics_1.register.metrics());
+});
 app.use(rate_limit_middleware_1.globalRateLimiter);
 if (process.env.NODE_ENV !== 'production') {
     app.get('/billing/webhook/test', (_req, res) => {
@@ -138,6 +154,8 @@ app.post('/whatsapp/webhook', rate_limit_middleware_1.webhookRateLimiter, expres
 // Agora aplicar express.json() para todas as outras rotas
 app.use(express_1.default.json({ limit: '12mb' }));
 app.use(express_1.default.urlencoded({ limit: '12mb', extended: true }));
+// Instrumentação HTTP — registra duração, total e erros de todas as rotas abaixo
+app.use(metrics_middleware_1.metricsMiddleware);
 // Rotas de agentes (execução direta - mantido para compatibilidade)
 app.use('/agents', agents_routes_1.default);
 // Rotas de flows (orquestração central - NOVO)
@@ -204,6 +222,10 @@ app.listen(3333, '0.0.0.0', async () => {
     (0, flow_team_notify_config_1.logFlowHandoffEmailStartupStatus)();
     (0, platform_email_service_1.logPlatformEmailStartupStatus)();
     console.log('🚀 Backend rodando em http://0.0.0.0:3333');
+    console.log('📡 GET /health — health check (sem auth)');
+    console.log(process.env.METRICS_BEARER_TOKEN
+        ? '📈 GET /metrics — Prometheus (Bearer token configurado)'
+        : '⚠️  GET /metrics — METRICS_BEARER_TOKEN não definido, endpoint retornará 401');
     console.log('📊 Flows disponíveis em /flows');
     console.log('🤖 Agentes disponíveis em /agents');
     console.log('📱 WhatsApp disponível em /whatsapp');
