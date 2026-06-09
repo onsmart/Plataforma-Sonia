@@ -762,8 +762,9 @@ flowchart TB
 | **Prometheus** | Coleta e armazena métricas da API e do servidor | `127.0.0.1:9090` |
 | **Grafana** | Dashboards, alertas, exploração de logs | `127.0.0.1:3030` |
 | **Node Exporter** | Métricas do servidor Linux (CPU, RAM, disco, rede) | `127.0.0.1:9100` |
-| **Loki** | Armazenamento de logs centralizados (Fase 3) | `127.0.0.1:3100` |
-| **Promtail** | Coleta logs do PM2 e envia ao Loki (Fase 3) | — |
+| **Loki** | Armazenamento de logs centralizados | `127.0.0.1:3100` |
+| **Promtail** | Coleta logs do PM2 e envia ao Loki | — |
+| **Sentry** | Captura de exceções e erros 5xx com stack trace | Cloud (externo) |
 
 Todas as portas ficam em `127.0.0.1` — não expostas publicamente. Acesso externo via túnel SSH.
 
@@ -793,10 +794,10 @@ Acesse no navegador: `http://localhost:3030`
 | Fase | O que ativa | Status |
 |------|-------------|--------|
 | 1 — Infra | Prometheus + Grafana + Node Exporter (CPU, RAM, disco) | ✅ Ativo |
-| 2 — API | `/metrics` e `/health` no backend + prom-client | ✅ Implementado (requer deploy) |
-| 3 — Logs | Loki + Promtail (logs PM2 no Grafana) | Config pronta — subir quando necessário |
-| 4 — Alertas | Alertas nativos do Grafana | Configurar no Grafana UI |
-| 5 — Erros | Sentry Cloud (stack traces, exceções) | Pendente |
+| 2 — API | `/metrics` e `/health` no backend + prom-client | ✅ Ativo |
+| 3 — Logs | Loki + Promtail (logs PM2 no Grafana) | ✅ Ativo |
+| 4 — Alertas | 6 alertas por e-mail via Resend (CPU, RAM, disco, 5xx, latência, downtime) | ✅ Ativo |
+| 5 — Erros | Sentry Cloud (stack traces, exceções 5xx) | ✅ Ativo |
 | 6 — Tracing | OpenTelemetry + Grafana Tempo | Pendente |
 
 ---
@@ -995,6 +996,7 @@ Configurações: [observabilidade/](observabilidade/)
 | [docs/planos-permissoes-sonia.md](docs/planos-permissoes-sonia.md) | Permissões e logs de governança |
 | [docs/plataforma-sonia-documentacao-tecnica.md](docs/plataforma-sonia-documentacao-tecnica.md) | Documentação de produto (PDF) |
 | [docs/prioridades-correcoes-atualizacoes.md](docs/prioridades-correcoes-atualizacoes.md) | Backlog técnico priorizado |
+| [docs/observabilidade-camadas.md](docs/observabilidade-camadas.md) | Stack de observabilidade — camadas, funcionamento e cuidados |
 
 ---
 

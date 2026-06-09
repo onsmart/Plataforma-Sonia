@@ -30,6 +30,13 @@ export class FilesController {
             return res.status(401).json({ error: 'User email is required' })
         }
 
+        const contentType = req.headers['content-type'] || ''
+        if (contentType.includes('multipart/form-data')) {
+            return res.status(400).json({
+                error: 'Este endpoint aceita JSON. Envie o arquivo como { fileName, contentBase64, mimeType }.',
+            })
+        }
+
         const {
             fileName,
             mimeType,
@@ -68,6 +75,22 @@ export class FilesController {
         const resolvedMime = mimeType?.trim() || 'application/octet-stream'
 
         try {
+            const companiesId = await getCompanyIdByEmail(email)
+            if (!companiesId) {
+                return res.status(403).json({ error: 'Empresa não encontrada para o usuário' })
+            }
+
+            if (filePurpose === 'rag' || filePurpose === 'skills') {
+                const ragCheck = await canUseRAG(companiesId)
+                if (!ragCheck.allowed) {
+                    return res.status(403).json({
+                        error: ragCheck.reason || 'Base de conhecimento não disponível no seu plano',
+                        code: 'PLAN_RAG_REQUIRED',
+                        upgradePlan: ragCheck.upgradePlan,
+                    })
+                }
+            }
+
             try {
                 assertAllowedKnowledgeUploadFile(fileName, resolvedMime)
             } catch (formatErr: any) {
@@ -122,22 +145,6 @@ export class FilesController {
                     errors: validation.errors,
                 })
                 return res.status(422).json(formatValidationErrorResponse(validation))
-            }
-
-            const companiesId = await getCompanyIdByEmail(email)
-            if (!companiesId) {
-                return res.status(403).json({ error: 'Empresa não encontrada para o usuário' })
-            }
-
-            if (filePurpose === 'rag' || filePurpose === 'skills') {
-                const ragCheck = await canUseRAG(companiesId)
-                if (!ragCheck.allowed) {
-                    return res.status(403).json({
-                        error: ragCheck.reason || 'Base de conhecimento não disponível no seu plano',
-                        code: 'PLAN_RAG_REQUIRED',
-                        upgradePlan: ragCheck.upgradePlan,
-                    })
-                }
             }
 
             const timestamp = Date.now()
@@ -231,11 +238,6 @@ export class FilesController {
         }
 
         try {
-            const validation = validateKnowledgeFileContent(textContent, filePurpose)
-            if (!validation.valid) {
-                return res.status(422).json(formatValidationErrorResponse(validation))
-            }
-
             const companiesId = await getCompanyIdByEmail(email)
             if (!companiesId) {
                 return res.status(403).json({ error: 'Empresa não encontrada para o usuário' })
@@ -248,6 +250,11 @@ export class FilesController {
                     code: 'PLAN_RAG_REQUIRED',
                     upgradePlan: ragCheck.upgradePlan,
                 })
+            }
+
+            const validation = validateKnowledgeFileContent(textContent, filePurpose)
+            if (!validation.valid) {
+                return res.status(422).json(formatValidationErrorResponse(validation))
             }
 
             const displayTitle = titleValidation.title

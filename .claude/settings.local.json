@@ -5,7 +5,13 @@
       "Bash(npm test *)",
       "Bash(npx tsc *)",
       "Bash(Get-ChildItem *)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "mcp__ide__getDiagnostics",
+      "Bash(supabase db query --linked ' *)",
+      "Bash(curl -s -X POST https://rmfbkyntvkpettjtgaws.supabase.co/auth/v1/token?grant_type=password -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtZmJreW50dmtwZXR0anRnYXdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5MzY0MTEsImV4cCI6MjA4MDUxMjQxMX0.lG3-9XEPOeDbFGkdMKXd0JBHqtVbvNfWGWatmmSuLNE' -H 'Content-Type: application/json' -d '{\"email\":\"test.start@sonia.test\",\"password\":\"Sonia@2026Test\"}')",
+      "Bash(python3 -c ' *)",
+      "Bash(supabase db *)",
+      "Bash(python3 -c \"import sys,json; d=json.loads\\(sys.stdin.read\\(\\).split\\('boundary'\\)[2].split\\('\\\\\"rows\\\\\":'\\)[1].split\\(',\\\\\"warning\\\\\"'\\)[0].strip\\(\\)\\); [print\\(r['id'], r['name']\\) for r in d]\")"
     ]
   }
 }

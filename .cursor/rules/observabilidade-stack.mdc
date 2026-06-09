@@ -1,0 +1,58 @@
+---
+description: Stack de observabilidade da Plataforma Sonia — regras de manutenção e atualização do documento de camadas
+globs: observabilidade/**,BackEnd/src/lib/metrics.ts,BackEnd/src/lib/instrument.ts,BackEnd/src/middleware/metrics.middleware.ts,BackEnd/ecosystem.config.cjs,docs/observabilidade-camadas.md
+alwaysApply: false
+---
+
+# Observabilidade — stack e manutenção (projeto Sonia)
+
+Referência obrigatória: **`docs/observabilidade-camadas.md`**
+
+Este documento descreve cada camada da stack (PM2, Prometheus, Grafana, Node Exporter, Loki, Promtail, Sentry), o que cada uma controla, como funciona e os cuidados necessários.
+
+## Quando ler antes de agir
+
+Consultar `docs/observabilidade-camadas.md` antes de:
+
+- Adicionar, remover ou alterar qualquer ferramenta da stack de observabilidade
+- Modificar arquivos em `observabilidade/` (docker-compose, configs do Prometheus, Loki, Promtail, Grafana)
+- Modificar `BackEnd/src/lib/metrics.ts`, `BackEnd/src/lib/instrument.ts`, `BackEnd/src/middleware/metrics.middleware.ts`
+- Modificar `BackEnd/ecosystem.config.cjs` (especialmente `node_args`)
+- Adicionar novos alertas ou datasources no Grafana
+- Alterar retenção de métricas ou logs
+- Integrar Sentry em novos serviços ou módulos
+
+## Quando atualizar o documento
+
+Atualizar `docs/observabilidade-camadas.md` **no mesmo esforço** (mesmo commit ou PR) quando:
+
+| Gatilho | O que atualizar no documento |
+|---------|------------------------------|
+| Nova ferramenta adicionada | Nova seção completa com funcionamento e cuidados |
+| Threshold de alerta alterado | Tabela de alertas na seção Grafana |
+| Novo job no `prometheus.yml` | Tabela de jobs na seção Prometheus |
+| Mudança no path dos logs PM2 | Seção Promtail |
+| Nova captura manual de erro no Sentry | Seção Sentry |
+| Mudança de retenção (Prometheus ou Loki) | Seção correspondente |
+| Versão de container atualizada | Seção correspondente |
+| Mudança no `node_args` do PM2 | Seção PM2 |
+
+## Regras críticas da stack atual
+
+1. **Token de métricas:** `METRICS_BEARER_TOKEN` no `.env` do backend deve ser idêntico ao `credentials` em `prometheus.yml`.
+
+2. **PM2 e node_args:** alterações no `ecosystem.config.cjs` exigem `pm2 reload ecosystem.config.cjs` ou `pm2 delete + start` — `pm2 restart` não recarrega a config.
+
+3. **Sentry instrument:** `dist/lib/instrument.js` carregado via `--require` no PM2. Nunca inicializar o Sentry dentro do `index.ts` como import normal.
+
+4. **Alta cardinalidade:** nunca adicionar labels com valores únicos nas métricas do Prometheus.
+
+5. **Alertas com No Data:** configurar **Alert state if no data → Normal** em alertas de erros e latência.
+
+6. **Portas internas:** Prometheus (9090), Loki (3100) e Node Exporter (9100) nunca expostos publicamente.
+
+7. **Loki + Promtail:** iniciar Loki antes do Promtail. Em caso de erro DNS, recriar o Promtail com `--force-recreate`.
+
+## Ao encerrar a tarefa
+
+No resumo ao usuário, indique em uma linha: **observabilidade atualizada** (qual camada + o que mudou) ou **observabilidade não alterada** (e por quê).

@@ -46,6 +46,7 @@ import {
   coerceToSupportedAgentLanguage,
 } from "../../lib/agent-language"
 import { IntegrationBrandIcon } from "../integrations/IntegrationBrandIcon"
+import { usePlanCapabilities } from "../../hooks/usePlanCapabilities"
 
 export type AgentAiArchetype = "faq" | "receptive" | "sdr"
 
@@ -309,8 +310,11 @@ export function GenerateAgentAiDialog({
   const { theme } = useTheme()
   const isDark = theme === "dark"
 
+  const { hasCrmApi } = usePlanCapabilities()
+  const receptiveLockedByPlan = !hasCrmApi
+
   const [phase, setPhase] = useState<WizardPhase>("archetype")
-  const [archetype, setArchetype] = useState<AgentAiArchetype>("receptive")
+  const [archetype, setArchetype] = useState<AgentAiArchetype>("faq")
   const [agentName, setAgentName] = useState("")
   const [agentLanguage, setAgentLanguage] = useState(() =>
     coerceToSupportedAgentLanguage(defaultAgentLanguage, "pt-BR")
@@ -346,7 +350,7 @@ export function GenerateAgentAiDialog({
 
   const resetWizard = useCallback(() => {
     setPhase("archetype")
-    setArchetype("receptive")
+    setArchetype("faq")
     setAgentName("")
     setDescription("")
     setSelectedTools([])
@@ -377,6 +381,12 @@ export function GenerateAgentAiDialog({
       }
     })()
   }, [open, defaultAgentLanguage, resetWizard])
+
+  // Adjust default archetype once plan capabilities are known (hook is async)
+  useEffect(() => {
+    if (!open || phase !== "archetype") return
+    setArchetype(hasCrmApi ? "receptive" : "faq")
+  }, [open, hasCrmApi, phase])
 
   useEffect(() => {
     if (phase !== "generating") return
@@ -792,23 +802,40 @@ export function GenerateAgentAiDialog({
                 {/* Receptivo */}
                 <button
                   type="button"
-                  onClick={() => setArchetype("receptive")}
+                  onClick={() => !receptiveLockedByPlan && setArchetype("receptive")}
+                  disabled={receptiveLockedByPlan}
                   className={cn(
                     "group relative rounded-2xl border p-5 text-left transition-all duration-150",
-                    "hover:shadow-md",
-                    archetype === "receptive"
-                      ? isDark
-                        ? "border-cyan-500/50 bg-cyan-500/10 shadow-sm ring-1 ring-cyan-500/25"
-                        : "border-cyan-500/40 bg-cyan-50 shadow-sm ring-1 ring-cyan-500/20"
-                      : isDark
-                        ? "border-white/8 bg-zinc-900/50 hover:border-cyan-500/25 hover:bg-cyan-500/5"
-                        : "border-slate-200 bg-white hover:border-cyan-500/30 hover:bg-cyan-50/40"
+                    receptiveLockedByPlan
+                      ? cn(
+                          "cursor-not-allowed opacity-60",
+                          isDark ? "border-white/8 bg-zinc-900/30" : "border-slate-200 bg-slate-50/50"
+                        )
+                      : cn(
+                          "hover:shadow-md",
+                          archetype === "receptive"
+                            ? isDark
+                              ? "border-cyan-500/50 bg-cyan-500/10 shadow-sm ring-1 ring-cyan-500/25"
+                              : "border-cyan-500/40 bg-cyan-50 shadow-sm ring-1 ring-cyan-500/20"
+                            : isDark
+                              ? "border-white/8 bg-zinc-900/50 hover:border-cyan-500/25 hover:bg-cyan-500/5"
+                              : "border-slate-200 bg-white hover:border-cyan-500/30 hover:bg-cyan-50/40"
+                        )
                   )}
                 >
+                  {receptiveLockedByPlan ? (
+                    <Lock className="absolute right-3 top-3 h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    archetype === "receptive" && (
+                      <span className="absolute right-3 top-3">
+                        <CheckCircle2 className="h-4 w-4 text-cyan-500" />
+                      </span>
+                    )
+                  )}
                   <div
                     className={cn(
                       "mb-3.5 flex h-10 w-10 items-center justify-center rounded-xl border transition-colors",
-                      archetype === "receptive"
+                      !receptiveLockedByPlan && archetype === "receptive"
                         ? isDark
                           ? "border-cyan-500/30 bg-cyan-500/20"
                           : "border-cyan-500/25 bg-cyan-100"
@@ -820,30 +847,38 @@ export function GenerateAgentAiDialog({
                     <Headphones
                       className={cn(
                         "h-5 w-5 transition-colors",
-                        archetype === "receptive" ? "text-cyan-500" : "text-muted-foreground"
+                        !receptiveLockedByPlan && archetype === "receptive"
+                          ? "text-cyan-500"
+                          : "text-muted-foreground"
                       )}
                     />
                   </div>
                   <div className="mb-1 flex items-center gap-2">
                     <p className="font-semibold text-sm">Receptivo</p>
-                    <span
-                      className={cn(
-                        "rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                        isDark
-                          ? "bg-cyan-500/20 text-cyan-400"
-                          : "bg-cyan-100 text-cyan-700"
-                      )}
-                    >
-                      Popular
-                    </span>
+                    {receptiveLockedByPlan ? (
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Growth
+                      </span>
+                    ) : (
+                      <span
+                        className={cn(
+                          "rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                          isDark
+                            ? "bg-cyan-500/20 text-cyan-400"
+                            : "bg-cyan-100 text-cyan-700"
+                        )}
+                      >
+                        Popular
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs leading-relaxed text-muted-foreground">
                     Coleta dados, agenda via Calendly e salva leads no CRM. Atendimento completo.
                   </p>
-                  {archetype === "receptive" && (
-                    <span className="absolute right-3 top-3">
-                      <CheckCircle2 className="h-4 w-4 text-cyan-500" />
-                    </span>
+                  {receptiveLockedByPlan && (
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Disponível no plano Growth.
+                    </p>
                   )}
                 </button>
 
