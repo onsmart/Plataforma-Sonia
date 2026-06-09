@@ -27,7 +27,7 @@ scrape_configs:
       - targets: ['host-gateway:3333']
     metrics_path: '/metrics'
     authorization:
-      credentials: 'SUBSTITUIR_PELO_METRICS_BEARER_TOKEN'
+      credentials: 'ad2ae37b663769c894ec8fa68317a6d418eb759aa18e66ef34b1573552a41e86'
     relabel_configs:
       - target_label: instance
         replacement: 'backend-sonia'
