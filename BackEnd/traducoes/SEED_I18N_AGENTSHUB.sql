@@ -57,21 +57,30 @@ VALUES
   -- AI SUGGESTION DIALOG
   -- ============================================
   (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.title', 'Criar com IA é mais rápido', 'Título do dialog de sugestão de criação com IA'),
-  (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.description', 'O wizard de IA cria o agente completo em segundos com base no seu objetivo. Quer tentar?', 'Descrição do dialog de sugestão'),
-  (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.useAi', 'Criar com IA', 'Botão confirmar uso do wizard de IA'),
+  (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.description', 'A IA gera o agente completo em segundos com base no seu objetivo.', 'Subtítulo do dialog de sugestão'),
+  (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.useAi', 'Criar com IA', 'Botão da opção de criação com IA'),
+  (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.recommended', 'Recomendado', 'Badge de recomendação na opção IA'),
+  (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.useAiDetail', 'Descreva o que o agente deve fazer e a IA monta tudo automaticamente.', 'Detalhe da opção de criação com IA'),
   (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.useManual', 'Criar manualmente', 'Botão para prosseguir com criação manual de agente'),
+  (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.useManualDetail', 'Preencha cada campo e configure o agente do zero.', 'Detalhe da opção de criação manual'),
   (NULL, 'pt-BR', 'agentsHub', 'aiSuggest.useTemplate', 'Criar template mesmo assim', 'Botão para prosseguir com criação manual de template'),
 
   (NULL, 'en-US', 'agentsHub', 'aiSuggest.title', 'Creating with AI is faster', 'AI suggestion dialog title'),
-  (NULL, 'en-US', 'agentsHub', 'aiSuggest.description', 'The AI wizard creates the complete agent in seconds based on your goal. Want to try?', 'AI suggestion dialog description'),
-  (NULL, 'en-US', 'agentsHub', 'aiSuggest.useAi', 'Create with AI', 'Confirm AI wizard button'),
-  (NULL, 'en-US', 'agentsHub', 'aiSuggest.useManual', 'Create manually', 'Proceed with manual agent creation'),
+  (NULL, 'en-US', 'agentsHub', 'aiSuggest.description', 'AI generates the complete agent in seconds based on your goal.', 'AI suggestion dialog subtitle'),
+  (NULL, 'en-US', 'agentsHub', 'aiSuggest.useAi', 'Create with AI', 'AI option button'),
+  (NULL, 'en-US', 'agentsHub', 'aiSuggest.recommended', 'Recommended', 'Recommended badge on AI option'),
+  (NULL, 'en-US', 'agentsHub', 'aiSuggest.useAiDetail', 'Describe what the agent should do and AI builds everything automatically.', 'AI option detail'),
+  (NULL, 'en-US', 'agentsHub', 'aiSuggest.useManual', 'Create manually', 'Manual agent creation button'),
+  (NULL, 'en-US', 'agentsHub', 'aiSuggest.useManualDetail', 'Fill in each field and configure the agent from scratch.', 'Manual option detail'),
   (NULL, 'en-US', 'agentsHub', 'aiSuggest.useTemplate', 'Create template anyway', 'Proceed with manual template creation'),
 
   (NULL, 'es-ES', 'agentsHub', 'aiSuggest.title', 'Crear con IA es más rápido', 'Título del dialog de sugerencia de IA'),
-  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.description', 'El wizard de IA crea el agente completo en segundos según tu objetivo. ¿Quieres intentarlo?', 'Descripción del dialog de sugerencia'),
-  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.useAi', 'Crear con IA', 'Botón confirmar wizard de IA'),
-  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.useManual', 'Crear manualmente', 'Continuar con creación manual de agente'),
+  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.description', 'La IA genera el agente completo en segundos según tu objetivo.', 'Subtítulo del dialog de sugerencia'),
+  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.useAi', 'Crear con IA', 'Botón opción IA'),
+  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.recommended', 'Recomendado', 'Badge de recomendación en opción IA'),
+  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.useAiDetail', 'Describe lo que debe hacer el agente y la IA lo construye automáticamente.', 'Detalle de la opción IA'),
+  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.useManual', 'Crear manualmente', 'Botón creación manual de agente'),
+  (NULL, 'es-ES', 'agentsHub', 'aiSuggest.useManualDetail', 'Rellena cada campo y configura el agente desde cero.', 'Detalle de la opción manual'),
   (NULL, 'es-ES', 'agentsHub', 'aiSuggest.useTemplate', 'Crear plantilla de todos modos', 'Continuar con creación manual de plantilla'),
 
   -- ============================================

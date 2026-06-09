@@ -50,6 +50,7 @@ Detalhe operacional (passos SMTP, Stripe, etc.): `docs/prioridades-correcoes-atu
 | `[ ]` | `STRIPE_PRICE_*` no `.env` do backend | Sem IDs reais, checkout falha. |
 | `[ ]` | Webhook Stripe em produção | Handler no repo; falta `STRIPE_WEBHOOK_SECRET` + deploy estável. |
 | `[ ]` | SSO corporativo (SAML / OIDC) | Previsto no catálogo de planos enterprise; não implementado. |
+| `[ ]` | **Planos enterprise personalizados (overrides por empresa)** | Plano detalhado em `.claude/plans/enterprise-custom-plans.plan.md`. Envolve tabela `tb_plan_overrides`, merge no `plan-helper.ts`, API admin `/admin/plan-overrides` e UI `/admin/enterprise`. ~13h estimadas. Não iniciar sem decisão comercial sobre vigência/renovação. |
 | `[ ]` | **Permissões por plano — matriz completa e enforcement** | Documentar e validar gates por `rec_*` / `com_*` / `free`: atendimentos/mês, agentes ativos, RAG, outbound/SDR, SSO, governança, subfluxos. Fontes: `BackEnd/src/config/plans.catalog.ts`, `BackEnd/src/utils/plan-helper.ts`, `BackEnd/docs/PLANOS_E_PERMISSOES.md`. UI deve refletir o que cada plano inclui (`BillingPlansSection`, `usePlanCapabilities`). |
 | `[~]` | **Planos configurados e testados de ponta a ponta** | Catálogo + limites no repo; conta nova = `free` (0 atendimentos). **Pendente:** Stripe live, checkout → webhook → `tb_subscriptions`, smoke por plano (Start/Growth/Enterprise × Receptiva/Completa) confirmando bloqueios e liberações reais. |
 
@@ -98,6 +99,15 @@ Detalhe operacional (passos SMTP, Stripe, etc.): `docs/prioridades-correcoes-atu
 | `[ ]` | Testes automatizados do wizard | Mock Anthropic; casos: spec válido, bloco inválido rejeitado, plano `free` bloqueia criação se aplicável. |
 
 **Referências no repo:** `GenerateFlowAiDialog.tsx`, `BackEnd/src/__test__/flow-generate-mvp.test.ts`, `flow-executor.test.ts`, `EditNodeDialog.tsx` (tipos de nó).
+
+---
+
+## P2 — Integrações de agenda (Cal.com e Google Calendar)
+
+| Status | Item | Onde / como resolver |
+|--------|------|----------------------|
+| `[ ]` | **Cal.com** — integração de agendamento | Plano em `.claude/plans/calendar-integrations-google-cal.plan.md`. ~13h. API Key igual ao Calendly, ~70% de reaproveitamento. Rotas em `calendar.routes.ts`, serviço em `services/integrations/calcom/`, frontend `CalComIntegrationSheet.tsx`. Nenhum pré-requisito externo. |
+| `[ ]` | **Google Calendar** — integração de agendamento | Mesmo plano. ~25h. Requer Google Cloud Project + OAuth 2.0 + lógica de disponibilidade customizada (Free/Busy API) + Push Notifications com renovação periódica. Iniciar após Cal.com. Pré-requisito: `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` no `.env`. |
 
 ---
 

@@ -93,9 +93,12 @@ i18n
           },
           aiSuggest: {
             title: 'Criar com IA é mais rápido',
-            description: 'O wizard de IA cria o agente completo em segundos com base no seu objetivo. Quer tentar?',
+            description: 'A IA gera o agente completo em segundos com base no seu objetivo.',
             useAi: 'Criar com IA',
+            recommended: 'Recomendado',
+            useAiDetail: 'Descreva o que o agente deve fazer e a IA monta tudo automaticamente.',
             useManual: 'Criar manualmente',
+            useManualDetail: 'Preencha cada campo e configure o agente do zero.',
             useTemplate: 'Criar template mesmo assim',
           },
           agentLimit: {
@@ -202,9 +205,12 @@ i18n
           },
           aiSuggest: {
             title: 'Creating with AI is faster',
-            description: 'The AI wizard creates the complete agent in seconds based on your goal. Want to try?',
+            description: 'AI generates the complete agent in seconds based on your goal.',
             useAi: 'Create with AI',
+            recommended: 'Recommended',
+            useAiDetail: 'Describe what the agent should do and AI builds everything automatically.',
             useManual: 'Create manually',
+            useManualDetail: 'Fill in each field and configure the agent from scratch.',
             useTemplate: 'Create template anyway',
           },
           agentLimit: {
@@ -266,9 +272,12 @@ i18n
           },
           aiSuggest: {
             title: 'Crear con IA es más rápido',
-            description: 'El wizard de IA crea el agente completo en segundos según tu objetivo. ¿Quieres intentarlo?',
+            description: 'La IA genera el agente completo en segundos según tu objetivo.',
             useAi: 'Crear con IA',
+            recommended: 'Recomendado',
+            useAiDetail: 'Describe lo que debe hacer el agente y la IA lo construye automáticamente.',
             useManual: 'Crear manualmente',
+            useManualDetail: 'Rellena cada campo y configura el agente desde cero.',
             useTemplate: 'Crear plantilla de todos modos',
           },
           agentLimit: {

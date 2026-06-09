@@ -337,8 +337,9 @@ export function AgentsHub() {
     const { userId, user, companiesId } = useAuth()
     const { navigate } = useNavigation()
     const { t } = useTranslation('agentsHub')
-    const { agentsUsed, agentsLimit, isPlatformAdmin } = usePlanCapabilities()
+    const { agentsUsed, agentsLimit, isPlatformAdmin, loading: planLoading } = usePlanCapabilities()
     const atAgentLimit = !isPlatformAdmin && agentsLimit !== null && agentsUsed >= agentsLimit
+    const agentButtonDisabled = planLoading || atAgentLimit
 
     const [agents, setAgents] = useState<Agent[]>([])
     const [showCancelledAgents, setShowCancelledAgents] = useState(false)
@@ -348,6 +349,8 @@ export function AgentsHub() {
 
     const [loading, setLoading] = useState(true)
     const [templatesLoading, setTemplatesLoading] = useState(true)
+    const atTemplateLimit = !isPlatformAdmin && agentsLimit !== null && templates.length >= agentsLimit
+    const templateButtonDisabled = planLoading || templatesLoading || atTemplateLimit
     const [integrationsLoading, setIntegrationsLoading] = useState(false)
     const [crmIntegrationsLoading, setCrmIntegrationsLoading] = useState(false)
 
@@ -1518,15 +1521,15 @@ export function AgentsHub() {
                                     type="button"
                                     className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
                                     style={secondaryHeaderButtonStyle}
-                                    disabled={atAgentLimit}
-                                    onClick={() => !atAgentLimit && setShowAiSuggestion('template')}
+                                    disabled={templateButtonDisabled}
+                                    onClick={() => !templateButtonDisabled && setShowAiSuggestion('template')}
                                 >
                                     <Sparkles className="h-4 w-4" />
                                     {t('button.createTemplate')}
                                 </Button>
                             </span>
                         </TooltipTrigger>
-                        {atAgentLimit && <TooltipContent><p>{t('agentLimit.tooltip', { limit: agentsLimit })}</p></TooltipContent>}
+                        {templateButtonDisabled && <TooltipContent><p>{t('agentLimit.tooltip', { limit: agentsLimit })}</p></TooltipContent>}
                     </Tooltip>
                     <Tooltip>
                         <TooltipTrigger asChild>
@@ -1535,15 +1538,15 @@ export function AgentsHub() {
                                     type="button"
                                     className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
                                     style={secondaryHeaderButtonStyle}
-                                    disabled={atAgentLimit}
-                                    onClick={() => !atAgentLimit && setShowAiSuggestion('agent')}
+                                    disabled={agentButtonDisabled}
+                                    onClick={() => !agentButtonDisabled && setShowAiSuggestion('agent')}
                                 >
                                     <Plus className="h-4 w-4" />
                                     {t('button.deployNewAgent')}
                                 </Button>
                             </span>
                         </TooltipTrigger>
-                        {atAgentLimit && <TooltipContent><p>{t('agentLimit.tooltip', { limit: agentsLimit })}</p></TooltipContent>}
+                        {agentButtonDisabled && <TooltipContent><p>{t('agentLimit.tooltip', { limit: agentsLimit })}</p></TooltipContent>}
                     </Tooltip>
                     <Tooltip>
                         <TooltipTrigger asChild>
@@ -1552,15 +1555,15 @@ export function AgentsHub() {
                                     type="button"
                                     className="h-10 min-w-[172px] justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-none"
                                     style={mainButtonStyle}
-                                    disabled={atAgentLimit}
-                                    onClick={() => !atAgentLimit && setIsGenerateAgentAiOpen(true)}
+                                    disabled={agentButtonDisabled}
+                                    onClick={() => !agentButtonDisabled && setIsGenerateAgentAiOpen(true)}
                                 >
                                     <Sparkles className="h-4 w-4" />
                                     {t('button.createAgentAi')}
                                 </Button>
                             </span>
                         </TooltipTrigger>
-                        {atAgentLimit && <TooltipContent><p>{t('agentLimit.tooltip', { limit: agentsLimit })}</p></TooltipContent>}
+                        {agentButtonDisabled && <TooltipContent><p>{t('agentLimit.tooltip', { limit: agentsLimit })}</p></TooltipContent>}
                     </Tooltip>
                     </TooltipProvider>
                     <GenerateAgentAiDialog
@@ -1575,30 +1578,40 @@ export function AgentsHub() {
                     />
                     {/* AI suggestion interceptor dialog */}
                     <Dialog open={showAiSuggestion !== null} onOpenChange={(open) => { if (!open) setShowAiSuggestion(null) }}>
-                        <DialogContent className="sm:max-w-[440px] rounded-xl border p-6" style={dialogContentStyle}>
-                            <DialogHeader>
-                                <DialogTitle className="flex items-center gap-2" style={{ color: panelTone.title }}>
-                                    <Sparkles className="h-5 w-5 text-blue-500" />
-                                    {t('aiSuggest.title')}
-                                </DialogTitle>
-                                <DialogDescription style={{ color: panelTone.muted }}>
-                                    {t('aiSuggest.description')}
-                                </DialogDescription>
-                            </DialogHeader>
-                            <DialogFooter className="mt-4 flex flex-col gap-2 sm:flex-row">
-                                <Button
+                        <DialogContent className="w-[92vw] max-w-[560px] rounded-2xl border-0 p-0 shadow-2xl" style={dialogContentStyle}>
+                            {/* Header com gradiente */}
+                            <div className="flex flex-col items-center gap-3 rounded-t-2xl px-8 pb-6 pt-8"
+                                style={{ background: isDark ? 'rgba(37,99,235,0.12)' : 'rgba(37,99,235,0.06)', borderBottom: `1px solid ${panelTone.border}` }}>
+                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg"
+                                    style={{ background: 'linear-gradient(135deg,#2563eb,#7c3aed)', boxShadow: '0 8px 24px rgba(37,99,235,0.35)' }}>
+                                    <Sparkles className="h-7 w-7 text-white" />
+                                </div>
+                                <div className="text-center">
+                                    <h2 className="text-lg font-bold" style={{ color: panelTone.title }}>{t('aiSuggest.title')}</h2>
+                                    <p className="mt-1 max-w-sm text-sm leading-6" style={{ color: panelTone.muted }}>{t('aiSuggest.description')}</p>
+                                </div>
+                            </div>
+                            {/* Opções */}
+                            <div className="flex flex-col gap-3 p-6 sm:flex-row">
+                                {/* Opção IA — destaque */}
+                                <button
                                     type="button"
-                                    className="flex-1 gap-2"
-                                    style={mainButtonStyle}
+                                    className="group flex flex-1 flex-col items-start gap-3 rounded-xl p-4 text-left transition-all duration-200 hover:scale-[1.02]"
+                                    style={{ background: 'linear-gradient(135deg,#2563eb,#7c3aed)', boxShadow: '0 4px 16px rgba(37,99,235,0.3)' }}
                                     onClick={() => { setShowAiSuggestion(null); setIsGenerateAgentAiOpen(true) }}
                                 >
-                                    <Sparkles className="h-4 w-4" />
-                                    {t('aiSuggest.useAi')}
-                                </Button>
-                                <Button
+                                    <div className="flex items-center gap-2">
+                                        <Sparkles className="h-4 w-4 text-white" />
+                                        <span className="text-sm font-semibold text-white">{t('aiSuggest.useAi')}</span>
+                                        <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-medium text-white">{t('aiSuggest.recommended')}</span>
+                                    </div>
+                                    <p className="text-xs leading-5 text-blue-100">{t('aiSuggest.useAiDetail')}</p>
+                                </button>
+                                {/* Opção manual */}
+                                <button
                                     type="button"
-                                    variant="outline"
-                                    className="flex-1"
+                                    className="group flex flex-1 flex-col items-start gap-3 rounded-xl border p-4 text-left transition-all duration-200 hover:scale-[1.02]"
+                                    style={{ background: panelTone.card, borderColor: panelTone.border }}
                                     onClick={() => {
                                         const target = showAiSuggestion
                                         setShowAiSuggestion(null)
@@ -1606,9 +1619,15 @@ export function AgentsHub() {
                                         else if (target === 'template') setIsCreateTemplateOpen(true)
                                     }}
                                 >
-                                    {showAiSuggestion === 'template' ? t('aiSuggest.useTemplate') : t('aiSuggest.useManual')}
-                                </Button>
-                            </DialogFooter>
+                                    <div className="flex items-center gap-2">
+                                        <Plus className="h-4 w-4" style={{ color: panelTone.muted }} />
+                                        <span className="text-sm font-semibold" style={{ color: panelTone.title }}>
+                                            {showAiSuggestion === 'template' ? t('aiSuggest.useTemplate') : t('aiSuggest.useManual')}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs leading-5" style={{ color: panelTone.muted }}>{t('aiSuggest.useManualDetail')}</p>
+                                </button>
+                            </div>
                         </DialogContent>
                     </Dialog>
                     <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
@@ -2778,7 +2797,9 @@ export function AgentsHub() {
                             </div>
                             <Button
                                 type="button"
-                                onClick={() => setIsCreateOpen(true)}
+                                disabled={agentButtonDisabled}
+                                title={agentButtonDisabled ? t('agentLimit.tooltip', { limit: agentsLimit }) : undefined}
+                                onClick={() => !agentButtonDisabled && setShowAiSuggestion('agent')}
                                 className="h-11 rounded-lg px-5 text-sm font-semibold sm:w-auto"
                                 style={mainButtonStyle}
                             >
@@ -2826,7 +2847,13 @@ export function AgentsHub() {
                             <Bot className="h-10 w-10" style={{ color: panelTone.muted }} />
                             <h3 className="mt-4 text-lg font-semibold" style={{ color: panelTone.title }}>{t('empty.noAgents')}</h3>
                             <p className="mb-5 mt-2 max-w-md text-sm leading-6" style={{ color: panelTone.muted }}>{t('empty.noAgentsDescription')}</p>
-                            <Button onClick={() => setIsCreateOpen(true)} className="rounded-lg px-5" style={mainButtonStyle}>{t('button.deployAgent')}</Button>
+                            <Button
+                                disabled={agentButtonDisabled}
+                                title={agentButtonDisabled ? t('agentLimit.tooltip', { limit: agentsLimit }) : undefined}
+                                onClick={() => !agentButtonDisabled && setShowAiSuggestion('agent')}
+                                className="rounded-lg px-5"
+                                style={mainButtonStyle}
+                            >{t('button.deployAgent')}</Button>
                         </div>
                     ) : (
                         <div className="space-y-8">
@@ -3106,8 +3133,10 @@ export function AgentsHub() {
 
                             <Button
                                 variant="outline"
-                                onClick={() => setIsCreateOpen(true)}
-                                className="group flex h-full min-h-[312px] flex-col items-center justify-center gap-5 rounded-xl border border-dashed px-6 text-center shadow-none transition-colors"
+                                disabled={agentButtonDisabled}
+                                title={agentButtonDisabled ? t('agentLimit.tooltip', { limit: agentsLimit }) : undefined}
+                                onClick={() => !agentButtonDisabled && setShowAiSuggestion('agent')}
+                                className="group flex h-full min-h-[312px] flex-col items-center justify-center gap-5 rounded-xl border border-dashed px-6 text-center shadow-none transition-colors disabled:pointer-events-none disabled:opacity-50"
                                 style={{
                                     background: panelTone.card,
                                     border: `1px dashed ${panelTone.border}`,
@@ -3124,7 +3153,9 @@ export function AgentsHub() {
                                     </div>
                                     <div className="space-y-2">
                                         <h3 className="text-lg font-semibold" style={{ color: panelTone.title }}>{t('button.deployNewAgent')}</h3>
-                                        <p className="text-sm leading-6" style={{ color: panelTone.muted }}>{t('button.startFromTemplate')}</p>
+                                        <p className="text-sm leading-6" style={{ color: panelTone.muted }}>
+                                            {agentButtonDisabled ? t('agentLimit.tooltip', { limit: agentsLimit }) : t('button.startFromTemplate')}
+                                        </p>
                                     </div>
                             </Button>
                         </div>
@@ -3246,7 +3277,9 @@ export function AgentsHub() {
                             </div>
                             <Button
                                 type="button"
-                                onClick={() => setIsCreateTemplateOpen(true)}
+                                disabled={templateButtonDisabled}
+                                title={templateButtonDisabled ? t('agentLimit.tooltip', { limit: agentsLimit }) : undefined}
+                                onClick={() => !templateButtonDisabled && setShowAiSuggestion('template')}
                                 className="h-full min-h-[104px] justify-start rounded-lg px-5 py-4 text-left transition-all duration-200"
                                 style={mainButtonStyle}
                             >
@@ -3272,7 +3305,13 @@ export function AgentsHub() {
                             <Bot className="h-10 w-10" style={{ color: panelTone.muted }} />
                             <h3 className="mt-4 text-lg font-semibold" style={{ color: panelTone.title }}>{t('empty.noTemplates')}</h3>
                             <p className="mb-5 mt-2 max-w-md text-sm leading-6" style={{ color: panelTone.muted }}>{t('empty.noTemplatesDescription')}</p>
-                            <Button onClick={() => setIsCreateTemplateOpen(true)} className="rounded-lg px-5" style={mainButtonStyle}>
+                            <Button
+                                disabled={templateButtonDisabled}
+                                title={templateButtonDisabled ? t('agentLimit.tooltip', { limit: agentsLimit }) : undefined}
+                                onClick={() => !templateButtonDisabled && setShowAiSuggestion('template')}
+                                className="rounded-lg px-5"
+                                style={mainButtonStyle}
+                            >
                                 <Plus className="h-4 w-4 mr-2" />
                                 {t('button.createTemplate')}
                             </Button>
@@ -3458,8 +3497,10 @@ export function AgentsHub() {
 
                             <Button
                                 variant="outline"
-                                onClick={() => setIsCreateTemplateOpen(true)}
-                                className="group flex h-full min-h-[320px] flex-col items-center justify-center gap-5 rounded-xl border border-dashed px-6 text-center shadow-none transition-colors"
+                                disabled={templateButtonDisabled}
+                                title={templateButtonDisabled ? t('agentLimit.tooltip', { limit: agentsLimit }) : undefined}
+                                onClick={() => !templateButtonDisabled && setShowAiSuggestion('template')}
+                                className="group flex h-full min-h-[320px] flex-col items-center justify-center gap-5 rounded-xl border border-dashed px-6 text-center shadow-none transition-colors disabled:pointer-events-none disabled:opacity-50"
                                 style={{
                                     background: panelTone.card,
                                     border: `1px dashed ${panelTone.border}`,
