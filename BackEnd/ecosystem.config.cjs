@@ -6,16 +6,22 @@
  * parsing de PDF, etc.). O Sentry é inicializado em cada worker via --require
  * (comportamento correto — cada processo precisa do seu próprio SDK).
  *
+ * Nota: node_args usa path.join(__dirname, ...) para gerar caminho absoluto.
+ * Caminho relativo './dist/lib/instrument.js' falha silenciosamente em cluster
+ * mode pois os workers resolvem o path de forma diferente do processo master.
+ *
  * Para recarregar após mudanças aqui:
  *   pm2 delete backend && pm2 start ecosystem.config.cjs
  *   pm2 save
  */
+const path = require('path')
+
 module.exports = {
   apps: [
     {
       name: 'backend',
       script: 'dist/index.js',
-      node_args: '--require ./dist/lib/instrument.js',
+      node_args: ['--require', path.join(__dirname, 'dist/lib/instrument.js')],
       cwd: __dirname,
 
       // Cluster mode: usa todos os núcleos da CPU do servidor
