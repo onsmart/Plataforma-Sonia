@@ -692,11 +692,6 @@ export function AgentsHub() {
                         channels: Array.isArray(agent.channels) ? agent.channels : (agent.channels ? [agent.channels] : []),
                         languages: [normalizeAgentLanguageCode(agent.primary_language, 'pt-BR')],
                         avatar: (agent.nome || 'A').charAt(0).toUpperCase(),
-                        metrics: {
-                            conversations: 0,
-                            csat: "N/A",
-                            avgResponseTime: "0s"
-                        }
                     }
                 })
 
@@ -1192,9 +1187,7 @@ export function AgentsHub() {
     const activeAgentsCount = agents.filter(agent => (agent as any).status_id === 1).length
     const templatesInUseCount = agentsInLibrary.filter(agent => Boolean((agent as any).role_template_id)).length
     const connectedChannelsCount = channelsData.filter(channel => channel.status !== 'disconnected').length
-    const connectedIntegrationsCount = integrations.filter(integration =>
-        Boolean(integration.phone_number || integration.email || integration.account_sid || integration.smtp_host)
-    ).length + crmIntegrations.length
+    const connectedIntegrationsCount = integrations.length + crmIntegrations.length
     const overviewCards = [
         {
             label: t('overview.activeAgentsLabel', { defaultValue: 'Agentes ativos' }),

@@ -30,11 +30,15 @@ const NATIVE_LANGUAGE_NAMES: Record<string, string> = {
   'ru-RU': 'Русский',
 }
 
-const languages = SUPPORTED_AGENT_LANGUAGES.map((lang) => ({
-  code: lang.code,
-  name: lang.name,
-  nativeName: NATIVE_LANGUAGE_NAMES[lang.code] || lang.name,
-}))
+const UI_LANGUAGE_CODES = ['pt-BR', 'en-US', 'es-ES']
+
+const languages = SUPPORTED_AGENT_LANGUAGES
+  .filter((lang) => UI_LANGUAGE_CODES.includes(lang.code))
+  .map((lang) => ({
+    code: lang.code,
+    name: lang.name,
+    nativeName: NATIVE_LANGUAGE_NAMES[lang.code] || lang.name,
+  }))
 
 export function LanguageSelector() {
   const { t } = useTranslation("common")

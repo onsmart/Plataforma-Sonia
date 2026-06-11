@@ -53,7 +53,8 @@ export function useUserLanguage() {
 
       // Verificar se já carregou para o mesmo idioma
       const currentStoredLanguage = localStorage.getItem('i18nextLng');
-      if (hasLoadedRef.current && lastLanguageRef.current === currentStoredLanguage && companiesIdToUse) {
+      if (hasLoadedRef.current && companiesIdToUse &&
+          (lastLanguageRef.current === currentStoredLanguage || i18n.language === currentStoredLanguage)) {
         console.log('[useUserLanguage] Idioma já carregado, pulando...');
         setIsLoading(false);
         return;

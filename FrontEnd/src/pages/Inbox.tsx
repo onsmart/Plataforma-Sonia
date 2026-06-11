@@ -1620,11 +1620,6 @@ export function Inbox() {
                                                         {selectedConversationName}
                                                     </p>
                                                 </div>
-                                                <div className="relative flex shrink-0 justify-start sm:justify-end">
-                                                    <Badge className="inline-flex w-fit items-center justify-center whitespace-nowrap rounded-full bg-[linear-gradient(135deg,#b91c1c,#991b1b)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-white shadow-[0_12px_24px_-18px_rgba(127,29,29,0.5)]">
-                                                        {t('status.critical')}
-                                                    </Badge>
-                                                </div>
                                             </div>
 
                                             {selectedConversationIsPlanLimit && (
