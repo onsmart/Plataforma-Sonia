@@ -376,7 +376,7 @@ export function Inbox() {
 
             toast.success(t('success.agentAssigned'))
 
-            // Remover da lista de não atribuídas
+            // Optimistic: remove from unassigned list immediately
             setUnassignedConversations(prev =>
                 prev.filter(conv => conv.message_id !== selectedConversation.message_id)
             )
@@ -384,9 +384,7 @@ export function Inbox() {
             // Limpar seleção
             setSelectedConversation(null)
             setSelectedAgentId("")
-
-            // Recarregar lista
-            loadUnassignedConversations()
+            // Realtime subscription will sync any correction if needed
         } catch (error: any) {
             console.error("[Inbox] Erro:", error)
             toast.error(t('errors.assignAgent'))

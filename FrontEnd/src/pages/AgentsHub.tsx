@@ -67,6 +67,7 @@ import { SUPPORTED_AGENT_LANGUAGES, getAgentLanguageLabel, normalizeAgentLanguag
 import { GenerateAgentAiDialog } from "../components/agents/GenerateAgentAiDialog"
 import { usePlanCapabilities } from "../hooks/usePlanCapabilities"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip"
+import { queryCache } from "../lib/query-cache"
 
 const channelsData = [
     { name: "WhatsApp Business", status: "connected", icon: MessageCircle, color: "text-emerald-500" },
@@ -636,89 +637,92 @@ export function AgentsHub() {
         }
     }, [])
 
-    const fetchAgents = useCallback(async () => {
-        if (!user?.email) {
-            setLoading(false)
-            setAgents([])
-            return
+    const mapAgentRow = useCallback((agent: any): Agent => {
+        const template = agent.role_template_id
+            ? templates.find((t: any) => t.id === agent.role_template_id)
+            : null
+
+        let statusId: number | null = null
+        if (agent.status_id !== null && agent.status_id !== undefined) {
+            statusId = typeof agent.status_id === 'string' ? parseInt(agent.status_id, 10) : Number(agent.status_id)
+            if (isNaN(statusId)) statusId = null
+        }
+
+        let status: 'active' | 'paused' | 'error' = 'paused'
+        if (statusId === 1) status = 'active'
+        else if (statusId === 2) status = 'error'
+        else if (statusId === 3 || statusId === 4) status = 'paused'
+
+        return {
+            id: agent.id,
+            name: agent.nome || '',
+            role: template?.role || template?.name || '',
+            description: agent.bio || '',
+            status,
+            status_id: statusId,
+            role_template_id: agent.role_template_id || null,
+            integrations_id: agent.integrations_id ? String(agent.integrations_id) : null,
+            channels: Array.isArray(agent.channels) ? agent.channels : (agent.channels ? [agent.channels] : []),
+            languages: [normalizeAgentLanguageCode(agent.primary_language, 'pt-BR')],
+            avatar: (agent.nome || 'A').charAt(0).toUpperCase(),
+        }
+    }, [templates])
+
+    const fetchAgents = useCallback(async (forceRefresh = false) => {
+        if (!user?.email) { setLoading(false); setAgents([]); return }
+
+        const rawKey = `agents-raw:${user.email}`
+
+        // Serve cached raw rows re-mapped with current templates (no network call)
+        if (!forceRefresh) {
+            const cachedRaw = queryCache.get<any[]>(rawKey)
+            if (cachedRaw) {
+                setAgents(cachedRaw.map(mapAgentRow))
+                setLoading(false)
+                return
+            }
         }
 
         setLoading(true)
         try {
-            const { data, error } = await supabase.rpc('sp_list_agents_by_email', {
-                p_email: user.email
-            })
+            const { data, error } = await queryCache.dedupe<{ data: any; error: any }>(rawKey, async () =>
+                await supabase.rpc('sp_list_agents_by_email', { p_email: user.email })
+            )
 
             if (error) {
                 console.error("[fetchAgents] Failed to load agents", error)
                 setAgents([])
-            } else {
-                const rows = Array.isArray(data) ? data : (data ? [data] : [])
-
-                const mappedAgents: Agent[] = rows.map((agent: any) => {
-                    const template = agent.role_template_id
-                        ? templates.find(t => t.id === agent.role_template_id)
-                        : null
-
-                    // Processar status_id
-                    let statusId: number | null = null
-                    if (agent.status_id !== null && agent.status_id !== undefined) {
-                        statusId = typeof agent.status_id === 'string' ? parseInt(agent.status_id, 10) : Number(agent.status_id)
-                        if (isNaN(statusId)) {
-                            statusId = null
-                        }
-                    }
-
-                    // Mapear status_id para status string (para compatibilidade)
-                    // status_id: 1 = ativo, 2 = cancelado, 3 = pausado, null/undefined = inativo
-                    let status: 'active' | 'paused' | 'error' = 'paused' // Padrão: pausado/inativo
-                    if (statusId === 1) {
-                        status = 'active' // Conectado/Funcionando
-                    } else if (statusId === 2) {
-                        status = 'error' // Cancelado
-                    } else if (statusId === 3 || statusId === 4) {
-                        status = 'paused' // Pausado
-                    }
-
-                    return {
-                        id: agent.id,
-                        name: agent.nome || '',
-                        role: template?.role || template?.name || '',
-                        description: agent.bio || '',
-                        status: status,
-                        status_id: statusId, // Adicionar status_id ao objeto
-                        role_template_id: agent.role_template_id || null, // Salvar o role_template_id para buscar o template depois
-                        integrations_id: agent.integrations_id ? String(agent.integrations_id) : null,
-                        channels: Array.isArray(agent.channels) ? agent.channels : (agent.channels ? [agent.channels] : []),
-                        languages: [normalizeAgentLanguageCode(agent.primary_language, 'pt-BR')],
-                        avatar: (agent.nome || 'A').charAt(0).toUpperCase(),
-                    }
-                })
-
-                setAgents(mappedAgents)
+                return
             }
+
+            const rows = Array.isArray(data) ? data : (data ? [data] : [])
+            queryCache.set(rawKey, rows, 2 * 60 * 1000) // 2-min TTL
+            setAgents(rows.map(mapAgentRow))
         } catch (err: any) {
-            if (err?.name !== 'AbortError') {
-                console.error("[fetchAgents] Error fetching agents:", err)
-            }
+            if (err?.name !== 'AbortError') console.error("[fetchAgents]", err)
             setAgents([])
         } finally {
             setLoading(false)
         }
-    }, [user?.email, templates])
+    }, [user?.email, mapAgentRow])
 
-    const fetchTemplates = useCallback(async () => {
+    const fetchTemplates = useCallback(async (forceRefresh = false) => {
         if (!user?.email) {
             setTemplates([])
             setTemplatesLoading(false)
             return
         }
 
+        const cacheKey = `templates:${user.email}`
+        if (!forceRefresh) {
+            const cached = queryCache.get<any[]>(cacheKey)
+            if (cached) { setTemplates(cached); setTemplatesLoading(false); return }
+        }
+
         setTemplatesLoading(true)
         try {
-            // ✅ USAR API DO BACKEND (inclui templates globais + da empresa)
             const { BASE_URL, getAuthHeaders } = await import('../services/api')
-            
+
             const response = await fetch(`${BASE_URL}/templates?email=${encodeURIComponent(user.email)}`, {
                 method: 'GET',
                 headers: await getAuthHeaders()
@@ -735,9 +739,9 @@ export function AgentsHub() {
             const rows: any[] = Array.isArray(data) ? data : []
 
             if (rows.length === 0) {
+                queryCache.set(cacheKey, [], 10 * 60 * 1000)
                 setTemplates([])
             } else {
-                // Processar templates para incluir skills e channels das tabelas relacionadas
                 const processedTemplates = rows.map((template: any) => {
                     const skills = Array.isArray(template.skills) ? template.skills : []
                     const defaultChannels =
@@ -760,13 +764,12 @@ export function AgentsHub() {
                     }
                 })
 
+                queryCache.set(`templates:${user.email}`, processedTemplates, 10 * 60 * 1000) // 10-min TTL
                 setTemplates(processedTemplates)
             }
 
         } catch (err: any) {
-            if (err?.name !== 'AbortError') {
-                console.error("Error fetching templates:", err)
-            }
+            if (err?.name !== 'AbortError') console.error("Error fetching templates:", err)
             setTemplates([])
         } finally {
             setTemplatesLoading(false)
@@ -909,7 +912,8 @@ export function AgentsHub() {
                 description: t('success.agentCreatedDescription', { name: newAgent.name.trim() })
             })
 
-            await fetchAgents()
+            queryCache.invalidate(`agents-raw:${user?.email}`)
+            await fetchAgents(true)
             setIsCreateOpen(false)
             setNewAgent({
                 name: "",
@@ -977,64 +981,56 @@ export function AgentsHub() {
     }
 
     const handlePauseAgent = async (id: string) => {
+        // Optimistic update: reflect pause immediately
+        const prevAgent = agents.find(a => a.id === id)
+        setAgents(prev => prev.map(a =>
+            a.id === id ? { ...a, status_id: 3, status: 'paused' as const } : a
+        ))
+        queryCache.invalidate(`agents-raw:${user?.email}`)
+
         try {
-            // ✅ USAR API DO BACKEND ao invés de Supabase direto (protege com requireAdmin)
             const { BASE_URL, getAuthHeaders } = await import('../services/api')
-            
             const response = await fetch(`${BASE_URL}/agents/${id}`, {
                 method: 'PUT',
                 headers: await getAuthHeaders(),
-                body: JSON.stringify({
-                    email: user?.email,
-                    status_id: 3 // Pausar agente
-                })
+                body: JSON.stringify({ email: user?.email, status_id: 3 })
             })
 
             if (!response.ok) {
+                if (prevAgent) setAgents(prev => prev.map(a => a.id === id ? prevAgent : a))
                 let errorMessage = t('errors.pauseAgent')
-                
                 try {
                     const error = await response.json()
-                    console.error('[handlePauseAgent] Erro ao pausar agente:', error)
-                    
-                    // Mensagem específica para não-admin
-                    if (response.status === 403) {
-                        errorMessage = error.error || error.details || 'Você não tem permissão para pausar agentes. Apenas administradores podem realizar esta ação.'
-                    } else {
-                        errorMessage = error.error || error.details || error.message || t('errors.pauseAgent')
-                    }
-                } catch (parseError) {
-                    // Se não conseguir parsear o JSON, usar mensagem padrão
-                    if (response.status === 403) {
-                        errorMessage = 'Você não tem permissão para pausar agentes. Apenas administradores podem realizar esta ação.'
-                    }
-                }
-                
-                toast.error(errorMessage, {
-                    duration: 5000
-                })
+                    errorMessage = response.status === 403
+                        ? (error.error || error.details || 'Você não tem permissão para pausar agentes.')
+                        : (error.error || error.details || error.message || t('errors.pauseAgent'))
+                } catch { if (response.status === 403) errorMessage = 'Você não tem permissão para pausar agentes.' }
+                toast.error(errorMessage, { duration: 5000 })
                 return
             }
 
             toast.success(t('success.agentPaused'))
-            await fetchAgents()
         } catch (error: any) {
-            console.error('[handlePauseAgent] Erro:', error)
-            toast.error(error?.message || t('errors.pauseAgent'), {
-                duration: 5000
-            })
+            if (prevAgent) setAgents(prev => prev.map(a => a.id === id ? prevAgent : a))
+            console.error('[handlePauseAgent]', error)
+            toast.error(error?.message || t('errors.pauseAgent'), { duration: 5000 })
         }
     }
 
     const handleReactivateAgent = async (id: string) => {
-        try {
-            // ✅ Usar novo endpoint com validação
-            await AgentService.activateAgent(id, user?.email)
+        // Optimistic update: reflect activation immediately
+        const prevAgent = agents.find(a => a.id === id)
+        setAgents(prev => prev.map(a =>
+            a.id === id ? { ...a, status_id: 1, status: 'active' as const } : a
+        ))
+        queryCache.invalidate(`agents-raw:${user?.email}`)
 
+        try {
+            await AgentService.activateAgent(id, user?.email)
             toast.success(t('success.agentReactivated'))
-            await fetchAgents()
         } catch (error: any) {
-            console.error('[handleReactivateAgent] Erro:', error)
+            if (prevAgent) setAgents(prev => prev.map(a => a.id === id ? prevAgent : a))
+            console.error('[handleReactivateAgent]', error)
             toast.error(t('errors.reactivateAgent'), {
                 description: error.message || error.reason || 'Não foi possível ativar o agente'
             })
@@ -1120,66 +1116,89 @@ export function AgentsHub() {
         async (ids: string[]) => {
             if (!user?.email || ids.length === 0) return
             setBulkDeleteRunning(true)
-            let ok = 0
-            let fail = 0
+
+            // Optimistic: remove selected agents from UI immediately
+            const removed = agents.filter(a => ids.includes(a.id))
+            setAgents(prev => prev.filter(a => !ids.includes(a.id)))
+            queryCache.invalidate(`agents-raw:${user.email}`)
+
             try {
                 const { BASE_URL, getAuthHeaders } = await import('../services/api')
                 const authHeaders = await getAuthHeaders()
-                for (const id of ids) {
-                    const r = await fetch(`${BASE_URL}/agents/${id}`, {
-                        method: 'DELETE',
-                        headers: { ...authHeaders, 'x-user-email': user.email },
-                    })
-                    if (r.ok) ok++
-                    else fail++
+                const results = await Promise.allSettled(
+                    ids.map(id =>
+                        fetch(`${BASE_URL}/agents/${id}`, {
+                            method: 'DELETE',
+                            headers: { ...authHeaders, 'x-user-email': user.email ?? '' },
+                        }).then(r => { if (!r.ok) throw new Error('failed'); return id })
+                    )
+                )
+                const ok = results.filter(r => r.status === 'fulfilled').length
+                const failedIds = results
+                    .map((r, i) => r.status === 'rejected' ? ids[i] : null)
+                    .filter(Boolean) as string[]
+
+                // Restore failed deletions
+                if (failedIds.length) {
+                    const toRestore = removed.filter(a => failedIds.includes(a.id))
+                    setAgents(prev => [...prev, ...toRestore])
+                    toast.error(`${failedIds.length} exclusão(ões) falharam. Verifique fluxos ou permissões.`)
                 }
                 if (ok) toast.success(`${ok} agente(s) excluído(s).`)
-                if (fail) {
-                    toast.error(
-                        `${fail} exclusão(ões) falharam. Verifique se o agente ainda aparece em algum fluxo ou permissões.`
-                    )
-                }
-                await fetchAgents()
                 setBulkAgentsOpen(false)
                 setDeletionBlockers(null)
+            } catch {
+                setAgents(prev => [...prev, ...removed])
+                queryCache.invalidate(`agents-raw:${user.email}`)
             } finally {
                 setBulkDeleteRunning(false)
             }
         },
-        [user?.email, fetchAgents]
+        [user?.email, agents]
     )
 
     const runBulkDeleteTemplates = useCallback(
         async (ids: string[]) => {
             if (!user?.email || ids.length === 0) return
             setBulkDeleteRunning(true)
-            let ok = 0
-            let fail = 0
+
+            // Optimistic: remove selected templates from UI immediately
+            const removed = templates.filter(t => ids.includes(t.id))
+            setTemplates(prev => prev.filter(t => !ids.includes(t.id)))
+            queryCache.invalidate(`templates:${user.email}`)
+
             try {
                 const { BASE_URL, getAuthHeaders } = await import('../services/api')
                 const authHeaders = await getAuthHeaders()
-                for (const id of ids) {
-                    const r = await fetch(`${BASE_URL}/templates/${id}`, {
-                        method: 'DELETE',
-                        headers: { ...authHeaders, 'x-user-email': user.email },
-                    })
-                    if (r.ok) ok++
-                    else fail++
+                const results = await Promise.allSettled(
+                    ids.map(id =>
+                        fetch(`${BASE_URL}/templates/${id}`, {
+                            method: 'DELETE',
+                            headers: { ...authHeaders, 'x-user-email': user.email ?? '' },
+                        }).then(r => { if (!r.ok) throw new Error('failed'); return id })
+                    )
+                )
+                const ok = results.filter(r => r.status === 'fulfilled').length
+                const failedIds = results
+                    .map((r, i) => r.status === 'rejected' ? ids[i] : null)
+                    .filter(Boolean) as string[]
+
+                if (failedIds.length) {
+                    const toRestore = removed.filter(t => failedIds.includes(t.id))
+                    setTemplates(prev => [...prev, ...toRestore])
+                    toast.error(`${failedIds.length} exclusão(ões) falharam. Templates vinculados a agentes não podem ser removidos.`)
                 }
                 if (ok) toast.success(`${ok} template(s) excluído(s).`)
-                if (fail) {
-                    toast.error(
-                        `${fail} exclusão(ões) falharam. Templates ainda vinculados a agentes não podem ser removidos.`
-                    )
-                }
-                await fetchTemplates()
                 setBulkTemplatesOpen(false)
                 setDeletionBlockers(null)
+            } catch {
+                setTemplates(prev => [...prev, ...removed])
+                queryCache.invalidate(`templates:${user.email}`)
             } finally {
                 setBulkDeleteRunning(false)
             }
         },
-        [user?.email, fetchTemplates]
+        [user?.email, templates]
     )
 
     const customTemplatesCount = templates.filter(template => !template.isShared).length
@@ -1393,7 +1412,8 @@ export function AgentsHub() {
                 return
             }
 
-            await fetchTemplates()
+            queryCache.invalidate(`templates:${user.email}`)
+            await fetchTemplates(true)
             setIsCreateTemplateOpen(false)
 
             setNewTemplate({
@@ -1438,6 +1458,16 @@ export function AgentsHub() {
             })
             return
         }
+
+        // Optimistic update: reflect changes immediately
+        const prevTemplates = templates
+        setTemplates(prev => prev.map(t =>
+            t.id === editTemplateDraft.id
+                ? { ...t, name: editTemplateDraft.name.trim(), role: editTemplateDraft.role.trim(), description: editTemplateDraft.description.trim(), icon: editTemplateDraft.icon, complexity: editTemplateDraft.complexity }
+                : t
+        ))
+        queryCache.invalidate(`templates:${user.email}`)
+
         setIsSubmittingEditTemplate(true)
         try {
             const { BASE_URL, getAuthHeaders } = await import('../services/api')
@@ -1453,26 +1483,21 @@ export function AgentsHub() {
                 }),
             })
             if (!response.ok) {
+                setTemplates(prevTemplates) // rollback
                 let errorMessage = 'Erro ao atualizar template'
                 try {
                     const error = await response.json()
-                    if (response.status === 403) {
-                        errorMessage = error.error || error.details || 'Apenas administradores podem editar templates.'
-                    } else {
-                        errorMessage = error.error || error.details || error.message || errorMessage
-                    }
-                } catch {
-                    if (response.status === 403) {
-                        errorMessage = 'Apenas administradores podem editar templates.'
-                    }
-                }
+                    errorMessage = response.status === 403
+                        ? (error.error || error.details || 'Apenas administradores podem editar templates.')
+                        : (error.error || error.details || error.message || errorMessage)
+                } catch { if (response.status === 403) errorMessage = 'Apenas administradores podem editar templates.' }
                 toast.error(errorMessage, { duration: 5000 })
                 return
             }
-            await fetchTemplates()
             setIsEditTemplateOpen(false)
             toast.success('Template atualizado com sucesso!')
         } catch (error: any) {
+            setTemplates(prevTemplates) // rollback
             console.error('[handleUpdateTemplate]', error)
             toast.error(error?.message || 'Erro ao atualizar template', { duration: 5000 })
         } finally {
