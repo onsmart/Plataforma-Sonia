@@ -34,6 +34,8 @@ export interface AppointmentRecord {
   patientEmail?: string | null
   patientPhone?: string | null
   notes?: string | null
+  cancelUrl?: string | null
+  rescheduleUrl?: string | null
 }
 
 export interface AppointmentBookingInput {

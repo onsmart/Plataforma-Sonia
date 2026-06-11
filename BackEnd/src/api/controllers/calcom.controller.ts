@@ -185,13 +185,9 @@ export async function receiveCalComWebhook(req: Request, res: Response) {
     const payload = req.body || {}
     const triggerEvent = String(payload.triggerEvent || '').trim()
     const bookingUid = String(payload.payload?.uid || payload.uid || '').trim()
-    const idempotencyKey = bookingUid
-      ? `calcom:${integrationId}:${triggerEvent}:${bookingUid}`
-      : `calcom:${integrationId}:${triggerEvent}:${Date.now()}`
-
     if (bookingUid) {
-      const duplicate = await isDuplicateWebhookEvent(idempotencyKey)
-      if (duplicate) {
+      const eventId = `${integrationId}:${triggerEvent}:${bookingUid}`
+      if (isDuplicateWebhookEvent('calcom', eventId)) {
         logger.info('[calcom.webhook] Evento duplicado ignorado', { integrationId, triggerEvent, bookingUid })
         return res.json({ success: true, duplicate: true })
       }
@@ -200,7 +196,7 @@ export async function receiveCalComWebhook(req: Request, res: Response) {
     const result = await handleCalComWebhookEvent({ integrationId, payload })
 
     if (bookingUid) {
-      await markWebhookEventProcessed(idempotencyKey).catch(() => null)
+      markWebhookEventProcessed('calcom', `${integrationId}:${triggerEvent}:${bookingUid}`)
     }
 
     return res.json(result)
