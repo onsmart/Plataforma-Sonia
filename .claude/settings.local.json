@@ -18,7 +18,11 @@
       "Bash(npx vercel *)",
       "Bash(npm uninstall *)",
       "Bash(npm install *)",
-      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('@11labs/react:', p.dependencies['@11labs/react']||'removido'\\); console.log\\('@elevenlabs/react:', p.dependencies['@elevenlabs/react']||'ausente'\\)\")"
+      "Bash(node -e \"const p=require\\('./package.json'\\); console.log\\('@11labs/react:', p.dependencies['@11labs/react']||'removido'\\); console.log\\('@elevenlabs/react:', p.dependencies['@elevenlabs/react']||'ausente'\\)\")",
+      "Bash(node *)",
+      "Bash(grep -v \"^[0-9]*:.*//\\\\|^[0-9]*:.*import\\\\|^[0-9]*:.*type\\\\|^[0-9]*:.*interface\")",
+      "Bash(grep -n \"agent\\\\.metrics\\\\|agent\\\\[.metrics\\\\|\\\\\\\\.csat\\\\|\\\\\\\\.avgResponse\\\\|avgResponse\\\\|\\\\\"0s\\\\\"\\\\|\\\\.conversations\" \"C:/Users/Mateus Mantovani/Desktop/Projetos/Plataformadeatendimentosonia/FrontEnd/src/pages/AgentsHub.tsx\")",
+      "Bash(git push *)"
     ]
   }
 }
