@@ -76,3 +76,5 @@ BackEnd/*_remote.sql
 # Accidental screenshot/image dumps
 /image/
 BackEnd/image/
+
+.vercel
