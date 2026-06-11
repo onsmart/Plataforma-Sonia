@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Separator } from "../components/ui/separator"
 import { Badge } from "../components/ui/badge"
 import { Slider } from "../components/ui/slider"
-import { Download, Shield, Save, Loader2, Users, Mail, Trash2, CreditCard, Check, Ban, Brain, Lock, Send, Plus, Bot, MessageSquare, Database, Lightbulb, AlertTriangle, Building2, Info } from "lucide-react"
+import { Shield, Save, Loader2, Users, Mail, Trash2, CreditCard, Check, Ban, Brain, Lock, Send, Plus, Bot, MessageSquare, Database, Lightbulb, AlertTriangle, Building2, Info } from "lucide-react"
 import { toast } from "sonner"
 import { AgentService, GovernanceConfig } from "../services/api"
 import { queryCache } from "../lib/query-cache"
@@ -851,49 +851,6 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                             </div>
                         </div>
                     )}
-                    {/* Botão de Export CSV - Sempre visível */}
-                    <Card 
-                        className="border-0 rounded-[1.5rem] shadow-lg shadow-blue-900/5 transition-shadow duration-150"
-                        style={{ backgroundColor: theme === 'dark' ? '#18181b' : '#F8FAFC' }}
-                    >
-                        <CardHeader>
-                            <CardTitle style={{ color: theme === 'dark' ? '#e2e8f0' : '#1e293b' }}>Exportar Dados de Uso</CardTitle>
-                            <CardDescription style={{ color: theme === 'dark' ? '#cbd5e1' : '#475569' }}>
-                                Baixe um relatório CSV com suas métricas de uso e informações de assinatura
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <Button 
-                                variant="outline" 
-                                onClick={async () => {
-                                    try {
-                                        setSaving(true)
-                                        await AgentService.exportBillingCSV()
-                                        toast.success('CSV exportado com sucesso!')
-                                    } catch (error: any) {
-                                        toast.error(error.message || 'Erro ao exportar CSV')
-                                    } finally {
-                                        setSaving(false)
-                                    }
-                                }}
-                                disabled={saving}
-                                className="w-full sm:w-auto"
-                            >
-                                {saving ? (
-                                    <>
-                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                        Exportando...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Download className="h-4 w-4 mr-2" />
-                                        Exportar CSV
-                                    </>
-                                )}
-                            </Button>
-                        </CardContent>
-                    </Card>
-
                     <div className="space-y-6">
                         <Card 
                             className="border-0 rounded-[1.5rem] shadow-lg shadow-blue-900/5 transition-shadow duration-150 overflow-hidden"

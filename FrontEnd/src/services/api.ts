@@ -1911,59 +1911,6 @@ export const AgentService = {
         }
     },
 
-    async exportBillingCSV(startDate?: string, endDate?: string): Promise<void> {
-        try {
-            const { data: { user } } = await supabase.auth.getUser()
-            const email = user?.email
-
-            if (!email) {
-                throw new Error('Usuário não autenticado')
-            }
-
-            // Construir URL com query params
-            const params = new URLSearchParams()
-            params.append('email', email)
-            if (startDate) params.append('startDate', startDate)
-            if (endDate) params.append('endDate', endDate)
-
-            const res = await fetch(`${BASE_URL}/billing/export?${params.toString()}`, {
-                method: 'GET',
-                headers: await getAuthHeaders()
-            })
-
-            if (!res.ok) {
-                const errorData = await res.json().catch(() => ({}))
-                throw new Error(errorData.error || 'Erro ao exportar dados')
-            }
-
-            // Obter o blob do CSV
-            const blob = await res.blob()
-            
-            // Criar link temporário para download
-            const url = window.URL.createObjectURL(blob)
-            const link = document.createElement('a')
-            link.href = url
-            
-            // Obter nome do arquivo do header Content-Disposition ou usar padrão
-            const contentDisposition = res.headers.get('Content-Disposition')
-            let filename = 'billing-export.csv'
-            if (contentDisposition) {
-                const filenameMatch = contentDisposition.match(/filename="(.+)"/)
-                if (filenameMatch) {
-                    filename = filenameMatch[1]
-                }
-            }
-            
-            link.download = filename
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
-            window.URL.revokeObjectURL(url)
-        } catch (error: any) {
-            return handleFetchError(error, 'ExportBillingCSV')
-        }
-    },
-
     async createPortalSession(): Promise<{ url?: string, error?: string }> {
         try {
             const { data: { user } } = await supabase.auth.getUser()

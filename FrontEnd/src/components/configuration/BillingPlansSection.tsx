@@ -368,11 +368,14 @@ export function BillingPlansSection({
         key={plan.id}
         className={cn(
           cardShellClass,
+          'hover:-translate-y-1 hover:shadow-xl hover:shadow-slate-900/10 dark:hover:shadow-black/30',
           isCurrent && lineTheme.currentRingClass,
-          isGrowth && !isCurrent && 'md:-translate-y-0.5'
+          isGrowth &&
+            !isCurrent &&
+            'shadow-lg shadow-slate-900/10 ring-1 ring-slate-400/35 md:-translate-y-1 dark:shadow-black/25 dark:ring-slate-500/35'
         )}
       >
-        <div className={cn('h-1 w-full bg-gradient-to-r', accent.stripeClass)} />
+        <div className={cn('w-full bg-gradient-to-r', accent.stripeClass, isGrowth ? 'h-1.5' : 'h-1')} />
 
         <CardHeader className="space-y-3 pb-2">
           <div className="flex items-start justify-between gap-3">
@@ -442,15 +445,17 @@ export function BillingPlansSection({
         </CardHeader>
 
         <CardContent className="flex flex-1 flex-col gap-4 pt-0">
-          <div className={cn('rounded-xl border px-3 py-2.5', lineTheme.priceBlockClass)}>
-            <div
-              className={cn(
-                'text-3xl font-bold tracking-tight',
-                isDark ? 'text-slate-50' : 'text-slate-900'
-              )}
-            >
-              {plan.priceDisplayMonthly}
-              <span className="ml-1 text-sm font-normal text-muted-foreground">{labels.perMonth}</span>
+          <div className={cn('rounded-xl border px-4 py-3', lineTheme.priceBlockClass)}>
+            <div className="flex flex-wrap items-baseline gap-1.5">
+              <span
+                className={cn(
+                  'text-3xl font-bold tracking-tight sm:text-4xl',
+                  isDark ? 'text-slate-50' : 'text-slate-900'
+                )}
+              >
+                {plan.priceDisplayMonthly}
+              </span>
+              <span className="text-sm font-normal text-muted-foreground">{labels.perMonth}</span>
             </div>
             {plan.monthlyConversations != null && (
               <p className="mt-1 text-[11px] text-muted-foreground">
@@ -648,48 +653,49 @@ export function BillingPlansSection({
     const SectionIcon = productLine === 'com' ? Sparkles : MessageSquare
 
     return (
-      <section className={cn('space-y-5', lineTheme.sectionShell)}>
-        <div className="space-y-4">
-          <div className={cn('h-1 w-full rounded-full bg-gradient-to-r', lineTheme.sectionHeaderStripe)} />
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div
-                className={cn(
-                  'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl',
-                  lineTheme.sectionIconWell
-                )}
-              >
-                <SectionIcon className={cn('h-6 w-6', lineTheme.sectionIconClass)} />
-              </div>
-              <div className="space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3
-                    className={cn(
-                      'text-lg font-semibold tracking-tight',
-                      isDark ? 'text-slate-50' : 'text-slate-900'
-                    )}
-                  >
-                    {title}
-                  </h3>
-                  <Badge
-                    className={cn(
-                      'rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]',
-                      lineTheme.sectionBadgeClass
-                    )}
-                  >
-                    {lineTheme.lineBadge}
-                  </Badge>
-                </div>
-                <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p>
-                <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
-                  {lineTheme.lineLabel}
-                </p>
-              </div>
-            </div>
+      <section className={cn('space-y-6 sm:space-y-7', lineTheme.sectionShell)}>
+        {/* Cabeçalho centralizado, estilo página de pricing */}
+        <div className="flex flex-col items-center gap-2.5 pt-2 text-center">
+          <div
+            className={cn(
+              'flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl',
+              lineTheme.sectionIconWell
+            )}
+          >
+            <SectionIcon className={cn('h-6 w-6', lineTheme.sectionIconClass)} />
           </div>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <h3
+              className={cn(
+                'text-lg font-semibold tracking-tight sm:text-xl',
+                isDark ? 'text-slate-50' : 'text-slate-900'
+              )}
+            >
+              {title}
+            </h3>
+            <Badge
+              className={cn(
+                'rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]',
+                lineTheme.sectionBadgeClass
+              )}
+            >
+              {lineTheme.lineBadge}
+            </Badge>
+          </div>
+          <p className="mx-auto max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p>
+          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground/80">
+            {lineTheme.lineLabel}
+          </p>
+          <div className={cn('mt-1 h-1 w-24 rounded-full bg-gradient-to-r', lineTheme.sectionHeaderStripe)} />
         </div>
 
-        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+        {/* Cards centralizados — com 2 planos, sem coluna fantasma */}
+        <div
+          className={cn(
+            'mx-auto grid w-full items-stretch justify-center gap-5 sm:gap-6',
+            linePlans.length <= 2 ? 'max-w-[900px] md:grid-cols-2' : 'sm:grid-cols-2 xl:grid-cols-3'
+          )}
+        >
           {linePlans.map((plan) => renderPlanCard(plan, lineTheme))}
         </div>
       </section>
