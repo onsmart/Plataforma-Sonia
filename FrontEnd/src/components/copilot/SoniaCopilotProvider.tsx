@@ -8,7 +8,7 @@ import React, {
   useRef,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useConversation } from "@elevenlabs/react";
+import { useConversation, ConversationProvider } from "@elevenlabs/react";
 
 import { useNavigation } from "../../contexts/NavigationContext";
 import { useAuth } from "../../contexts/AuthContext";
@@ -363,7 +363,7 @@ function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; curren
 /* ══════════════════════════════════════════════════════════
    ABA VOZ — ElevenLabs Conversational AI
    ══════════════════════════════════════════════════════════ */
-function VoiceTab() {
+function VoiceTabInner() {
   const { t } = useTranslation("copilot");
   const [sessionState, setSessionState] = useState<"idle" | "connecting" | "active" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
@@ -503,6 +503,14 @@ function VoiceTab() {
         )}
       </div>
     </div>
+  );
+}
+
+function VoiceTab() {
+  return (
+    <ConversationProvider>
+      <VoiceTabInner />
+    </ConversationProvider>
   );
 }
 
