@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { useConversation, ConversationProvider } from "@elevenlabs/react";
+import { motion, AnimatePresence } from "motion/react";
 
 import { useNavigation } from "../../contexts/NavigationContext";
 import { useAuth } from "../../contexts/AuthContext";
@@ -22,7 +23,6 @@ import {
   SheetDescription,
 } from "../ui/sheet";
 import {
-  Bot,
   Send,
   Sparkles,
   Mic,
@@ -36,7 +36,6 @@ import {
   PhoneOff,
   Radio,
 } from "lucide-react";
-import { Input } from "../ui/input";
 import { toast } from "sonner";
 import { AgentService } from "../../services/api";
 import { normalizeAgentLanguageCode } from "../../lib/agent-language";
@@ -112,16 +111,146 @@ const SoniaCopilotActions = () => {
   return null;
 };
 
-/* ── Typing dots ── */
-function TypingDots() {
+/* ── Keyframes globais do copilot (injetados uma vez) ── */
+const COPILOT_KEYFRAMES = `
+@keyframes copilot-dot{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-5px);opacity:1}}
+@keyframes copilot-ring-spin{to{transform:rotate(360deg)}}
+@keyframes copilot-breathe{0%,100%{transform:scale(1);opacity:.45}50%{transform:scale(1.22);opacity:.12}}
+@keyframes copilot-sparkle{0%,100%{transform:scale(1) rotate(0deg)}25%{transform:scale(1.12) rotate(8deg)}60%{transform:scale(.96) rotate(-6deg)}}
+@keyframes copilot-status-ping{0%{transform:scale(1);opacity:.7}100%{transform:scale(2.2);opacity:0}}
+`;
+
+/* ── Markdown leve (negrito, código inline, listas) ── */
+type MdBlock =
+  | { type: "p"; text: string }
+  | { type: "ul"; items: string[] }
+  | { type: "ol"; items: string[] };
+
+function parseMdBlocks(text: string): MdBlock[] {
+  const lines = text.split("\n");
+  const blocks: MdBlock[] = [];
+  let para: string[] = [];
+  const flushPara = () => {
+    if (para.length) { blocks.push({ type: "p", text: para.join("\n") }); para = []; }
+  };
+  for (const line of lines) {
+    const ulMatch = line.match(/^\s*[-*•]\s+(.*)$/);
+    const olMatch = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (ulMatch) {
+      flushPara();
+      const prev = blocks[blocks.length - 1];
+      if (prev?.type === "ul") prev.items.push(ulMatch[1]);
+      else blocks.push({ type: "ul", items: [ulMatch[1]] });
+    } else if (olMatch) {
+      flushPara();
+      const prev = blocks[blocks.length - 1];
+      if (prev?.type === "ol") prev.items.push(olMatch[1]);
+      else blocks.push({ type: "ol", items: [olMatch[1]] });
+    } else {
+      para.push(line);
+    }
+  }
+  flushPara();
+  return blocks;
+}
+
+function renderInlineMd(text: string): React.ReactNode {
+  const out: React.ReactNode[] = [];
+  const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let k = 0;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const tok = m[0];
+    if (tok.startsWith("**")) {
+      out.push(<strong key={k++} className="font-semibold">{tok.slice(2, -2)}</strong>);
+    } else {
+      out.push(
+        <code key={k++} className="rounded bg-black/[0.06] px-1 py-0.5 font-mono text-[0.85em] dark:bg-white/10">
+          {tok.slice(1, -1)}
+        </code>
+      );
+    }
+    last = m.index + tok.length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+function MarkdownLite({ text }: { text: string }) {
+  const blocks = useMemo(() => parseMdBlocks(text), [text]);
   return (
-    <div className="flex items-center gap-1 py-1">
-      {[0, 1, 2].map((i) => (
-        <span key={i} className="block h-1.5 w-1.5 rounded-full bg-current opacity-60"
-          style={{ animation: `copilot-dot 1.2s ease-in-out ${i * 0.2}s infinite` }} />
-      ))}
-      <style>{`@keyframes copilot-dot{0%,60%,100%{transform:translateY(0);opacity:.4}30%{transform:translateY(-5px);opacity:1}}`}</style>
+    <div className="space-y-1.5">
+      {blocks.map((b, i) => {
+        if (b.type === "ul") {
+          return (
+            <ul key={i} className="ml-1 space-y-1">
+              {b.items.map((item, j) => (
+                <li key={j} className="flex gap-2">
+                  <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-current opacity-50" />
+                  <span>{renderInlineMd(item)}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        if (b.type === "ol") {
+          return (
+            <ol key={i} className="ml-1 space-y-1">
+              {b.items.map((item, j) => (
+                <li key={j} className="flex gap-2">
+                  <span className="shrink-0 text-[0.85em] font-semibold opacity-60">{j + 1}.</span>
+                  <span>{renderInlineMd(item)}</span>
+                </li>
+              ))}
+            </ol>
+          );
+        }
+        return (
+          <p key={i} className="whitespace-pre-wrap">{renderInlineMd(b.text)}</p>
+        );
+      })}
     </div>
+  );
+}
+
+/* ── Avatar da Sonia ── */
+function SoniaAvatar({ size = "sm", speaking = false }: { size?: "sm" | "md"; speaking?: boolean }) {
+  return (
+    <div
+      className={cn(
+        "relative flex shrink-0 items-center justify-center rounded-full shadow-sm",
+        size === "sm" ? "h-7 w-7" : "h-10 w-10"
+      )}
+      style={{ background: "linear-gradient(135deg,#2563eb 0%,#7c3aed 60%,#db2777 130%)" }}
+    >
+      <Sparkles className={cn("text-white", size === "sm" ? "h-3.5 w-3.5" : "h-5 w-5", speaking && "animate-pulse")} strokeWidth={2.2} />
+    </div>
+  );
+}
+
+/* ── Typing indicator ── */
+function TypingIndicator() {
+  const { t } = useTranslation("copilot");
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      className="flex items-end gap-2"
+    >
+      <SoniaAvatar />
+      <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-slate-200/70 bg-white px-3.5 py-2.5 text-slate-500 shadow-sm dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-400">
+        <div className="flex items-center gap-1">
+          {[0, 1, 2].map((i) => (
+            <span key={i} className="block h-1.5 w-1.5 rounded-full bg-current opacity-60"
+              style={{ animation: `copilot-dot 1.2s ease-in-out ${i * 0.2}s infinite` }} />
+          ))}
+        </div>
+        <span className="text-[11px] font-medium">{t("thinking")}</span>
+      </div>
+    </motion.div>
   );
 }
 
@@ -130,27 +259,122 @@ function formatTime(ts: number) {
 }
 
 /* ══════════════════════════════════════════════════════════
-   ABA CHAT
+   CONTROLLER DO CHAT — vive no nível do provider (sempre
+   montado), então requests em andamento sobrevivem ao
+   fechamento do modal e à troca de aba.
    ══════════════════════════════════════════════════════════ */
-function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; currentRoute: string; speechLang: string }) {
-  const { t } = useTranslation("copilot");
-  const welcomeMsg: CopilotMessage = useMemo(() => ({ role: "assistant", content: t("welcome"), timestamp: Date.now() }), [t]);
+type ChatController = {
+  messages: CopilotMessage[];
+  isLoading: boolean;
+  unread: number;
+  sendMessage: (text: string) => void;
+  clearMessages: () => void;
+  markRead: () => void;
+  /** Registrado pelo ChatTab enquanto montado; usado para TTS da resposta. */
+  speakRef: React.MutableRefObject<((text: string) => void) | null>;
+};
 
+function useCopilotChat({
+  actions,
+  currentRoute,
+  speechLang,
+  isOpenRef,
+}: {
+  actions: any[];
+  currentRoute: string;
+  speechLang: string;
+  isOpenRef: React.MutableRefObject<boolean>;
+}): ChatController {
+  const { t } = useTranslation("copilot");
   const [messages, setMessages] = useState<CopilotMessage[]>(() => {
     const s = loadSessionMessages();
-    return s.length > 0 ? s : [welcomeMsg];
+    return s.length > 0 ? s : [{ role: "assistant", content: t("welcome"), timestamp: Date.now() }];
   });
-  const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [unread, setUnread] = useState(0);
+  const speakRef = useRef<((text: string) => void) | null>(null);
+
+  const messagesRef = useRef(messages);
+  useEffect(() => { messagesRef.current = messages; saveSessionMessages(messages); }, [messages]);
+  const isLoadingRef = useRef(false);
+
+  const actionsRef = useRef(actions);
+  useEffect(() => { actionsRef.current = actions; }, [actions]);
+  const routeRef = useRef(currentRoute);
+  useEffect(() => { routeRef.current = currentRoute; }, [currentRoute]);
+
+  const pushAssistant = useCallback((content: string) => {
+    setMessages((p) => [...p, { role: "assistant", content, timestamp: Date.now() }]);
+    if (!isOpenRef.current) setUnread((u) => u + 1);
+  }, [isOpenRef]);
+
+  const sendMessage = useCallback(async (raw: string) => {
+    const userMsg = raw.trim();
+    if (!userMsg || isLoadingRef.current) return;
+    const um: CopilotMessage = { role: "user", content: userMsg, timestamp: Date.now() };
+    setMessages((p) => [...p, um]);
+    isLoadingRef.current = true;
+    setIsLoading(true);
+    try {
+      const history = [...messagesRef.current, um].slice(-12);
+      const resp = await AgentService.chatWithCopilot(history, { channel: "webchat", currentRoute: routeRef.current, language: speechLang });
+      let content = resp.content || "";
+      const nav = content.match(/\[NAVIGATE:\s*(.*?)\]/);
+      if (nav?.[1]) {
+        const page = nav[1].trim();
+        const action = actionsRef.current.find((a: any) => a.name === "navigateToPage");
+        if (action) {
+          action.handler({ page });
+          content = content.replace(/\[NAVIGATE:\s*.*?\]/, "").trim();
+          if (!content) content = t("navigatingTo", { page });
+        }
+      }
+      pushAssistant(content);
+      speakRef.current?.(content);
+    } catch {
+      toast.error(t("connectionError"));
+      pushAssistant(t("connectionError"));
+    } finally {
+      isLoadingRef.current = false;
+      setIsLoading(false);
+    }
+  }, [speechLang, t, pushAssistant]);
+
+  const clearMessages = useCallback(() => {
+    const fresh: CopilotMessage[] = [{ role: "assistant", content: t("welcome"), timestamp: Date.now() }];
+    setMessages(fresh);
+    saveSessionMessages(fresh);
+    setUnread(0);
+  }, [t]);
+
+  const markRead = useCallback(() => setUnread(0), []);
+
+  return { messages, isLoading, unread, sendMessage, clearMessages, markRead, speakRef };
+}
+
+/* ══════════════════════════════════════════════════════════
+   ABA CHAT — apenas apresentação; estado vem do controller
+   ══════════════════════════════════════════════════════════ */
+function ChatTab({ chat, currentRoute, speechLang }: { chat: ChatController; currentRoute: string; speechLang: string }) {
+  const { t } = useTranslation("copilot");
+  const { messages, isLoading, sendMessage, clearMessages } = chat;
+
+  const [input, setInput] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [voiceOutput, setVoiceOutput] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const recognitionRef = useRef<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mountedAtRef = useRef(Date.now());
 
-  useEffect(() => { saveSessionMessages(messages); }, [messages]);
-  useEffect(() => { scrollRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, isLoading]);
+  useEffect(() => {
+    // Primeiro scroll instantâneo (reabertura), depois suave
+    const firstPaint = Date.now() - mountedAtRef.current < 400;
+    scrollRef.current?.scrollIntoView({ behavior: firstPaint ? "auto" : "smooth" });
+  }, [messages, isLoading]);
+  useEffect(() => { inputRef.current?.focus(); }, []);
   useEffect(() => { if (recognitionRef.current) recognitionRef.current.lang = speechLang; }, [speechLang]);
   useEffect(() => () => {
     recognitionRef.current?.stop();
@@ -199,6 +423,12 @@ function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; curren
     } catch { fallbackSpeak(clean); }
   }, [voiceOutput, stopAudio, fallbackSpeak]);
 
+  // Registra o TTS no controller enquanto a aba está montada
+  useEffect(() => {
+    chat.speakRef.current = speak;
+    return () => { chat.speakRef.current = null; };
+  }, [chat.speakRef, speak]);
+
   const toggleListening = () => {
     const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SR) { toast.error(t("voiceUnsupported")); return; }
@@ -220,35 +450,16 @@ function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; curren
     try { recognitionRef.current.start(); } catch { setIsListening(false); }
   };
 
-  const handleSend = async (text?: string) => {
+  const handleSend = (text?: string) => {
     const userMsg = (text ?? input).trim();
     if (!userMsg || isLoading) return;
     setInput("");
-    const um: CopilotMessage = { role: "user", content: userMsg, timestamp: Date.now() };
-    setMessages((p) => [...p, um]);
-    setIsLoading(true);
-    try {
-      const history = [...messages, um].slice(-12);
-      const resp = await AgentService.chatWithCopilot(history, { channel: "webchat", currentRoute, language: speechLang });
-      let content = resp.content || "";
-      const nav = content.match(/\[NAVIGATE:\s*(.*?)\]/);
-      if (nav?.[1]) {
-        const page = nav[1].trim();
-        const action = actions.find((a: any) => a.name === "navigateToPage");
-        if (action) { action.handler({ page }); content = content.replace(/\[NAVIGATE:\s*.*?\]/, "").trim(); if (!content) content = t("navigatingTo", { page }); }
-      }
-      setMessages((p) => [...p, { role: "assistant", content, timestamp: Date.now() }]);
-      speak(content);
-    } catch {
-      toast.error(t("connectionError"));
-      setMessages((p) => [...p, { role: "assistant", content: t("connectionError"), timestamp: Date.now() }]);
-    } finally { setIsLoading(false); }
+    sendMessage(userMsg);
   };
 
-  const clearMessages = () => {
+  const handleClear = () => {
     stopAudio();
-    const fresh = [{ role: "assistant" as const, content: t("welcome"), timestamp: Date.now() }];
-    setMessages(fresh); saveSessionMessages(fresh);
+    clearMessages();
   };
 
   const suggestions = useMemo(() => getCopilotSuggestions(currentRoute, t), [currentRoute, t]);
@@ -268,7 +479,7 @@ function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; curren
         </Button>
         <Button type="button" variant="ghost" size="icon"
           className="h-7 w-7 rounded-lg text-muted-foreground hover:text-destructive"
-          title={t("chat.clearTitle")} onClick={clearMessages}>
+          title={t("chat.clearTitle")} onClick={handleClear}>
           <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -286,49 +497,59 @@ function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; curren
       )}
 
       {/* Messages */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        <div className="flex flex-col gap-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+        <div className="flex flex-col gap-4">
           {messages.map((m, i) => (
-            <div key={i} className={cn("flex items-end gap-2", m.role === "user" ? "flex-row-reverse" : "flex-row")}>
-              {m.role === "assistant" && (
-                <div className="mb-4 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg"
-                  style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)" }}>
-                  <Bot className="h-3 w-3 text-white" strokeWidth={2} />
-                </div>
-              )}
-              <div className={cn("flex max-w-[80%] flex-col gap-0.5", m.role === "user" && "items-end")}>
-                <div className={cn("rounded-2xl px-3.5 py-2 text-sm leading-relaxed whitespace-pre-wrap",
-                  m.role === "user"
-                    ? "rounded-br-sm bg-blue-600 text-white dark:bg-blue-500"
-                    : "rounded-bl-sm bg-slate-100 text-slate-800 dark:bg-white/8 dark:text-zinc-200")}>
-                  {m.content}
-                </div>
-                <span className="px-1 text-[10px] text-muted-foreground/50">{formatTime(m.timestamp)}</span>
+            <motion.div
+              key={`${m.timestamp}-${i}`}
+              initial={{ opacity: 0, y: 10, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ type: "spring", stiffness: 380, damping: 30, delay: Math.min(i * 0.025, 0.25) }}
+              className={cn("group flex items-end gap-2", m.role === "user" ? "flex-row-reverse" : "flex-row")}
+            >
+              {m.role === "assistant" && <div className="mb-5"><SoniaAvatar speaking={isSpeaking && i === messages.length - 1} /></div>}
+              <div className={cn("flex max-w-[82%] flex-col gap-0.5", m.role === "user" && "items-end")}>
+                {m.role === "user" ? (
+                  <div
+                    className="rounded-2xl rounded-br-md px-3.5 py-2 text-sm leading-relaxed text-white shadow-sm whitespace-pre-wrap"
+                    style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)" }}
+                  >
+                    {m.content}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl rounded-bl-md border border-slate-200/70 bg-white px-3.5 py-2.5 text-sm leading-relaxed text-slate-800 shadow-sm dark:border-white/10 dark:bg-white/[0.05] dark:text-zinc-200">
+                    <MarkdownLite text={m.content} />
+                  </div>
+                )}
+                <span className="px-1 text-[10px] text-muted-foreground/0 transition-colors duration-200 group-hover:text-muted-foreground/60">
+                  {formatTime(m.timestamp)}
+                </span>
               </div>
-            </div>
+            </motion.div>
           ))}
-          {isLoading && (
-            <div className="flex items-end gap-2">
-              <div className="mb-4 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg" style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)" }}>
-                <Bot className="h-3 w-3 text-white" strokeWidth={2} />
-              </div>
-              <div className="rounded-2xl rounded-bl-sm bg-slate-100 px-4 py-2.5 text-slate-500 dark:bg-white/8 dark:text-zinc-400">
-                <TypingDots />
-              </div>
-            </div>
-          )}
+          <AnimatePresence>{isLoading && <TypingIndicator />}</AnimatePresence>
           <div ref={scrollRef} />
         </div>
 
         {showSuggestions && (
-          <div className="mt-4 space-y-2">
+          <div className="mt-2 space-y-2">
             <p className="px-1 text-[11px] font-medium text-muted-foreground">{t("chat.suggestions")}</p>
             <div className="flex flex-wrap gap-1.5">
-              {suggestions.map((s) => (
-                <button key={s} type="button" onClick={() => handleSend(s)}
-                  className="rounded-xl border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600 shadow-sm transition-all hover:border-blue-200 hover:bg-blue-50 hover:text-blue-600 dark:border-white/8 dark:bg-white/4 dark:text-zinc-300 dark:hover:border-blue-400/25 dark:hover:bg-blue-400/8 dark:hover:text-blue-300">
+              {suggestions.map((s, i) => (
+                <motion.button
+                  key={s}
+                  type="button"
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.15 + i * 0.07 }}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => handleSend(s)}
+                  className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[12px] font-medium text-slate-600 shadow-sm transition-colors hover:border-blue-300/60 hover:bg-blue-50 hover:text-blue-600 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300 dark:hover:border-blue-400/30 dark:hover:bg-blue-400/10 dark:hover:text-blue-300"
+                >
+                  <Sparkles className="h-3 w-3 opacity-50" />
                   {s}
-                </button>
+                </motion.button>
               ))}
             </div>
           </div>
@@ -337,24 +558,48 @@ function ChatTab({ actions, currentRoute, speechLang }: { actions: any[]; curren
 
       {/* Input */}
       <div className="shrink-0 border-t p-3" style={{ borderColor: "hsl(var(--border)/0.4)" }}>
-        <form onSubmit={(e) => { e.preventDefault(); handleSend(); }} className="flex items-center gap-1.5">
-          <Button type="button" variant="outline" size="icon"
-            className={cn("h-9 w-9 shrink-0 rounded-xl transition-all",
-              isListening ? "animate-pulse border-red-200 bg-red-50 text-red-500 dark:border-red-400/20 dark:bg-red-400/10 dark:text-red-300" : "text-muted-foreground hover:border-blue-200 hover:bg-blue-50 hover:text-blue-500")}
-            onClick={toggleListening} title={isListening ? t("chat.recordStop") : t("chat.recordStart")}>
+        <form
+          onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+          className={cn(
+            "flex items-center gap-1 rounded-2xl border bg-slate-50/70 p-1.5 transition-all duration-200 focus-within:border-blue-300/70 focus-within:bg-white focus-within:shadow-[0_0_0_3px_rgba(37,99,235,0.08)] dark:bg-white/[0.04] dark:focus-within:border-blue-400/40 dark:focus-within:bg-white/[0.06]",
+            isListening ? "border-red-300/70 dark:border-red-400/30" : "border-slate-200 dark:border-white/10"
+          )}
+        >
+          <button
+            type="button"
+            onClick={toggleListening}
+            title={isListening ? t("chat.recordStop") : t("chat.recordStart")}
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all",
+              isListening
+                ? "animate-pulse bg-red-50 text-red-500 dark:bg-red-400/10 dark:text-red-300"
+                : "text-muted-foreground hover:bg-blue-50 hover:text-blue-500 dark:hover:bg-blue-400/10 dark:hover:text-blue-300"
+            )}
+          >
             {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
-          </Button>
-          <Input placeholder={isListening ? t("chat.listeningPlaceholder") : t("chat.placeholder")}
-            value={input} onChange={(e) => setInput(e.target.value)}
-            className="h-9 flex-1 rounded-xl border-slate-200 bg-slate-50/60 text-sm placeholder:text-muted-foreground/50 focus-visible:border-blue-300 focus-visible:ring-blue-200/50 dark:border-white/8 dark:bg-white/4"
-            disabled={isLoading} />
-          <Button type="submit" size="icon" disabled={isLoading || !input.trim()}
-            className="h-9 w-9 shrink-0 rounded-xl"
-            style={!isLoading && input.trim() ? { background: "linear-gradient(135deg,#2563eb,#7c3aed)" } : undefined}>
+          </button>
+          <input
+            ref={inputRef}
+            placeholder={isListening ? t("chat.listeningPlaceholder") : t("chat.placeholder")}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            className="h-8 min-w-0 flex-1 bg-transparent px-1.5 text-sm outline-none placeholder:text-muted-foreground/50"
+          />
+          <motion.button
+            type="submit"
+            disabled={isLoading || !input.trim()}
+            whileHover={input.trim() && !isLoading ? { scale: 1.06 } : undefined}
+            whileTap={input.trim() && !isLoading ? { scale: 0.92 } : undefined}
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-white transition-all",
+              isLoading || !input.trim() ? "cursor-not-allowed bg-slate-300 dark:bg-white/10" : "shadow-md"
+            )}
+            style={!isLoading && input.trim() ? { background: "linear-gradient(135deg,#2563eb,#7c3aed)" } : undefined}
+          >
             {isLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-          </Button>
+          </motion.button>
         </form>
-        {isListening && <p className="mt-1.5 text-center text-[11px] text-red-500 dark:text-red-300">Gravando… Fale sua mensagem</p>}
+        {isListening && <p className="mt-1.5 text-center text-[11px] text-red-500 dark:text-red-300">{t("voice.status.listening")}</p>}
       </div>
     </div>
   );
@@ -526,6 +771,18 @@ const SoniaCopilotUI = () => {
   const [activeTab, setActiveTab] = useState<CopilotTab>("chat");
   const [bubbleVisible, setBubbleVisible] = useState(false);
   const [bubbleIdx, setBubbleIdx] = useState(0);
+  const isOpenRef = useRef(false);
+
+  const speechLang = useMemo(() => normalizeAgentLanguageCode(i18n.language), [i18n.language]);
+
+  const chat = useCopilotChat({ actions, currentRoute, speechLang, isOpenRef });
+  const { unread, markRead, isLoading } = chat;
+
+  const handleOpenChange = useCallback((open: boolean) => {
+    isOpenRef.current = open;
+    setIsOpen(open);
+    if (open) markRead();
+  }, [markRead]);
 
   useEffect(() => {
     if (isOpen) { setBubbleVisible(false); return; }
@@ -544,43 +801,106 @@ const SoniaCopilotUI = () => {
     return () => clearTimeout(tid);
   }, [isOpen]);
 
-  const speechLang = useMemo(() => normalizeAgentLanguageCode(i18n.language), [i18n.language]);
-
   if (!session) return null;
 
+  const hasAttention = unread > 0 && !isOpen;
+
   return (
-    <Sheet open={isOpen} onOpenChange={setIsOpen}>
-      {/* Animated hint bubble */}
-      {!isOpen && (
-        <div
-          aria-hidden="true"
-          className={cn(
-            "pointer-events-none fixed bottom-8 z-[49] transition-all duration-500",
-            bubbleVisible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-3"
-          )}
-          style={{ right: "88px" }}
-        >
-          <div
-            className="relative max-w-[190px] rounded-2xl rounded-br-sm px-3.5 py-2 text-[13px] font-medium leading-snug text-white shadow-lg"
-            style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)", filter: "drop-shadow(0 4px 16px rgba(37,99,235,0.3))" }}
+    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
+      <style>{COPILOT_KEYFRAMES}</style>
+
+      {/* Hint bubble animada */}
+      <AnimatePresence>
+        {!isOpen && bubbleVisible && !hasAttention && (
+          <motion.div
+            aria-hidden="true"
+            initial={{ opacity: 0, x: 14, scale: 0.94 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 10, scale: 0.96 }}
+            transition={{ type: "spring", stiffness: 320, damping: 26 }}
+            className="pointer-events-none fixed bottom-8 z-[49]"
+            style={{ right: "88px" }}
           >
-            {t(`bubble.${bubbleIdx}`)}
-            <span
-              className="absolute bottom-2 border-[7px] border-transparent"
-              style={{ right: "-13px", borderLeftColor: "#7c3aed" }}
-            />
-          </div>
-        </div>
-      )}
+            <div
+              className="relative max-w-[190px] rounded-2xl rounded-br-sm px-3.5 py-2 text-[13px] font-medium leading-snug text-white shadow-lg"
+              style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)", filter: "drop-shadow(0 4px 16px rgba(37,99,235,0.3))" }}
+            >
+              {t(`bubble.${bubbleIdx}`)}
+              <span
+                className="absolute bottom-2 border-[7px] border-transparent"
+                style={{ right: "-13px", borderLeftColor: "#7c3aed" }}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Botão flutuante */}
       <SheetTrigger asChild>
-        <Button type="button" aria-label={t("headerTitle")}
-          className={cn(
-            "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full p-0 shadow-xl transition-all duration-300 hover:scale-105",
-            bubbleVisible && !isOpen && "ring-2 ring-blue-400 ring-offset-2 ring-offset-background"
-          )}
-          style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)", boxShadow: "0 8px 24px rgba(37,99,235,0.38),0 0 20px rgba(124,58,237,0.25)" }}>
-          <Sparkles className="h-6 w-6 text-white" />
-        </Button>
+        <motion.button
+          type="button"
+          aria-label={t("headerTitle")}
+          initial={{ scale: 0, opacity: 0, y: 24 }}
+          animate={
+            hasAttention
+              ? { scale: [1, 1.1, 1], opacity: 1, y: 0, rotate: [0, -5, 5, -3, 0], transition: { duration: 0.7, repeat: Infinity, repeatDelay: 2.2 } }
+              : { scale: 1, opacity: 1, y: 0, rotate: 0, transition: { type: "spring", stiffness: 260, damping: 20 } }
+          }
+          whileHover={{ scale: 1.08 }}
+          whileTap={{ scale: 0.9 }}
+          className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full p-0 outline-none"
+        >
+          {/* Anel cônico girando (halo) */}
+          <span
+            aria-hidden="true"
+            className="absolute -inset-[5px] rounded-full opacity-70"
+            style={{
+              background: "conic-gradient(from 0deg,#2563eb,#7c3aed,#db2777,#2563eb)",
+              animation: "copilot-ring-spin 5s linear infinite",
+              filter: "blur(7px)",
+            }}
+          />
+          {/* Glow respirando */}
+          <span
+            aria-hidden="true"
+            className="absolute inset-0 rounded-full"
+            style={{
+              background: "linear-gradient(135deg,#2563eb,#7c3aed)",
+              animation: hasAttention ? "copilot-breathe 1.6s ease-in-out infinite" : "copilot-breathe 3.2s ease-in-out infinite",
+            }}
+          />
+          {/* Núcleo */}
+          <span
+            className="relative z-10 flex h-full w-full items-center justify-center rounded-full shadow-xl"
+            style={{
+              background: "linear-gradient(135deg,#2563eb,#7c3aed)",
+              boxShadow: "0 8px 24px rgba(37,99,235,0.38), inset 0 1px 0 rgba(255,255,255,0.25)",
+            }}
+          >
+            {isLoading && !isOpen ? (
+              <Loader2 className="h-6 w-6 animate-spin text-white" />
+            ) : (
+              <Sparkles
+                className="h-6 w-6 text-white"
+                style={{ animation: "copilot-sparkle 4s ease-in-out infinite" }}
+              />
+            )}
+          </span>
+          {/* Badge de não lidas */}
+          <AnimatePresence>
+            {unread > 0 && (
+              <motion.span
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 500, damping: 18 }}
+                className="absolute -right-1 -top-1 z-20 flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white shadow-md ring-2 ring-background"
+              >
+                {unread > 9 ? "9+" : unread}
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </motion.button>
       </SheetTrigger>
 
       <SheetContent side="right"
@@ -588,11 +908,23 @@ const SoniaCopilotUI = () => {
         style={{ borderLeft: "1px solid hsl(var(--border)/0.6)" }}>
 
         {/* Header */}
-        <SheetHeader className="shrink-0 border-b px-5 py-4" style={{ borderColor: "hsl(var(--border)/0.5)" }}>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
-              style={{ background: "linear-gradient(135deg,#2563eb,#7c3aed)" }}>
-              <Bot className="h-5 w-5 text-white" strokeWidth={2} />
+        <SheetHeader className="relative shrink-0 overflow-hidden border-b px-5 py-4" style={{ borderColor: "hsl(var(--border)/0.5)" }}>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 opacity-[0.07] dark:opacity-[0.12]"
+            style={{ background: "radial-gradient(ellipse 60% 120% at 12% 0%,#2563eb 0%,transparent 55%), radial-gradient(ellipse 50% 120% at 55% 0%,#7c3aed 0%,transparent 50%)" }}
+          />
+          <div className="relative flex items-center gap-3">
+            <div className="relative">
+              <SoniaAvatar size="md" />
+              <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3 items-center justify-center">
+                <span
+                  aria-hidden="true"
+                  className="absolute h-full w-full rounded-full bg-emerald-400"
+                  style={{ animation: "copilot-status-ping 2s cubic-bezier(0,0,0.2,1) infinite" }}
+                />
+                <span className="relative h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-background" />
+              </span>
             </div>
             <div className="min-w-0 flex-1">
               <SheetTitle className="text-sm font-semibold leading-tight">{t("headerTitle")}</SheetTitle>
@@ -606,31 +938,35 @@ const SoniaCopilotUI = () => {
         {/* Tab switcher */}
         <div className="flex shrink-0 items-center gap-1 border-b bg-slate-50/60 px-4 py-2.5 dark:bg-white/[0.02]"
           style={{ borderColor: "hsl(var(--border)/0.4)" }}>
-          <button type="button" onClick={() => setActiveTab("chat")}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold transition-all duration-200",
-              activeTab === "chat"
-                ? "bg-white text-blue-600 shadow-sm ring-1 ring-blue-100/80 dark:bg-white/10 dark:text-blue-300 dark:ring-blue-400/20"
-                : "text-muted-foreground hover:text-foreground"
-            )}>
-            <MessageSquare className="h-3.5 w-3.5" />
-            {t("tab.chat")}
-          </button>
-          <button type="button" onClick={() => setActiveTab("voice")}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold transition-all duration-200",
-              activeTab === "voice"
-                ? "bg-white text-violet-600 shadow-sm ring-1 ring-violet-100/80 dark:bg-white/10 dark:text-violet-300 dark:ring-violet-400/20"
-                : "text-muted-foreground hover:text-foreground"
-            )}>
-            <Radio className="h-3.5 w-3.5" />
-            {t("tab.voice")}
-          </button>
+          {(["chat", "voice"] as CopilotTab[]).map((tab) => (
+            <button key={tab} type="button" onClick={() => setActiveTab(tab)}
+              className={cn(
+                "relative flex flex-1 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold transition-colors duration-200",
+                activeTab === tab
+                  ? tab === "chat" ? "text-blue-600 dark:text-blue-300" : "text-violet-600 dark:text-violet-300"
+                  : "text-muted-foreground hover:text-foreground"
+              )}>
+              {activeTab === tab && (
+                <motion.span
+                  layoutId="copilot-tab-pill"
+                  transition={{ type: "spring", stiffness: 420, damping: 32 }}
+                  className={cn(
+                    "absolute inset-0 rounded-xl bg-white shadow-sm ring-1 dark:bg-white/10",
+                    tab === "chat" ? "ring-blue-100/80 dark:ring-blue-400/20" : "ring-violet-100/80 dark:ring-violet-400/20"
+                  )}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-1.5">
+                {tab === "chat" ? <MessageSquare className="h-3.5 w-3.5" /> : <Radio className="h-3.5 w-3.5" />}
+                {t(`tab.${tab}`)}
+              </span>
+            </button>
+          ))}
         </div>
 
         {/* Tab content */}
         {activeTab === "chat"
-          ? <ChatTab actions={actions} currentRoute={currentRoute} speechLang={speechLang} />
+          ? <ChatTab chat={chat} currentRoute={currentRoute} speechLang={speechLang} />
           : <VoiceTab />}
       </SheetContent>
     </Sheet>
