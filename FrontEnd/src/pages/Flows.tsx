@@ -44,6 +44,7 @@ import { toast } from "sonner"
 import { usePlanCapabilities } from "../hooks/usePlanCapabilities"
 import { useAuth } from "../contexts/AuthContext"
 import { supabase } from "../utils/supabase/client"
+import { queryCache } from "../lib/query-cache"
 import { useTheme } from "next-themes"
 import { cn } from "../components/ui/utils"
 import { filterFamilySubflows, filterMainFlows } from "../lib/flow-kind"
@@ -706,15 +707,22 @@ export function Flows() {
   }, [setNodes, flows])
 
   // Carrega flows do banco de dados (filtrado por companies_id + globais)
-  const loadFlows = useCallback(async () => {
+  const loadFlows = useCallback(async (forceRefresh = false) => {
     if (!user?.email) return
-
+    const cacheKey = `flows-list:${user.email}`
+    if (!forceRefresh) {
+      const cached = queryCache.get<FlowListItem[]>(cacheKey)
+      if (cached) { setFlows(cached); return }
+    }
     setLoadingFlows(true)
     try {
-      // Lista completa (main + subfluxos) — necessário para editor de família e pickers de módulo
       const { fetchFlowsList } = await import('../services/flows-api')
-      const data = await fetchFlowsList(user.email)
-      setFlows(data as FlowListItem[])
+      const data = await queryCache.dedupe<FlowListItem[]>(cacheKey, async () => {
+        const result = await fetchFlowsList(user.email!)
+        return result as FlowListItem[]
+      })
+      queryCache.set(cacheKey, data, 2 * 60 * 1000)
+      setFlows(data)
     } catch (err) {
       console.error('Erro ao carregar flows:', err)
       toast.error(t('errors.loadFlows'))
@@ -1106,70 +1114,82 @@ export function Flows() {
     async (ids: string[]) => {
       if (!user?.email || ids.length === 0) return
       setBulkFlowDeleteRunning(true)
-      let ok = 0
-      let fail = 0
+
+      // Optimistic: remove from list immediately
+      const removed = flows.filter(f => ids.includes(f.id))
+      setFlows(prev => prev.filter(f => !ids.includes(f.id)))
+      queryCache.invalidate(`flows-list:${user.email}`)
+
       try {
         const { BASE_URL, getAuthHeaders } = await import('../services/api')
         const headers = await getAuthHeaders()
-        for (const flowId of ids) {
-          try {
-            const response = await fetch(`${BASE_URL}/flows/${flowId}`, {
+
+        const results = await Promise.allSettled(
+          ids.map(flowId =>
+            fetch(`${BASE_URL}/flows/${flowId}`, {
               method: 'DELETE',
               headers,
               body: JSON.stringify({ email: user.email }),
-            })
-            if (response.ok) ok++
-            else fail++
-          } catch {
-            fail++
-          }
+            }).then(r => { if (!r.ok) throw new Error('failed'); return flowId })
+          )
+        )
+
+        const ok = results.filter(r => r.status === 'fulfilled').length
+        const failedIds = results
+          .map((r, i) => r.status === 'rejected' ? ids[i] : null)
+          .filter(Boolean) as string[]
+
+        if (failedIds.length) {
+          const toRestore = removed.filter(f => failedIds.includes(f.id))
+          setFlows(prev => [...prev, ...toRestore])
+          toast.error(`${failedIds.length} exclusões falharam (fluxo global, integração vinculada ou permissão).`)
         }
         if (ok) toast.success(`${ok} fluxo(s) excluído(s).`)
-        if (fail) {
-          toast.error(
-            `${fail} exclusões falharam (fluxo global, integração vinculada ou permissão).`
-          )
-        }
-        await loadFlows()
-        if (selectedFlowId && ids.includes(selectedFlowId)) {
+
+        if (selectedFlowId && ids.includes(selectedFlowId) && !failedIds.includes(selectedFlowId)) {
           setSelectedFlowId('')
           setFlowName('')
         }
         setBulkFlowsOpen(false)
         setFlowDeletionBlockers(null)
+      } catch {
+        // Rollback completo em caso de erro inesperado
+        setFlows(prev => {
+          const existingIds = new Set(prev.map(f => f.id))
+          return [...prev, ...removed.filter(f => !existingIds.has(f.id))]
+        })
+        toast.error('Erro ao excluir fluxos.')
       } finally {
         setBulkFlowDeleteRunning(false)
       }
     },
-    [user?.email, loadFlows, selectedFlowId]
+    [user?.email, flows, selectedFlowId]
   )
 
-  // Carrega agentes disponíveis do banco de dados
-  const loadAgents = useCallback(async () => {
+  // Carrega agentes disponíveis — reutiliza cache compartilhado com AgentsHub
+  const loadAgents = useCallback(async (forceRefresh = false) => {
     if (!user?.email) return
-
+    const rawKey = `agents-raw:${user.email}`
+    if (!forceRefresh) {
+      const cached = queryCache.get<any[]>(rawKey)
+      if (cached) {
+        setAvailableAgents(cached.map((a: any) => ({ id: a.id, name: a.nome || '', bio: a.bio || null })))
+        return
+      }
+    }
     setLoadingAgents(true)
     try {
-      const { data, error } = await supabase.rpc('sp_list_agents_by_email', {
-        p_email: user.email
-      })
-
+      const { data, error } = await queryCache.dedupe<{ data: any; error: any }>(rawKey, async () =>
+        await supabase.rpc('sp_list_agents_by_email', { p_email: user.email })
+      )
       if (error) {
         console.error('Erro ao carregar agentes:', error)
-        toast.error(t('errors.loadAgents'))
         setAvailableAgents([])
         return
       }
-
       const rows = Array.isArray(data) ? data : (data ? [data] : [])
-      
-      const mappedAgents: AvailableAgent[] = rows.map((agent: any) => ({
-        id: agent.id,
-        name: agent.nome || '',
-        bio: agent.bio || null
-      }))
-
-      setAvailableAgents(mappedAgents)
+      queryCache.set(rawKey, rows, 2 * 60 * 1000)
+      setAvailableAgents(rows.map((a: any) => ({ id: a.id, name: a.nome || '', bio: a.bio || null })))
     } catch (err) {
       console.error('Erro ao carregar agentes:', err)
       setAvailableAgents([])
@@ -1980,7 +2000,8 @@ export function Flows() {
         setFlowName(finalName)
       }
 
-      await loadFlows()
+      queryCache.invalidate(`flows-list:${user.email}`)
+      await loadFlows(true)
       setBaselineSig(flowSignature(nodes, edges, finalName, finalId))
       return finalId || null
     } catch (err) {

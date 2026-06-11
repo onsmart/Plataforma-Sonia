@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { 
     FileText, 
     Trash2, 
@@ -29,6 +29,7 @@ import {
     DialogTitle,
 } from "../components/ui/dialog"
 import { AgentService, KnowledgeFile } from "../services/api"
+import { queryCache } from "../lib/query-cache"
 import { usePlanCapabilities } from "../hooks/usePlanCapabilities"
 import { useNavigation } from "../contexts/NavigationContext"
 import { toast } from "sonner"
@@ -122,7 +123,9 @@ export function KnowledgeBase() {
     const planCaps = usePlanCapabilities()
     const isDark = resolvedTheme === 'dark' || theme === 'dark'
     const ragLocked = !planCaps.loading && !planCaps.hasRag
-    
+    const indexingRef = useRef(false)
+    const kbCacheKey = () => `kb:${localStorage.getItem('companies_id') || 'unknown'}`
+
     // Garantir que as traduções estejam carregadas
     useEffect(() => {
         const checkTranslations = async () => {
@@ -163,62 +166,75 @@ export function KnowledgeBase() {
     const [isCleaning, setIsCleaning] = useState(false)
     const [filePurpose, setFilePurpose] = useState<'rag' | 'skills'>('rag')
     
-    // Definir loadFiles antes de usar nos useEffects
-    const loadFiles = useCallback(async () => {
-        try {
-            console.log('[KnowledgeBase] loadFiles chamado, isAdmin:', isAdmin)
-            // Buscar arquivos ativos
-            const activeFiles = (await AgentService.listFiles()).filter(file => file.status !== 'deleted')
-            console.log('[KnowledgeBase] Arquivos ativos encontrados:', activeFiles.length)
-            
-            if (isAdmin) {
-                console.log('[KnowledgeBase] É admin, buscando arquivos deletados...')
-                const deletedFilesList = await AgentService.listDeletedFilesForCleanup()
-                console.log('[KnowledgeBase] Arquivos deletados encontrados em loadFiles:', deletedFilesList.length)
-                setDeletedFiles(deletedFilesList || [])
-            } else {
-                console.log('[KnowledgeBase] Não é admin, apenas arquivos ativos')
+    const loadFiles = useCallback(async (forceRefresh = false) => {
+        const key = `${kbCacheKey()}-files`
+        if (!forceRefresh) {
+            const cached = queryCache.get<KnowledgeFile[]>(key)
+            if (cached) {
+                setFiles(cached)
+                indexingRef.current = cached.some(f => f.status === 'indexing')
+                return
             }
-
+        }
+        try {
+            const activeFiles = (await AgentService.listFiles()).filter(file => file.status !== 'deleted')
+            if (isAdmin) {
+                const deletedFilesList = await AgentService.listDeletedFilesForCleanup()
+                setDeletedFiles(deletedFilesList || [])
+            }
+            queryCache.set(key, activeFiles, 30_000)
             setFiles(activeFiles)
+            indexingRef.current = activeFiles.some(f => f.status === 'indexing')
         } catch (error) {
-            console.error('Erro ao carregar arquivos:', error)
-            const data = await AgentService.listFiles()
-            setFiles(data.filter(file => file.status !== 'deleted'))
+            console.error('[KnowledgeBase] Erro ao carregar arquivos:', error)
+            try {
+                const data = await AgentService.listFiles()
+                setFiles(data.filter(file => file.status !== 'deleted'))
+            } catch {}
         }
     }, [isAdmin])
 
-    const loadUsageStats = async () => {
-        const stats = await AgentService.getFileUsageStats()
-        setUsageStats(stats)
-    }
-
-    const checkAdmin = async () => {
-        try {
-            const admin = await AgentService.checkUserIsAdmin()
-            console.log('[KnowledgeBase] isAdmin:', admin)
-            setIsAdmin(admin)
-            // Se for admin, carregar arquivos deletados imediatamente
-            if (admin) {
-                await loadDeletedFiles()
-            }
-        } catch (error: any) {
-            console.error('[KnowledgeBase] Erro ao verificar admin:', error)
-            setIsAdmin(false)
+    const loadUsageStats = useCallback(async (forceRefresh = false) => {
+        const key = `${kbCacheKey()}-stats`
+        if (!forceRefresh) {
+            const cached = queryCache.get<any>(key)
+            if (cached) { setUsageStats(cached); return }
         }
-    }
-
-    const loadDeletedFiles = async () => {
         try {
-            console.log('[KnowledgeBase] Carregando arquivos deletados...')
+            const stats = await AgentService.getFileUsageStats()
+            queryCache.set(key, stats, 60_000)
+            setUsageStats(stats)
+        } catch (err) {
+            console.error('[KnowledgeBase] Erro ao carregar estatísticas:', err)
+        }
+    }, [])
+
+    const loadDeletedFiles = useCallback(async (forceRefresh = false) => {
+        const key = `${kbCacheKey()}-deleted`
+        if (!forceRefresh) {
+            const cached = queryCache.get<any[]>(key)
+            if (cached) { setDeletedFiles(cached); return }
+        }
+        try {
             const deleted = await AgentService.listDeletedFilesForCleanup()
-            console.log('[KnowledgeBase] Arquivos deletados encontrados:', deleted?.length || 0, deleted)
+            queryCache.set(key, deleted || [], 30_000)
             setDeletedFiles(deleted || [])
         } catch (error: any) {
             console.error("[KnowledgeBase] Erro ao carregar arquivos deletados:", error)
             setDeletedFiles([])
         }
-    }
+    }, [])
+
+    const checkAdmin = useCallback(async () => {
+        try {
+            const admin = await AgentService.checkUserIsAdmin()
+            setIsAdmin(admin)
+            if (admin) await loadDeletedFiles()
+        } catch (error: any) {
+            console.error('[KnowledgeBase] Erro ao verificar admin:', error)
+            setIsAdmin(false)
+        }
+    }, [loadDeletedFiles])
 
     const handlePermanentDelete = async () => {
         if (deletedFiles.length === 0) {
@@ -239,9 +255,10 @@ export function KnowledgeBase() {
             
             if (result?.success) {
                 toast.success(result.message || t('admin.cleanup.successMultiple', { count: result.deleted_count }))
-                await loadFiles()
-                await loadUsageStats()
-                await loadDeletedFiles()
+                queryCache.invalidate(kbCacheKey())
+                await loadFiles(true)
+                await loadUsageStats(true)
+                await loadDeletedFiles(true)
             } else {
                 throw new Error(result?.message || t('delete.error'))
             }
@@ -253,33 +270,26 @@ export function KnowledgeBase() {
         }
     }
 
-    // Carregar arquivos e estatísticas
+    // Carregar arquivos e estatísticas ao montar
     useEffect(() => {
-        loadUsageStats()
-        checkAdmin()
-        
+        void loadUsageStats()
+        void checkAdmin()
+
+        // Poll a cada 30s apenas se houver arquivos em indexação (aguardando processamento)
         const interval = setInterval(() => {
-            loadFiles()
-            loadUsageStats()
-        }, 10000) // Poll every 10s
+            if (indexingRef.current) {
+                void loadFiles(true)
+                void loadUsageStats(true)
+                if (isAdmin) void loadDeletedFiles(true)
+            }
+        }, 30_000)
         return () => clearInterval(interval)
-    }, [loadFiles])
+    }, [loadFiles, loadUsageStats, loadDeletedFiles, checkAdmin, isAdmin])
 
-    // Carregar arquivos quando isAdmin mudar
+    // Recarregar quando isAdmin mudar (admin vê arquivos deletados também)
     useEffect(() => {
-        loadFiles()
+        void loadFiles()
     }, [isAdmin, loadFiles])
-
-    // Carregar arquivos deletados quando for admin
-    useEffect(() => {
-        if (isAdmin) {
-            loadDeletedFiles()
-            const interval = setInterval(() => {
-                loadDeletedFiles()
-            }, 10000)
-            return () => clearInterval(interval)
-        }
-    }, [isAdmin])
 
     const handleOpenSaveDialog = () => {
         if (ragLocked) {
@@ -312,8 +322,9 @@ export function KnowledgeBase() {
             setContentText("")
             setSaveTitle("")
             setTitleDialogOpen(false)
-            await loadFiles()
-            await loadUsageStats()
+            queryCache.invalidate(kbCacheKey())
+            await loadFiles(true)
+            await loadUsageStats(true)
         } catch (error: any) {
             if (error?.code === 'PLAN_RAG_REQUIRED' || String(error?.message || '').includes('RAG')) {
                 toast.error(error.message || 'Faça upgrade para o plano Growth para usar a base de conhecimento.')
@@ -340,11 +351,9 @@ export function KnowledgeBase() {
         try {
             await AgentService.deleteFile(id)
             toast.success(t('delete.successPermanent', { defaultValue: 'Arquivo deletado definitivamente' }))
-            await loadFiles()
-            await loadUsageStats()
-            if (isAdmin) {
-                await loadDeletedFiles()
-            }
+            queryCache.invalidate(kbCacheKey())
+            await loadUsageStats(true)
+            if (isAdmin) await loadDeletedFiles(true)
         } catch (error: any) {
             setFiles(previousFiles)
             console.error("Erro ao deletar arquivo:", error)
@@ -431,8 +440,9 @@ export function KnowledgeBase() {
                                     size="sm"
                                     onClick={async () => {
                                         await AgentService.updateFileConfig(file.id, false)
-                                        await loadFiles()
-                                        await loadUsageStats()
+                                        queryCache.invalidate(kbCacheKey())
+                                        await loadFiles(true)
+                                        await loadUsageStats(true)
                                     }}
                                     className="rounded-[8px]"
                                 >
@@ -448,9 +458,10 @@ export function KnowledgeBase() {
                                                     const result = await AgentService.permanentlyDeleteFiles([file.id])
                                                     if (result?.success) {
                                                         toast.success(t('admin.cleanup.successSingle'))
-                                                        await loadFiles()
-                                                        await loadUsageStats()
-                                                        await loadDeletedFiles()
+                                                        queryCache.invalidate(kbCacheKey())
+                                                        await loadFiles(true)
+                                                        await loadUsageStats(true)
+                                                        await loadDeletedFiles(true)
                                                     } else {
                                                         toast.error(result?.message || t('delete.error'))
                                                     }
@@ -914,7 +925,7 @@ export function KnowledgeBase() {
                                 )}
                             </>
                         )}
-                        <Button variant="ghost" size="icon" onClick={loadFiles} className="rounded-[8px]">
+                        <Button variant="ghost" size="icon" onClick={() => void loadFiles(true)} className="rounded-[8px]">
                             <RefreshCw className="h-4 w-4" />
                         </Button>
                     </div>
