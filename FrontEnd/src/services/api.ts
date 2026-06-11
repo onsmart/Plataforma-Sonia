@@ -48,7 +48,6 @@ export async function getAuthHeaders(contentType: boolean = true) {
         
         // Se expira em menos de 1 minuto, tentar refresh
         if (timeUntilExpiry < 60 * 1000) {
-            console.log('[API] Token expirando em breve, tentando refresh...');
             try {
                 const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession();
                 
@@ -242,7 +241,7 @@ export interface Agent {
     systemPrompt?: string; // TODO: Migrar para personalityPrompt
     // Updated to match Backend Schema
     modelConfig?: Partial<AgentModelConfig>;
-    metrics: {
+    metrics?: {
         conversations: number;
         csat: string;
         avgResponseTime: string;
@@ -625,51 +624,21 @@ export const AgentService = {
 
     async getDashboardStats(): Promise<DashboardData | null> {
         try {
-            console.log("========================================");
-            console.log("[FRONTEND] Chamando API Dashboard");
-            console.log("[FRONTEND] URL:", `${BASE_URL}/dashboard`);
-            console.log("[FRONTEND] Timestamp:", new Date().toISOString());
-            console.log("========================================");
-
-            const headers = await getAuthHeaders();
-            console.log("[FRONTEND] Headers:", {
-                hasAuth: !!headers.Authorization,
-                authLength: headers.Authorization?.length || 0
-            });
-
             const res = await fetch(`${BASE_URL}/dashboard`, {
-                headers: headers
+                headers: await getAuthHeaders()
             });
-
-            console.log("[FRONTEND] Response status:", res.status);
-            console.log("[FRONTEND] Response ok:", res.ok);
 
             if (!res.ok) {
-                console.error("Dashboard API Error: Status", res.status);
-                const errorText = await res.text();
-                console.error("Dashboard API Error: Response body", errorText);
-                throw new Error(`Status: ${res.status}`);
+                throw new Error(`Dashboard: status ${res.status}`);
             }
 
             const data = await res.json();
-            console.log("Dashboard API: Resposta recebida:", {
-                hasStats: !!data.stats,
-                hasActivityFeed: !!data.activityFeed,
-                hasAgents: !!data.agents,
-                agentsCount: data.agents?.length || 0
-            });
-            console.log("Dashboard API: data.agents completo:", data.agents);
-            console.log("Dashboard API: data.agents é array?", Array.isArray(data.agents));
-            console.log("Dashboard API: data completo:", JSON.stringify(data, null, 2));
 
             // Garantir que agents sempre seja um array
             const responseData: DashboardData = {
                 ...data,
                 agents: Array.isArray(data.agents) ? data.agents : (data.agents ? [data.agents] : [])
             };
-
-            console.log("Dashboard API: responseData.agents:", responseData.agents);
-            console.log("Dashboard API: responseData.agents.length:", responseData.agents?.length || 0);
 
             return responseData;
         } catch (error) {
@@ -1170,10 +1139,6 @@ export const AgentService = {
                 // Não bloqueamos o retorno da UI se demorar, mas iniciamos o processo
                 // O backend deve lidar com isso de forma assíncrona idealmente, mas aqui chamamos
                 // para garantir que ao menos inicie.
-                console.log('[Upload] Iniciando processamento de vetores para:', fileId);
-                console.log('[Upload] Tipo de arquivo:', fileType);
-                console.log('[Upload] Nome do arquivo:', file.name);
-
                 // Reaproveitando a lógica de getAuthHeaders para pegar o token correto
                 const headers = await getAuthHeaders();
                 headers['x-user-email'] = user.email; // Passar email explicitamente para contexto
@@ -1186,13 +1151,7 @@ export const AgentService = {
                     },
                     body: JSON.stringify({ purpose })
                 }).then(async (res) => {
-                    if (res.ok) {
-                        const json = await res.json();
-                        console.log('[Upload] ✅ Processamento concluído com sucesso:', json);
-                        if (json.chunks && json.chunks > 0) {
-                            console.log(`[Upload] ✅ ${json.chunks} chunks processados e indexados`);
-                        }
-                    } else {
+                    if (!res.ok) {
                         const errorText = await res.text();
                         console.error('[Upload] ❌ Erro no processamento:', {
                             status: res.status,
@@ -1349,7 +1308,6 @@ export const AgentService = {
                 return [];
             }
 
-            console.log('[listDeletedFilesForCleanup] Buscando arquivos deletados para:', user.email);
             const { data, error } = await supabase.rpc('sp_list_deleted_files_for_cleanup', {
                 p_email: user.email
             });
@@ -1358,8 +1316,6 @@ export const AgentService = {
                 console.error('[listDeletedFilesForCleanup] Erro na RPC:', error);
                 throw error;
             }
-
-            console.log('[listDeletedFilesForCleanup] Resultado:', data);
             return Array.isArray(data) ? data : [];
         } catch (error: any) {
             console.error('[listDeletedFilesForCleanup] Erro:', error);
@@ -1411,12 +1367,7 @@ export const AgentService = {
             const { supabase } = await import('../utils/supabase/client');
             const { data: { user } } = await supabase.auth.getUser();
 
-            if (!user?.email) {
-                console.log('[checkUserIsAdmin] ❌ Email não encontrado');
-                return false;
-            }
-
-            console.log('[checkUserIsAdmin] 🔍 Verificando admin para:', user.email);
+            if (!user?.email) return false;
 
             // Buscar user_id
             const { data: userData, error: userError } = await supabase
@@ -1426,18 +1377,13 @@ export const AgentService = {
                 .maybeSingle();
 
             if (userError) {
-                console.error('[checkUserIsAdmin] ❌ Erro ao buscar user_id:', userError);
+                console.error('[checkUserIsAdmin] Erro ao buscar user_id:', userError);
                 return false;
             }
 
-            if (!userData?.id) {
-                console.log('[checkUserIsAdmin] ❌ User não encontrado na tb_users');
-                return false;
-            }
+            if (!userData?.id) return false;
 
-            console.log('[checkUserIsAdmin] ✅ User_id encontrado:', userData.id);
-
-            // 1️⃣ Verificar role na tb_company_users
+            // Verificar role na tb_company_users
             const { data: companyUserData, error: companyUserError } = await supabase
                 .from('tb_company_users')
                 .select('role, companies_id')
@@ -1447,27 +1393,18 @@ export const AgentService = {
                 .maybeSingle();
 
             if (companyUserError) {
-                console.error('[checkUserIsAdmin] ❌ Erro ao buscar role:', companyUserError);
+                console.error('[checkUserIsAdmin] Erro ao buscar role:', companyUserError);
                 return false;
             }
 
-            if (!companyUserData) {
-                console.log('[checkUserIsAdmin] ❌ Nenhum registro em tb_company_users para user_id:', userData.id);
-                return false;
-            }
+            if (!companyUserData) return false;
 
             const role = companyUserData.role;
             const companiesId = companyUserData.companies_id;
-            console.log('[checkUserIsAdmin] 📋 Role encontrado:', role, 'companies_id:', companiesId);
 
-            // Se for owner ou admin no role, já é admin
-            if (role === 'owner' || role === 'admin') {
-                console.log('[checkUserIsAdmin] ✅ É ADMIN (por role)');
-                return true;
-            }
+            if (role === 'owner' || role === 'admin') return true;
 
-            // 2️⃣ Verificar se tem permissão basic.admin
-            // Primeiro buscar permission_id da permissão basic.admin
+            // Verificar permissão basic.admin
             const { data: adminPermission, error: adminPermError } = await supabase
                 .from('tb_permissions')
                 .select('id')
@@ -1475,9 +1412,8 @@ export const AgentService = {
                 .maybeSingle();
 
             if (adminPermError) {
-                console.error('[checkUserIsAdmin] ❌ Erro ao buscar permissão basic.admin:', adminPermError);
+                console.error('[checkUserIsAdmin] Erro ao buscar permissão basic.admin:', adminPermError);
             } else if (adminPermission?.id) {
-                // Verificar se o usuário tem essa permissão
                 const { data: userPermission, error: userPermError } = await supabase
                     .from('tb_user_permissions')
                     .select('id')
@@ -1487,14 +1423,12 @@ export const AgentService = {
                     .maybeSingle();
 
                 if (userPermError) {
-                    console.error('[checkUserIsAdmin] ❌ Erro ao verificar permissão do usuário:', userPermError);
+                    console.error('[checkUserIsAdmin] Erro ao verificar permissão:', userPermError);
                 } else if (userPermission) {
-                    console.log('[checkUserIsAdmin] ✅ É ADMIN (por permissão basic.admin)');
                     return true;
                 }
             }
 
-            console.log('[checkUserIsAdmin] ❌ NÃO É ADMIN');
             return false;
         } catch (error: any) {
             console.error('[checkUserIsAdmin] ❌ Erro inesperado:', error);
@@ -2400,22 +2334,14 @@ export const KPIService = {
                 throw new Error(errorData.error || 'Failed to fetch KPIs');
             }
             const response = await res.json();
-            console.log('[KPIService] Resposta completa:', response);
-            
-            // A resposta vem como { success: true, data: kpis }
-            // Se response.data existe e é um objeto com os campos de KPIMetrics, retorna direto
+
             if (response.data && typeof response.data === 'object' && 'taskSuccessRate' in response.data) {
-                console.log('[KPIService] ✅ KPIs extraídos de response.data:', response.data);
                 return response.data;
             }
-            
-            // Fallback: se response já tem os campos, retorna direto
+
             if (typeof response === 'object' && 'taskSuccessRate' in response) {
-                console.log('[KPIService] ✅ KPIs extraídos de response direto:', response);
                 return response;
             }
-            
-            console.warn('[KPIService] ⚠️ Formato de resposta inesperado:', response);
             // Retorna objeto vazio se formato não for reconhecido
             return {
                 taskSuccessRate: 0,

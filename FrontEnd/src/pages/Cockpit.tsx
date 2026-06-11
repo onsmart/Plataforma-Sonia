@@ -183,11 +183,15 @@ export function Cockpit() {
     const { user } = useAuth()
     const { navigate, currentRoute } = useNavigation()
     const isFetchingRef = React.useRef(false)
+    const lastFetchedAtRef = React.useRef<number>(0)
     const workforceCardRef = React.useRef<HTMLDivElement>(null)
 
+    const COCKPIT_CACHE_TTL = 60_000
+
     // Função para carregar dados
-    const loadData = useCallback(async () => {
+    const loadData = useCallback(async (force = false) => {
         if (!user?.email || isFetchingRef.current) return
+        if (!force && Date.now() - lastFetchedAtRef.current < COCKPIT_CACHE_TTL) return
 
         try {
             isFetchingRef.current = true
@@ -356,6 +360,7 @@ export function Cockpit() {
                 })
             }
             setLastRefresh(new Date())
+            lastFetchedAtRef.current = Date.now()
         } catch (error: any) {
             console.error("Erro ao carregar dados do Cockpit:", error)
             setError(error?.message || "Erro ao carregar dados")
@@ -416,7 +421,7 @@ export function Cockpit() {
                     <AlertCircle className="h-8 w-8 mx-auto mb-2 text-destructive" />
                     <p className="text-sm font-medium">{t('errors.loading', { defaultValue: 'Não foi possível carregar os dados.' })}</p>
                     <p className="text-xs text-muted-foreground mt-1">{error}</p>
-                    <Button onClick={loadData} className="mt-4" size="sm">
+                    <Button onClick={() => loadData(true)} className="mt-4" size="sm">
                         {t('errors.tryAgain', { defaultValue: 'Tentar novamente' })}
                     </Button>
                 </div>
@@ -902,7 +907,7 @@ export function Cockpit() {
                             </span>
                             <span className="truncate">{systemStatusLabel}</span>
                         </Badge>
-                        <Button variant="ghost" size="icon" onClick={loadData} className="h-9 w-9 shrink-0 rounded-lg hover:bg-muted/60 sm:h-9 sm:w-9">
+                        <Button variant="ghost" size="icon" onClick={() => loadData(true)} className="h-9 w-9 shrink-0 rounded-lg hover:bg-muted/60 sm:h-9 sm:w-9">
                             <RefreshCw className={cn("h-4 w-4 text-muted-foreground", isRefreshing && "animate-spin")} />
                         </Button>
                     </div>
@@ -1289,7 +1294,7 @@ export function Cockpit() {
                                             variant="ghost"
                                             size="sm"
                                             className="h-8 shrink-0 rounded-lg text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:bg-muted hover:text-foreground"
-                                            onClick={loadData}
+                                            onClick={() => loadData(true)}
                                         >
                                             {t('whatsapp.refresh', { defaultValue: 'Atualizar' })}
                                         </Button>

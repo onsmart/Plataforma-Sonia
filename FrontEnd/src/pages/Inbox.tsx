@@ -78,6 +78,7 @@ export function Inbox() {
 
     /** Evita closure obsoleta no polling/realtime ao resolver a conversa selecionada */
     const selectedWaContactIdRef = useRef<string | null>(null)
+    const realtimeConnectedRef = useRef(false)
     selectedWaContactIdRef.current = selectedWhatsappConversation?.whatsapp_contact_id ?? null
 
     const loadWhatsappMessages = useCallback(async (contactId: string, silent = false) => {
@@ -223,19 +224,21 @@ export function Inbox() {
                     table: 'tb_whatsapp_messages',
                     filter: 'agent_id=is.null'
                 },
-                (payload) => {
-                    console.log('[Inbox] Mudança detectada via Realtime:', payload)
+                () => {
                     scheduleRealtimeRefresh()
                 }
             )
             .subscribe((status) => {
-                console.log('[Inbox] Status da subscription Realtime:', status)
+                realtimeConnectedRef.current = status === 'SUBSCRIBED'
             })
 
+        // Polling só quando Realtime não está conectado (fallback)
         const pollingInterval = setInterval(() => {
-            loadUnassignedConversations()
-            void loadWhatsAppConversations(false)
-        }, 10000)
+            if (!realtimeConnectedRef.current) {
+                loadUnassignedConversations()
+                void loadWhatsAppConversations(false)
+            }
+        }, 30_000)
 
         return () => {
             if (debounceTimer) clearTimeout(debounceTimer)
