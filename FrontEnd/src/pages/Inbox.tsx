@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from "react"
 import { useTheme } from "next-themes"
 import { useTranslation } from "react-i18next"
 import {
+    ArrowLeft,
     MessageSquare,
     User,
     Bot,
@@ -1067,7 +1068,7 @@ export function Inbox() {
 
                     <TabsContent value="whatsapp" className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden">
                         <div className="grid min-h-0 h-full min-w-0 w-full flex-1 grid-cols-1 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
-                            <div className={inboxSidebarClass}>
+                            <div className={cn(inboxSidebarClass, selectedWhatsappConversation && "hidden xl:flex")}>
                                 <div className="p-4 sm:p-5">
                                     <div className={inboxSidebarCardClass}>
                                         <div className="mb-3 flex items-center justify-between gap-3">
@@ -1211,8 +1212,20 @@ export function Inbox() {
                                 </ScrollArea>
                             </div>
 
-                            <div className={inboxCanvasClass}>
+                            <div className={cn(inboxCanvasClass, !selectedWhatsappConversation && "hidden xl:flex")}>
                                 {selectedWhatsappConversation ? (
+                                    <>
+                                    <div className="flex shrink-0 items-center border-b border-border/40 px-2 py-2 xl:hidden">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-9 gap-1.5 rounded-xl px-2.5 text-xs font-semibold"
+                                            onClick={() => setSelectedWhatsappConversation(null)}
+                                        >
+                                            <ArrowLeft className="h-4 w-4" />
+                                            {t('conversation.backToList')}
+                                        </Button>
+                                    </div>
                                     <ScrollArea className="min-h-0 flex-1">
                                         <div className="mx-auto max-w-5xl space-y-6 px-4 py-5 animate-in slide-in-from-bottom-4 duration-500 sm:px-6 sm:py-6 md:space-y-8 lg:px-8 lg:py-8">
                                             <div
@@ -1374,6 +1387,7 @@ export function Inbox() {
                                             </div>
                                         </div>
                                     </ScrollArea>
+                                    </>
                                 ) : (
                                     <div className="flex flex-1 flex-col items-center justify-center p-8 text-muted-foreground sm:p-12 md:p-16">
                                         <div
@@ -1403,7 +1417,7 @@ export function Inbox() {
 
                     <TabsContent value="unassigned" className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden">
                         <div className="grid min-h-0 h-full min-w-0 w-full flex-1 grid-cols-1 xl:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
-                            <div className={inboxSidebarClass}>
+                            <div className={cn(inboxSidebarClass, selectedConversation && "hidden xl:flex")}>
                                 <div className="p-4 sm:p-5">
                                     <div className={inboxSidebarCardClass}>
                                         <div className="mb-3 flex items-center justify-between gap-3">
@@ -1560,8 +1574,20 @@ export function Inbox() {
                                 </ScrollArea>
                             </div>
 
-                            <div className={inboxCanvasClass}>
+                            <div className={cn(inboxCanvasClass, !selectedConversation && "hidden xl:flex")}>
                                 {selectedConversation ? (
+                                    <>
+                                    <div className="flex shrink-0 items-center border-b border-border/40 px-2 py-2 xl:hidden">
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-9 gap-1.5 rounded-xl px-2.5 text-xs font-semibold"
+                                            onClick={() => setSelectedConversation(null)}
+                                        >
+                                            <ArrowLeft className="h-4 w-4" />
+                                            {t('conversation.backToList')}
+                                        </Button>
+                                    </div>
                                     <ScrollArea className="min-h-0 flex-1">
                                         <div className="mx-auto max-w-5xl space-y-6 px-4 py-5 animate-in slide-in-from-bottom-4 duration-500 sm:px-6 sm:py-6 md:space-y-8 lg:px-8 lg:py-8">
 
@@ -1879,6 +1905,7 @@ export function Inbox() {
                                             )}
                                         </div>
                                     </ScrollArea>
+                                    </>
                                 ) : (
                                     <div className="flex flex-1 flex-col items-center justify-center p-8 text-muted-foreground sm:p-12 md:p-16">
                                         <div

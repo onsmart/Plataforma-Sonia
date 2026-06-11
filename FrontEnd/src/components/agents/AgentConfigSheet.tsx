@@ -685,7 +685,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
 
     return (
         <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-            <SheetContent className="w-[800px] sm:w-[900px] lg:w-[1000px] h-full overflow-y-auto">
+            <SheetContent className="h-full w-full max-w-full overflow-y-auto sm:w-[min(92vw,900px)] sm:max-w-[min(92vw,900px)] lg:w-[1000px] lg:max-w-[min(94vw,1000px)]">
                 <SheetHeader className="mb-6">
                     <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-lg">
@@ -738,7 +738,7 @@ export function AgentConfigSheet({ agent, isOpen, onClose, onSave }: AgentConfig
                                     <Badge variant="outline" className="capitalize">{modelConfig.provider}</Badge>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                     <div className="space-y-2">
                                         <Label>Provider</Label>
                                         <Select

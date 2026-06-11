@@ -172,7 +172,7 @@ export function AgentsDrawer({
         side="left"
         style={flowDrawerShellStyle(isDark)}
         className={cn(
-          'flow-editor-drawer flow-blocks-drawer-scroll flex w-[min(100vw-0.5rem,22.5rem)] max-w-[100vw] flex-col gap-0 overflow-y-auto overflow-x-hidden p-0 sm:w-[25rem] lg:w-[27rem]',
+          'flow-editor-drawer flow-blocks-drawer-scroll flex w-[min(100vw-0.5rem,22.5rem)] max-w-[100vw] flex-col gap-0 overflow-y-auto overflow-x-hidden p-0 sm:w-[25rem] sm:max-w-none lg:w-[27rem]',
           theme.borderPanel,
         )}
       >

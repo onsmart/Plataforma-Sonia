@@ -2277,7 +2277,7 @@ export function AgentsHub() {
                                 />
                             </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                     <div className="space-y-2">
                                         <Label htmlFor="template-icon" className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
                                             {t('form.template.configuration.iconLabel')}
@@ -2604,7 +2604,7 @@ export function AgentsHub() {
                                     style={dialogInputStyle}
                                 />
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label className="text-sm font-semibold" style={{ color: theme === 'dark' ? '#f1f5f9' : '#1e293b' }}>
                                         {t('form.template.configuration.iconLabel')}

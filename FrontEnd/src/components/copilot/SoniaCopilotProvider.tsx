@@ -904,7 +904,7 @@ const SoniaCopilotUI = () => {
       </SheetTrigger>
 
       <SheetContent side="right"
-        className="flex w-[min(92vw,580px)] flex-col gap-0 p-0 sm:w-[580px]"
+        className="flex w-[min(92vw,580px)] max-w-full flex-col gap-0 p-0 sm:w-[580px] sm:max-w-[580px]"
         style={{ borderLeft: "1px solid hsl(var(--border)/0.6)" }}>
 
         {/* Header */}

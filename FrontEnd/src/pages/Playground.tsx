@@ -1059,7 +1059,7 @@ export function Playground() {
     return (
         <TooltipProvider>
             <div
-                className="playground-root flex h-[calc(100dvh-6rem)] max-h-[calc(100dvh-6rem)] min-h-0 w-full min-w-0 flex-1 gap-4 overflow-hidden p-3 font-sans antialiased selection:bg-primary/10 sm:gap-5 sm:p-4 lg:p-5"
+                className="playground-root flex h-[calc(100dvh-6rem)] max-h-[calc(100dvh-6rem)] min-h-0 w-full min-w-0 flex-1 flex-col gap-4 overflow-hidden p-3 font-sans antialiased selection:bg-primary/10 sm:gap-5 sm:p-4 lg:flex-row lg:p-5"
                 style={{
                     WebkitFontSmoothing: 'antialiased',
                     MozOsxFontSmoothing: 'grayscale',
@@ -1106,7 +1106,7 @@ export function Playground() {
             `}</style>
 
             {/* SIDEBAR: COLUNA DE COMANDO */}
-            <aside className={cn("flex h-full min-h-0 w-[292px] shrink-0 flex-col overflow-hidden xl:w-[304px]", panelClass)}>
+            <aside className={cn("flex max-h-[38vh] min-h-0 w-full shrink-0 flex-col overflow-hidden lg:h-full lg:max-h-none lg:w-[292px] xl:w-[304px]", panelClass)}>
                 <div className={cn("flex min-h-[4.1rem] shrink-0 items-center px-4 py-3", sectionHeaderClass)}>
                     <h2 className="flex items-center gap-3 text-xs font-semibold uppercase leading-normal tracking-[0.12em] text-primary">
                         <Cpu className="h-5 w-5" />

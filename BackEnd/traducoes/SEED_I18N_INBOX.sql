@@ -12,7 +12,10 @@ INSERT INTO public.tb_i18n_translations (companies_id, language, namespace, key,
   -- Tabs
   (NULL, 'pt-BR', 'inbox', 'tabs.stuckMessages', 'Mensagens Travadas', 'Aba de mensagens travadas'),
   (NULL, 'pt-BR', 'inbox', 'tabs.approvals', 'Aprovações', 'Aba de aprovações'),
-  
+
+  -- Conversa (mobile master-detail)
+  (NULL, 'pt-BR', 'inbox', 'conversation.backToList', 'Voltar para conversas', 'Botão voltar para lista de conversas no mobile'),
+
   -- Search
   (NULL, 'pt-BR', 'inbox', 'search.placeholder', 'Localizar lead...', 'Placeholder do campo de busca'),
   
@@ -102,6 +105,7 @@ INSERT INTO public.tb_i18n_translations (companies_id, language, namespace, key,
   -- Tabs
   (NULL, 'en-US', 'inbox', 'tabs.stuckMessages', 'Stuck Messages', 'Stuck messages tab'),
   (NULL, 'en-US', 'inbox', 'tabs.approvals', 'Approvals', 'Approvals tab'),
+  (NULL, 'en-US', 'inbox', 'conversation.backToList', 'Back to conversations', 'Back to conversation list button on mobile'),
   
   -- Search
   (NULL, 'en-US', 'inbox', 'search.placeholder', 'Search lead...', 'Search field placeholder'),
@@ -192,6 +196,7 @@ INSERT INTO public.tb_i18n_translations (companies_id, language, namespace, key,
   -- Tabs
   (NULL, 'es-ES', 'inbox', 'tabs.stuckMessages', 'Mensajes Atascados', 'Pestaña de mensajes atascados'),
   (NULL, 'es-ES', 'inbox', 'tabs.approvals', 'Aprobaciones', 'Pestaña de aprobaciones'),
+  (NULL, 'es-ES', 'inbox', 'conversation.backToList', 'Volver a conversaciones', 'Botón volver a la lista de conversaciones en móvil'),
   
   -- Search
   (NULL, 'es-ES', 'inbox', 'search.placeholder', 'Buscar lead...', 'Placeholder del campo de búsqueda'),

@@ -2790,7 +2790,7 @@ export function Integrations() {
                                     </div>
                                     <div className="space-y-2">
                                         <Label className="text-xs font-semibold" style={{ color: theme === 'dark' ? '#d4d4d8' : '#475569' }}>Capacidades</Label>
-                                        <div className="grid grid-cols-2 gap-3">
+                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                             <Select value={emailConfig.sendMethod} onValueChange={(value: EmailSendMethod) => setEmailConfig((p) => ({ ...p, sendMethod: value, status: 'configured' }))}>
                                                 <SelectTrigger className="h-12 rounded-xl border px-4 font-semibold focus:ring-2 focus:ring-orange-500/20" style={inputSurface}>
                                                     <SelectValue placeholder="Envio" />

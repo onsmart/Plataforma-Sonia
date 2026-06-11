@@ -625,7 +625,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                 }}
                             >
                                 <CardContent className="p-6">
-                                    <div className="flex gap-4 items-end">
+                                    <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
                                 <div className="space-y-2 flex-1">
                                             <Label className="text-sm font-semibold text-slate-700 dark:text-zinc-200">{t('team.email.label')}</Label>
                                     <Input
@@ -635,7 +635,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
                                                 className="border-slate-700/40 bg-white focus:border-slate-500 dark:border-border dark:bg-zinc-900/80 dark:text-foreground"
                                     />
                                 </div>
-                                <div className="space-y-2 w-[250px]">
+                                <div className="w-full space-y-2 sm:w-[250px]">
                                             <Label className="text-sm font-semibold text-slate-700 dark:text-zinc-200">{t('team.permission.label')}</Label>
                                     <Select value={permissionKey} onValueChange={setPermissionKey}>
                                                 <SelectTrigger className="border-slate-700/40 bg-white dark:border-border dark:bg-zinc-900/80 dark:text-foreground">

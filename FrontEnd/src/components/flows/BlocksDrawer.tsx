@@ -394,7 +394,7 @@ export function BlocksDrawer({ isOpen, onClose, onAddBlock, canvasFlowKind = 'ma
         side="left"
         style={flowDrawerShellStyle(isDark)}
         className={cn(
-          'flow-editor-drawer flow-blocks-drawer-scroll flex w-[min(100vw-0.5rem,24rem)] max-w-[100vw] flex-col overflow-y-auto overflow-x-hidden p-0 sm:w-[26rem] lg:w-[28rem]',
+          'flow-editor-drawer flow-blocks-drawer-scroll flex w-[min(100vw-0.5rem,24rem)] max-w-[100vw] flex-col overflow-y-auto overflow-x-hidden p-0 sm:w-[26rem] sm:max-w-none lg:w-[28rem]',
           theme.borderPanel,
         )}
       >

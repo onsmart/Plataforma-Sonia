@@ -441,7 +441,7 @@ function Team() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    <div className="flex gap-4 items-end mb-6 p-4 bg-muted/30 rounded-lg border">
+                    <div className="mb-6 flex flex-col gap-4 rounded-lg border bg-muted/30 p-4 sm:flex-row sm:items-end">
                         <div className="grid gap-2 flex-1">
                             <Label htmlFor="email">{t('team.email.label')}</Label>
                             <div className="relative">
@@ -455,7 +455,7 @@ function Team() {
                                 />
                             </div>
                         </div>
-                        <div className="grid gap-2 w-[250px]">
+                        <div className="grid w-full gap-2 sm:w-[250px]">
                             <Label>{t('team.permission.label')}</Label>
                             <Select value={permissionKey} onValueChange={setPermissionKey}>
                                 <SelectTrigger>

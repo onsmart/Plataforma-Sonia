@@ -25,7 +25,20 @@
       "Bash(git push *)",
       "Bash(xargs grep -l \"refetch\\\\|invalidate\\\\|cache\\\\|revalidate\")",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(sed -n '685,692p' components/agents/AgentConfigSheet.tsx)",
+      "Bash(sed -n '670,680p' components/agents/GenerateAgentAiDialog.tsx)",
+      "Bash(sed -n '171,176p' components/flows/AgentsDrawer.tsx)",
+      "Bash(sed -n '393,398p' components/flows/BlocksDrawer.tsx)",
+      "Bash(python -c ' *)",
+      "Bash(sed -n '454,462p' pages/Configuration.tsx)",
+      "Bash(sed -n '634,642p' pages/Settings.tsx)",
+      "Bash(sed -n '2083,2090p;2176,2183p;2790,2797p' components/configuration/Integrations.tsx)",
+      "Bash(sed -n '440,452p' pages/Configuration.tsx)",
+      "Bash(sed -n '618,634p' pages/Settings.tsx)",
+      "Bash(sed -n '1627,1632p' pages/Playground.tsx)",
+      "Bash(sed -n '739,744p' components/agents/AgentConfigSheet.tsx)",
+      "Bash(sed -n '1706,1711p;1942,1947p;2724,2729p' components/flows/EditNodeDialog.tsx)"
     ]
   }
 }
