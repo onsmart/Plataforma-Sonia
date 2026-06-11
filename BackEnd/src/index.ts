@@ -60,9 +60,18 @@ if (process.env.TRUST_PROXY_HTTPS === 'true') {
   app.set('trust proxy', 1)
 }
 
-const corsOrigins = String(process.env.CORS_ALLOWED_ORIGINS || '')
+const corsOriginEntries = String(process.env.CORS_ALLOWED_ORIGINS || '')
   .split(',')
   .map((origin) => origin.trim())
+  .filter(Boolean)
+
+// Entradas exatas (URL completa) e curingas de hostname (ex.: "*-onsmart.vercel.app"
+// cobre os previews da Vercel, cujo subdomínio muda a cada deploy). Curingas só valem para HTTPS.
+const corsOrigins = corsOriginEntries.filter((entry) => !entry.includes('*'))
+const corsWildcardSuffixes = corsOriginEntries
+  .map((entry) => entry.replace(/^https?:\/\//, ''))
+  .filter((entry) => entry.startsWith('*'))
+  .map((entry) => entry.slice(1))
   .filter(Boolean)
 
 function isAllowedCorsOrigin(origin: string | undefined): boolean {
@@ -70,8 +79,10 @@ function isAllowedCorsOrigin(origin: string | undefined): boolean {
   if (corsOrigins.includes(origin)) return true
 
   try {
-    const { hostname } = new URL(origin)
-    return hostname === 'localhost' || hostname === '127.0.0.1'
+    const { protocol, hostname } = new URL(origin)
+    if (hostname === 'localhost' || hostname === '127.0.0.1') return true
+    if (protocol !== 'https:') return false
+    return corsWildcardSuffixes.some((suffix) => hostname.endsWith(suffix))
   } catch {
     return false
   }
