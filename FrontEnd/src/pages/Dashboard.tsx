@@ -1,9 +1,11 @@
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Activity, ArrowUpRight, Bot, Cpu, Mic, ShieldCheck, Users, Zap, Loader2 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card"
 import { api } from "../utils/api"
 import { Badge } from "../components/ui/badge"
+
+const DASHBOARD_STATS_TTL = 2 * 60 * 1000
 
 export function Dashboard() {
   const [stats, setStats] = useState({
@@ -12,18 +14,18 @@ export function Dashboard() {
     beeCount: 0,
     loading: true
   })
+  const lastFetchedRef = useRef(0)
 
   useEffect(() => {
-    loadStats()
+    void loadStats()
   }, [])
 
-  const loadStats = async () => {
+  const loadStats = async (force = false) => {
+    const now = Date.now()
+    if (!force && now - lastFetchedRef.current < DASHBOARD_STATS_TTL) return
     try {
-      const data = await api.agents.list().catch(err => {
-          // Fail silently for dashboard stats
-          return { agents: [] };
-      });
-      
+      const data = await api.agents.list().catch(() => ({ agents: [] }))
+
       if (data && data.agents) {
         setStats({
           activeAgents: data.agents.length,
@@ -31,6 +33,7 @@ export function Dashboard() {
           beeCount: data.agents.filter((a: any) => a.framework === 'bee').length,
           loading: false
         })
+        lastFetchedRef.current = Date.now()
       } else {
          setStats(prev => ({ ...prev, loading: false }));
       }

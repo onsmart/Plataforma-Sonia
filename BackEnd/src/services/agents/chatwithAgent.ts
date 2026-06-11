@@ -489,6 +489,47 @@ function createVoiceAgentTimingTracker(input: {
   }
 }
 
+/**
+ * Fallback para agentes que ainda não aparecem na fn_get_agents_with_api_key
+ * (ex.: recém-criados pelo wizard de IA). Busca direta em tb_agents validando
+ * que o agente pertence à mesma empresa do usuário autenticado.
+ */
+async function loadAgentByIdWithTenantCheck(agentId: string, email: string) {
+  const { supabase } = await import('../../lib/supabase')
+  const { data: row, error } = await supabase
+    .from('tb_agents')
+    .select(
+      'id, nome, bio, personality_prompt, extra_features, role_template_id, primary_language, provider, provider_model, temperature, max_tokens, integrations_id, crm_integration_id, status_id, companies_id'
+    )
+    .eq('id', agentId)
+    .maybeSingle()
+
+  if (error || !row) return null
+
+  const agentCompanyId = String(row.companies_id || '').trim()
+  if (!agentCompanyId) return null
+  const userCompanyId = await getCompanyIdByEmail(email).catch(() => null)
+  if (!userCompanyId || userCompanyId !== agentCompanyId) return null
+
+  return {
+    id: row.id,
+    nome: row.nome || '',
+    bio: row.bio || '',
+    personality_prompt: row.personality_prompt || '',
+    extra_features: row.extra_features ?? null,
+    role_template_id: row.role_template_id || '',
+    primary_language: row.primary_language || 'pt-BR',
+    provider: row.provider || 'openai',
+    provider_model: row.provider_model || 'gpt-4o-mini',
+    temperature: row.temperature ?? 0.7,
+    max_tokens: row.max_tokens ?? 1000,
+    api_key: '', // chatText usa OPENAI_API_KEY do env quando vazio
+    integrations_id: row.integrations_id || '',
+    crm_integration_id: row.crm_integration_id || undefined,
+    status_id: row.status_id ?? null,
+  }
+}
+
 async function generateSanitizedBlockedReply(params: {
   agent: any
   blockedReason: string
@@ -571,7 +612,17 @@ export async function chatWithAgent(
   // 1️⃣ Carrega agentes do usuário
   voiceTiming.start('load_agent_context')
   const agents = await getAgentsByEmail(email)
-  const agent = getAgentFromCache(agents, agentId)
+  let agent: ReturnType<typeof getAgentFromCache>
+  try {
+    agent = getAgentFromCache(agents, agentId)
+  } catch (cacheError) {
+    // Agentes recém-criados podem ainda não aparecer na fn_get_agents_with_api_key
+    // (ex.: smoke test logo após criação via IA). Fallback: busca direta com validação de tenant.
+    const fallbackAgent = await loadAgentByIdWithTenantCheck(agentId, email)
+    if (!fallbackAgent) throw cacheError
+    console.warn('[chatWithAgent] Agente não estava na lista da RPC; usando busca direta (recém-criado?):', { agentId })
+    agent = fallbackAgent
+  }
   voiceTiming.end('load_agent_context', { agentsAvailable: Array.isArray(agents) ? agents.length : 0 })
 
   // 🛡️ GUARDRAIL: Valida status_id ANTES de qualquer processamento

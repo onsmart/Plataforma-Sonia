@@ -28,6 +28,7 @@ import { Input } from "../components/ui/input"
 import { Separator } from "../components/ui/separator"
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
 import { AgentService, GovernanceConfig } from "../services/api"
+import { queryCache } from "../lib/query-cache"
 import { useNavigation } from "../contexts/NavigationContext"
 import { Textarea } from "../components/ui/textarea"
 import { toast } from "sonner"
@@ -281,17 +282,28 @@ export function Governance() {
         }
     }, [i18n, t])
 
-    const loadConfig = useCallback(async () => {
+    const applyGovernanceData = (data: GovernanceConfig) => {
+        setConfig(data)
+        const chatDays = data.retention?.chatLogsRetentionDays ?? 90
+        const voiceDays = data.retention?.voiceRetentionDays ?? 30
+        setChatLogsRetention(chatDays)
+        setVoiceRetention(voiceDays)
+        setSavedSnapshot(snapshotConfig(data, chatDays, voiceDays))
+    }
+
+    const loadConfig = useCallback(async (force = false) => {
+        const companiesId = localStorage.getItem('companies_id') || 'unknown'
+        const cacheKey = `governance-config:${companiesId}`
+        if (!force) {
+            const cached = queryCache.get<GovernanceConfig>(cacheKey)
+            if (cached) { applyGovernanceData(cached); setLoading(false); return }
+        }
         setLoading(true)
         setPlanError(null)
         try {
             const data = await AgentService.getGovernanceConfig()
-            setConfig(data)
-            const chatDays = data.retention?.chatLogsRetentionDays ?? 90
-            const voiceDays = data.retention?.voiceRetentionDays ?? 30
-            setChatLogsRetention(chatDays)
-            setVoiceRetention(voiceDays)
-            setSavedSnapshot(snapshotConfig(data, chatDays, voiceDays))
+            queryCache.set(cacheKey, data, 5 * 60 * 1000)
+            applyGovernanceData(data)
         } catch (err: unknown) {
             const e = err as Error & { code?: string }
             if (e.code === "PLAN_GOVERNANCE_REQUIRED") {
@@ -333,6 +345,8 @@ export function Governance() {
                 },
             }
             const updatedConfig = await AgentService.updateGovernanceConfig(configToSave)
+            const companiesId = localStorage.getItem('companies_id') || 'unknown'
+            queryCache.set(`governance-config:${companiesId}`, updatedConfig, 5 * 60 * 1000)
             setConfig(updatedConfig)
             const chatDays = updatedConfig.retention?.chatLogsRetentionDays ?? chatLogsRetention
             const voiceDays = updatedConfig.retention?.voiceRetentionDays ?? voiceRetention

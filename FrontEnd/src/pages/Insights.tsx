@@ -79,6 +79,7 @@ import {
     DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu"
 import { AgentService, KPIService, DashboardData, type KPIMetrics } from "../services/api"
+import { queryCache } from "../lib/query-cache"
 import { useAuth } from "../contexts/AuthContext"
 import { useNavigation } from "../contexts/NavigationContext"
 import { cn } from "../components/ui/utils"
@@ -315,7 +316,6 @@ export function Insights() {
             const insightsTranslations = i18n.getResourceBundle(currentLang, 'insights')
             
             if (!insightsTranslations || Object.keys(insightsTranslations).length === 0) {
-                console.log('[Insights] Traduções não encontradas, carregando...')
                 const { loadTranslationsFromDatabase } = await import('../i18n/config')
                 const companiesId = localStorage.getItem('companies_id') || undefined
                 await loadTranslationsFromDatabase(currentLang, companiesId)
@@ -341,6 +341,16 @@ export function Insights() {
     useEffect(() => {
         const load = async () => {
             if (!user?.email) return
+
+            const cacheKey = `insights-data:${user.email}:${period}`
+            const cached = queryCache.get<{ overview: InsightsData['overview']; channels: InsightsData['channels']; agents: InsightsData['agents']; summary: InsightsData['summary']; previousSummary: InsightsData['summary'] | null; issues: string[] }>(cacheKey)
+            if (cached) {
+                setData({ overview: cached.overview, channels: cached.channels, agents: cached.agents, summary: cached.summary })
+                setPreviousPeriodData(cached.previousSummary)
+                setAnalyticsIssues(cached.issues)
+                setLoading(false)
+                return
+            }
 
             try {
                 setLoading(true)
@@ -382,6 +392,14 @@ export function Insights() {
                     summary: current.summary,
                 })
                 setPreviousPeriodData(previousPeriodSummary)
+                queryCache.set(cacheKey, {
+                    overview: current.overview,
+                    channels: current.channels,
+                    agents: current.agents,
+                    summary: current.summary,
+                    previousSummary: previousPeriodSummary,
+                    issues: current.issues || [],
+                }, 5 * 60 * 1000)
             } catch (e: unknown) {
                 console.error('[Insights] Erro ao carregar dados:', e)
                 toast.error(t('errors.loading', { defaultValue: 'Erro ao carregar analytics.' }))
@@ -392,7 +410,38 @@ export function Insights() {
         load()
     }, [period, user?.email, t])
 
+    const applyAccountUsage = (usageRes: Record<string, any> | null) => {
+        if (usageRes) {
+            const limit = usageRes.conversations_limit ?? usageRes.messages_limit ?? null
+            const used = usageRes.conversations_used ?? usageRes.messages_used ?? 0
+            const hasPaidAccess = Boolean(usageRes.has_paid_access)
+            const isFreeAccount = Boolean(usageRes.is_free_account ?? !hasPaidAccess)
+            setAccountUsage({
+                conversationsUsed: used,
+                conversationsLimit: isFreeAccount ? 0 : limit,
+                usageLimitReached: Boolean(
+                    usageRes.usage_limit_reached ??
+                        (isFreeAccount || (limit != null && used >= limit))
+                ),
+                planTitle: usageRes.plan_title,
+                hasPaidAccess,
+                isFreeAccount,
+            })
+        } else {
+            setAccountUsage(null)
+        }
+    }
+
     const loadAccountData = async () => {
+        const cacheKey = `insights-account:${user?.email || 'unknown'}`
+        const cached = queryCache.get<{ dash: DashboardData; kpi: KPIMetrics | null; usageRes: Record<string, any> | null }>(cacheKey)
+        if (cached) {
+            setDashData(cached.dash)
+            setKpiData(cached.kpi)
+            applyAccountUsage(cached.usageRes)
+            setDashLoading(false)
+            return
+        }
         setDashRefreshing(true)
         try {
             const [dash, kpiRes, usageRes] = await Promise.all([
@@ -402,25 +451,8 @@ export function Insights() {
             ])
             setDashData(dash)
             setKpiData(kpiRes)
-            if (usageRes) {
-                const limit = usageRes.conversations_limit ?? usageRes.messages_limit ?? null
-                const used = usageRes.conversations_used ?? usageRes.messages_used ?? 0
-                const hasPaidAccess = Boolean(usageRes.has_paid_access)
-                const isFreeAccount = Boolean(usageRes.is_free_account ?? !hasPaidAccess)
-                setAccountUsage({
-                    conversationsUsed: used,
-                    conversationsLimit: isFreeAccount ? 0 : limit,
-                    usageLimitReached: Boolean(
-                        usageRes.usage_limit_reached ??
-                            (isFreeAccount || (limit != null && used >= limit))
-                    ),
-                    planTitle: usageRes.plan_title,
-                    hasPaidAccess,
-                    isFreeAccount,
-                })
-            } else {
-                setAccountUsage(null)
-            }
+            applyAccountUsage(usageRes)
+            queryCache.set(cacheKey, { dash, kpi: kpiRes, usageRes }, 5 * 60 * 1000)
         } finally {
             setDashLoading(false)
             setDashRefreshing(false)

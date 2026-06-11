@@ -1588,7 +1588,8 @@ export function AgentsHub() {
                         open={isGenerateAgentAiOpen}
                         onOpenChange={setIsGenerateAgentAiOpen}
                         onCreated={(agentId, options) => {
-                            void fetchAgents()
+                            queryCache.invalidate(`agents-raw:${user?.email}`)
+                            void fetchAgents(true)
                             if (options?.navigateToConfig !== false) {
                                 navigate(`agent-config?id=${agentId}`)
                             }

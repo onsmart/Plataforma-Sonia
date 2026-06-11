@@ -30,6 +30,7 @@ import { loadTranslationsFromDatabase } from "../i18n/config"
 import i18n from "../i18n/config"
 import { supabase } from "../utils/supabase/client"
 import { AgentService } from "../services/api"
+import { queryCache } from "../lib/query-cache"
 import { usePlanCapabilities } from "../hooks/usePlanCapabilities"
 import { normalizePlanId, planTitle, type PlanId } from "../lib/plan-catalog"
 import {
@@ -155,26 +156,37 @@ export function Profile() {
         void loadProfileTranslations()
     }, [companiesId])
 
+    const applyBillingUsage = (usage: Record<string, any>) => {
+        setBillingExtra({
+            catalog_plan: usage.catalog_plan,
+            effective_plan: usage.effective_plan,
+            subscription_status: usage.subscription_status,
+            current_period_start: usage.current_period_start,
+            current_period_end: usage.current_period_end,
+            canceled_at: usage.canceled_at,
+            cancel_at_period_end: usage.cancel_at_period_end,
+            has_paid_access: usage.has_paid_access,
+            subscribed_at: usage.subscribed_at,
+            volume_label: usage.volume_label,
+            has_stripe_subscription: usage.has_stripe_subscription,
+            can_manage_billing: usage.can_manage_billing,
+            period_ended: usage.period_ended,
+            access_state: usage.access_state,
+        })
+    }
+
     const loadBillingDetails = async (sync = false) => {
+        const email = user?.email || 'unknown'
+        const cacheKey = `profile-billing:${email}`
+        if (!sync) {
+            const cached = queryCache.get<Record<string, any>>(cacheKey)
+            if (cached) { applyBillingUsage(cached); return }
+        }
         try {
             const usage = await AgentService.getBillingUsage(sync)
             if (usage) {
-                setBillingExtra({
-                    catalog_plan: usage.catalog_plan,
-                    effective_plan: usage.effective_plan,
-                    subscription_status: usage.subscription_status,
-                    current_period_start: usage.current_period_start,
-                    current_period_end: usage.current_period_end,
-                    canceled_at: usage.canceled_at,
-                    cancel_at_period_end: usage.cancel_at_period_end,
-                    has_paid_access: usage.has_paid_access,
-                    subscribed_at: usage.subscribed_at,
-                    volume_label: usage.volume_label,
-                    has_stripe_subscription: usage.has_stripe_subscription,
-                    can_manage_billing: usage.can_manage_billing,
-                    period_ended: usage.period_ended,
-                    access_state: usage.access_state,
-                })
+                queryCache.set(cacheKey, usage, 3 * 60 * 1000)
+                applyBillingUsage(usage)
             }
         } catch {
             setBillingExtra(null)
@@ -185,8 +197,13 @@ export function Profile() {
         void loadBillingDetails(false)
         void (async () => {
             try {
+                const companiesId = localStorage.getItem('companies_id') || 'unknown'
+                const wsCacheKey = `profile-workspace:${companiesId}`
+                const cached = queryCache.get<any>(wsCacheKey)
+                if (cached) { setWorkspace(cached); return }
                 const ws = await AgentService.getTeamWorkspace()
                 setWorkspace(ws)
+                queryCache.set(wsCacheKey, ws, 5 * 60 * 1000)
             } catch {
                 setWorkspace(null)
             }

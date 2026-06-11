@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { 
   Bot, 
   Zap, 
@@ -78,20 +78,26 @@ function AgentCard({ agent }: { agent: Agent }) {
   )
 }
 
+const AGENTS_LIST_TTL = 2 * 60 * 1000
+
 export function AgentsList({ filterFramework }: { filterFramework?: "agno" | "bee" }) {
   const [agents, setAgents] = useState<Agent[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const lastFetchedRef = useRef(0)
 
   useEffect(() => {
-    loadAgents()
+    void loadAgents()
   }, [])
 
-  const loadAgents = async () => {
+  const loadAgents = async (force = false) => {
+    const now = Date.now()
+    if (!force && now - lastFetchedRef.current < AGENTS_LIST_TTL) return
     try {
       setIsLoading(true)
       const data = await api.agents.list()
       setAgents(data.agents || [])
+      lastFetchedRef.current = Date.now()
     } catch (error: any) {
       if (error.name !== 'TypeError' && error.message !== 'Failed to fetch') {
           console.error(error)
@@ -135,7 +141,7 @@ export function AgentsList({ filterFramework }: { filterFramework?: "agno" | "be
       }), {
         loading: "Deploying Sentinel Agent...",
         success: () => {
-          loadAgents()
+          void loadAgents(true)
           return "Sentinel Agent Deployed"
         },
         error: "Deployment failed"

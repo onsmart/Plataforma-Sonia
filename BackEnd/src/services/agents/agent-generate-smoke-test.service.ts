@@ -80,12 +80,22 @@ export async function runAgentGenerateSmokeTest(params: {
 }): Promise<AgentGenerateValidationReport> {
   const checks: SmokeCheck[] = []
   const enabled = (params.selectedTools || []).filter((t) => t.enabled !== false)
+  const hasCalendlyEnabled = enabled.some((t) => t.provider === 'calendly')
 
   const health = await getAgentSetupHealth(params.agentId, params.userEmail)
   for (const hc of health.checks) {
-    const status: SmokeCheckStatus =
+    let status: SmokeCheckStatus =
       hc.status === 'ok' ? 'ok' : hc.status === 'warn' ? 'warn' : 'fail'
-    pushCheck(checks, `health_${hc.id}`, hc.label, status, hc.message)
+    let message = hc.message
+
+    // O check de agendamento do setup health exige Calendly configurado, mas
+    // agentes sem ferramentas Calendly (ex.: FAQ) não usam agendamento — não é falha.
+    if (hc.id === 'scheduling' && !hasCalendlyEnabled && status !== 'ok') {
+      status = 'ok'
+      message = 'Agendamento não habilitado — não se aplica a este agente.'
+    }
+
+    pushCheck(checks, `health_${hc.id}`, hc.label, status, message)
   }
 
   for (const tool of enabled) {

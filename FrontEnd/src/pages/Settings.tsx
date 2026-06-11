@@ -15,6 +15,7 @@ import { Slider } from "../components/ui/slider"
 import { Download, Shield, Save, Loader2, Users, Mail, Trash2, CreditCard, Check, Ban, Brain, Lock, Send, Plus, Bot, MessageSquare, Database, Lightbulb, AlertTriangle, Building2, Info } from "lucide-react"
 import { toast } from "sonner"
 import { AgentService, GovernanceConfig } from "../services/api"
+import { queryCache } from "../lib/query-cache"
 import { useTheme } from "next-themes"
 import { Alert, AlertDescription, AlertTitle } from "../components/ui/alert"
 import { getPermissionInfo } from "../lib/team-permissions"
@@ -242,18 +243,37 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     }, [])
 
     const loadPermissions = async () => {
+        const companiesId = localStorage.getItem('companies_id') || 'unknown'
+        const cacheKey = `settings-permissions:${companiesId}`
+        const cached = queryCache.get<any[]>(cacheKey)
+        if (cached) {
+            setPermissions(cached)
+            if (cached.length > 0 && !permissionKey) setPermissionKey(cached[0].key)
+            return
+        }
         try {
             const data = await AgentService.getAvailablePermissions()
             setPermissions(data)
             if (data.length > 0 && !permissionKey) {
                 setPermissionKey(data[0].key)
             }
+            queryCache.set(cacheKey, data, 10 * 60 * 1000)
         } catch (e) {
             console.error("Failed to load permissions", e)
         }
     }
 
-    const loadTeam = async () => {
+    const loadTeam = async (force = false) => {
+        const companiesId = localStorage.getItem('companies_id') || 'unknown'
+        const cacheKey = `settings-team:${companiesId}`
+        if (!force) {
+            const cached = queryCache.get<{ workspace: typeof teamWorkspace; team: any[] }>(cacheKey)
+            if (cached) {
+                setTeamWorkspace(cached.workspace)
+                setTeam(cached.team)
+                return
+            }
+        }
         try {
             const [workspace, teamData] = await Promise.all([
                 AgentService.getTeamWorkspace(),
@@ -261,6 +281,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             ])
             setTeamWorkspace(workspace)
             setTeam(teamData || [])
+            queryCache.set(cacheKey, { workspace, team: teamData || [] }, 2 * 60 * 1000)
         } catch (e: any) {
             console.error('[Settings] team load:', e)
             toast.error(e.message || t('team.error.load'))
@@ -312,9 +333,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     const handleUpgrade = async (priceId: string) => {
         setCheckoutPlanId(priceId)
         try {
-            console.log('[Settings] Iniciando checkout com priceId:', priceId)
             const { url } = await AgentService.createCheckoutSession(priceId)
-            console.log('[Settings] URL recebida:', url)
             if (url) {
                 window.location.href = url
             } else {
@@ -358,7 +377,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     }
 
     const refreshBillingData = async () => {
-        await loadUsageStats()
+        await loadUsageStats(true)
     }
 
     // --- TEAM HANDLERS ---
@@ -369,7 +388,7 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
             if (result?.success) {
                 toast.success(result.message || t('team.success.add', { email: inviteEmail }))
                 setInviteEmail("")
-                await loadTeam()
+                await loadTeam(true)
             } else {
                 throw new Error(result?.message || t('team.error.addFailed'))
             }
@@ -382,7 +401,10 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
         try {
             await AgentService.removeMember(email)
             toast.success(t('team.success.remove'))
-            setTeam(team.filter(m => m.email !== email))
+            const updated = team.filter(m => m.email !== email)
+            setTeam(updated)
+            const companiesId = localStorage.getItem('companies_id') || 'unknown'
+            queryCache.invalidate(`settings-team:${companiesId}`)
         } catch (e) {
             toast.error(t('team.error.remove'))
         }
@@ -440,13 +462,48 @@ export function Settings({ initialTab }: { initialTab?: string } = {}) {
     }
 
     // Carregar dados de uso da subscription
-    const loadUsageStats = useCallback(async () => {
+    const loadUsageStats = useCallback(async (forceRefresh = false) => {
         if (activeTab !== 'billing') return
+
+        const companiesId = localStorage.getItem('companies_id') || 'unknown'
+        const cacheKey = `settings-usage:${companiesId}`
+        if (!forceRefresh) {
+            const cached = queryCache.get<Record<string, any>>(cacheKey)
+            if (cached) {
+                setSubscription((prev: typeof subscription) => ({
+                    ...prev,
+                    plan: cached.effective_plan || cached.plan || 'free',
+                    catalog_plan: cached.catalog_plan || cached.plan || 'free',
+                    plan_title: cached.plan_title || planTitle(cached.catalog_plan || cached.plan),
+                    status: cached.subscription_status || cached.status || 'inactive',
+                    current_period_start: cached.current_period_start,
+                    current_period_end: cached.current_period_end,
+                    canceled_at: cached.canceled_at,
+                    cancel_at_period_end: cached.cancel_at_period_end,
+                    has_paid_access: cached.has_paid_access,
+                    has_stripe_subscription: cached.has_stripe_subscription,
+                    can_manage_billing: cached.can_manage_billing,
+                }))
+                setUsageStats({
+                    conversationsUsed: cached.conversations_used ?? cached.messages_used ?? 0,
+                    conversationsLimit: cached.conversations_limit ?? cached.messages_limit ?? null,
+                    agentsUsed: cached.agents_used || 0,
+                    agentsLimit: cached.agents_limit ?? null,
+                    usageLimitReached: Boolean(
+                        cached.usage_limit_reached ??
+                        (cached.conversations_limit != null &&
+                            (cached.conversations_used ?? 0) >= cached.conversations_limit)
+                    ),
+                })
+                return
+            }
+        }
 
         setLoadingUsage(true)
         try {
             const stats = await AgentService.getSubscriptionUsage()
             if (!stats) return
+            queryCache.set(cacheKey, stats, 5 * 60 * 1000)
             setSubscription((prev: typeof subscription) => ({
                 ...prev,
                 plan: stats.effective_plan || stats.plan || 'free',

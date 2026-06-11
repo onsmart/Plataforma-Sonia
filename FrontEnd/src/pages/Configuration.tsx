@@ -29,6 +29,7 @@ import {
 } from "lucide-react"
 import { Settings } from "./Settings"
 import { AgentService } from "../services/api"
+import { queryCache } from "../lib/query-cache"
 import { toast } from "sonner"
 import { Avatar, AvatarFallback } from "../components/ui/avatar"
 import { useAuth } from "../contexts/AuthContext"
@@ -314,18 +315,34 @@ function Team() {
     }, [hasCompany])
 
     const loadPermissions = async () => {
+        const companiesId = localStorage.getItem('companies_id') || 'unknown'
+        const cacheKey = `settings-permissions:${companiesId}`
+        const cached = queryCache.get<any[]>(cacheKey)
+        if (cached) {
+            setPermissions(cached)
+            if (cached.length > 0 && !permissionKey) setPermissionKey(cached[0].key)
+            return
+        }
         const data = await AgentService.getAvailablePermissions()
         setPermissions(data)
         if (data.length > 0 && !permissionKey) {
             setPermissionKey(data[0].key)
         }
+        queryCache.set(cacheKey, data, 10 * 60 * 1000)
     }
 
-    const loadTeam = async () => {
+    const loadTeam = async (force = false) => {
+        const companiesId = localStorage.getItem('companies_id') || 'unknown'
+        const cacheKey = `settings-team:${companiesId}`
+        if (!force) {
+            const cached = queryCache.get<any[]>(cacheKey)
+            if (cached) { setMembers(cached); return }
+        }
         setLoading(true)
         try {
             const data = await AgentService.getTeam()
             setMembers(data)
+            queryCache.set(cacheKey, data, 2 * 60 * 1000)
         } catch (e: any) {
             toast.error(e.message || t('team.error.load'))
         } finally {
@@ -341,7 +358,7 @@ function Team() {
             if (result?.success) {
                 toast.success(result.message || t('team.success.add', { email }))
                 setEmail("")
-                loadTeam()
+                void loadTeam(true)
             } else {
                 throw new Error(result?.message || t('team.error.addFailed'))
             }
@@ -357,7 +374,9 @@ function Team() {
         try {
             await AgentService.removeMember(email)
             toast.success(t('team.success.remove'))
-            loadTeam()
+            const companiesId = localStorage.getItem('companies_id') || 'unknown'
+            queryCache.invalidate(`settings-team:${companiesId}`)
+            void loadTeam(true)
         } catch (e: any) {
             toast.error(e.message || t('team.error.remove'))
         }
