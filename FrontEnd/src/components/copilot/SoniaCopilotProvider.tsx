@@ -8,7 +8,7 @@ import React, {
   useRef,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useConversation } from "@11labs/react";
+import { useConversation } from "@elevenlabs/react";
 
 import { useNavigation } from "../../contexts/NavigationContext";
 import { useAuth } from "../../contexts/AuthContext";
